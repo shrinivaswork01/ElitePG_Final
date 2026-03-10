@@ -1,0 +1,64 @@
+﻿src/context/AppContext.tsx(272,19): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "tenants", unknown, "PATCH">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "tenants", unknown, "PATCH">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(275,21): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "kyc_documents", unknown, "POST">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "kyc_documents", unknown, "POST">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(281,62): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "tenants", unknown, "DELETE">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "tenants", unknown, "DELETE">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(285,19): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "rooms", unknown, "POST">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "rooms", unknown, "POST">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(299,19): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "rooms", unknown, "PATCH">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "rooms", unknown, "PATCH">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(302,60): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "rooms", unknown, "DELETE">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "rooms", unknown, "DELETE">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(306,19): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "payments", unknown, "POST">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "payments", unknown, "POST">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(325,19): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "payments", unknown, "PATCH">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "payments", unknown, "PATCH">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(328,63): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "payments", unknown, "DELETE">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "payments", unknown, "DELETE">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(332,19): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "complaints", unknown, "POST">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "complaints", unknown, "POST">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(348,19): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "complaints", unknown, "PATCH">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "complaints", unknown, "PATCH">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(351,65): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "complaints", unknown, "DELETE">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "complaints", unknown, "DELETE">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(381,19): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "employees", unknown, "PATCH">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "employees", unknown, "PATCH">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(384,21): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "kyc_documents", unknown, "POST">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "kyc_documents", unknown, "POST">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(390,64): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "employees", unknown, "DELETE">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "employees", unknown, "DELETE">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(402,19): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "kyc_documents", unknown, "PATCH">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "kyc_documents", unknown, "PATCH">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(414,19): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "announcements", unknown, "POST">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "announcements", unknown, "POST">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(420,68): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "announcements", unknown, "DELETE">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "announcements", unknown, "DELETE">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(424,19): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "salary_payments", unknown, "POST">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "salary_payments", unknown, "POST">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(438,19): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "salary_payments", unknown, "PATCH">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "salary_payments", unknown, "PATCH">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(443,19): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "tasks", unknown, "POST">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "tasks", unknown, "POST">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(458,19): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "tasks", unknown, "PATCH">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "tasks", unknown, "PATCH">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(461,60): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "tasks", unknown, "DELETE">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "tasks", unknown, "DELETE">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(472,21): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "pg_configs", unknown, "PATCH">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "pg_configs", unknown, "PATCH">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(474,21): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "pg_configs", unknown, "POST">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "pg_configs", unknown, "POST">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(497,19): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "pg_branches", unknown, "PATCH">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "pg_branches", unknown, "PATCH">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(500,62): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "pg_branches", unknown, "DELETE">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "pg_branches", unknown, "DELETE">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(503,19): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "subscription_plans", unknown, "POST">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "subscription_plans", unknown, "POST">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(517,19): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "subscription_plans", unknown, "PATCH">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "subscription_plans", unknown, "PATCH">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(520,72): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "subscription_plans", unknown, "DELETE">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "subscription_plans", unknown, "DELETE">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/context/AppContext.tsx(523,19): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, null, "pg_branches", unknown, "PATCH">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, null, "pg_branches", unknown, "PATCH">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/lib/supabase.ts(3,33): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/lib/supabase.ts(4,37): error TS2339: Property 'env' does not exist on type 'ImportMeta'.

@@ -1,0 +1,71 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", sans-serif;
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --tooltip-bg: #ffffff;
+    --tooltip-text: #111111;
+    --chart-cursor: #F8FAFC;
+  }
+  .dark {
+    --tooltip-bg: #111111;
+    --tooltip-text: #ffffff;
+    --chart-cursor: rgba(255, 255, 255, 0.05);
+  }
+  body {
+    @apply font-sans antialiased text-gray-900 bg-[#F8F9FA] dark:text-gray-100 dark:bg-[#0a0a0a] transition-colors duration-300;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display;
+  }
+
+  select option {
+    @apply bg-white text-gray-900 dark:bg-[#1a1a1a] dark:text-white;
+  }
+}
+
+.glass {
+  @apply bg-white/5 backdrop-blur-xl border border-white/10;
+}
+
+.premium-shadow {
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+@layer utilities {
+  .text-glow {
+    text-shadow: 0 0 20px rgba(79, 70, 229, 0.4);
+  }
+  .glass-card {
+    @apply bg-white/10 backdrop-blur-2xl border border-white/20;
+  }
+  .inner-shadow-dark {
+    box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.6);
+  }
+}
+
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  
+  /* Hide typical navigational elements when printing */
+  nav, header, aside, .no-print {
+    display: none !important;
+  }
+  
+  /* Force dark backgrounds/borders to show if necessary */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}

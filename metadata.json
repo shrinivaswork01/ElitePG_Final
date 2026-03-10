@@ -1,0 +1,5 @@
+{
+  "name": "ElitePG - Premium PG Management System",
+  "description": "A comprehensive, role-based PG management system with tenant tracking, KYC verification, room management, and automated payments.",
+  "requestFramePermissions": []
+}
