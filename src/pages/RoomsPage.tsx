@@ -82,7 +82,7 @@ export const RoomsPage = () => {
         <button
           onClick={() => {
             if (isAtLimit) {
-              alert(`Limit reached! Your current plan (${currentPlan?.name}) allows only ${currentPlan?.maxRooms} rooms. Please upgrade your plan.`);
+              toast.error(`Limit reached! Your current plan (${currentPlan?.name}) allows only ${currentPlan?.maxRooms} rooms. Please upgrade your plan.`);
               return;
             }
             setIsAddModalOpen(true);

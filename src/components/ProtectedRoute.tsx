@@ -14,6 +14,8 @@ export const ProtectedRoute = ({ children, allowedRoles }: ProtectedRouteProps) 
   const { checkFeatureAccess } = useApp();
   const location = useLocation();
 
+  // Show spinner while auth state is being initialized (prevents flash of Access Denied
+  // when restoring a valid session from localStorage which may have stale isAuthorized)
   if (isInitializing) {
     return <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a]"><div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div>;
   }
@@ -22,8 +24,10 @@ export const ProtectedRoute = ({ children, allowedRoles }: ProtectedRouteProps) 
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  const isKycRequired = checkFeatureAccess('kyc');
-  if (user && isKycRequired && !user.isAuthorized && location.pathname !== '/unauthorized') {
+  // Only check authorization after initialization is fully complete.
+  // admin/super roles are always considered authorized regardless of DB flag.
+  const isAdminOrSuper = user?.role === 'admin' || user?.role === 'super';
+  if (user && !user.isAuthorized && !isAdminOrSuper && location.pathname !== '/unauthorized') {
     return <Navigate to="/unauthorized" replace />;
   }
 

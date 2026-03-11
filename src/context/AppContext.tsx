@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, ReactNode, useMemo, use
 import { Tenant, Room, Payment, Complaint, Employee, KYCData, Announcement, SalaryPayment, Task, PGConfig, PGBranch, RolePermissions, SubscriptionPlan, AppFeature, KYCStatus } from '../types';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
+import toast from 'react-hot-toast';
 
 interface AppContextType {
   tenants: Tenant[];
@@ -177,23 +178,26 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     fetchData();
 
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
     // Subscribe to realtime database changes so any actions by other admins cleanly sync UI cross-tabs
     const subscription = supabase
       .channel('public-schema-changes')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public' },
-        (payload) => {
-          console.log('Realtime update received!', payload);
-          // Decouple background updates so they don't block the render pipeline heavily
-          setTimeout(() => {
+        () => {
+          // Debounce: cancel any pending fetch triggered by a previous event
+          if (debounceTimer) clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => {
             fetchData();
-          }, 300);
+          }, 800);
         }
       )
       .subscribe();
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       supabase.removeChannel(subscription);
     };
   }, [fetchData]);
@@ -246,13 +250,25 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return plan?.features.includes(feature) || false;
   };
 
-  // Generic helper for re-fetching
-  const refetch = async (op: PromiseLike<any>) => {
-    const { error } = await op;
-    if (error) { console.error('Supabase Error:', error); alert(error.message); return false; }
+  // Optimistic state updater - applies changes to local state immediately,
+  // then schedules a background re-sync after 2s to reconcile with server.
+  const applyOptimistic = (updateFn: (prev: any) => any) => {
+    setData(prev => updateFn(prev));
+    // Background re-sync after a delay to ensure consistency
+    setTimeout(() => fetchData(), 2000);
+  };
 
-    // Decouple the async fetch from blocking the UI thread so modals disappear instantly
-    fetchData();
+  // Generic helper for non-optimistic operations (complex operations)
+  const refetch = async (op: PromiseLike<any>, successMsg?: string) => {
+    const { error } = await op;
+    if (error) {
+      console.error('Supabase Error:', error);
+      toast.error(error.message);
+      return false;
+    }
+    if (successMsg) toast.success(successMsg);
+    // Short delay then background re-sync
+    setTimeout(() => fetchData(), 500);
     return true;
   };
 
@@ -269,13 +285,20 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     };
 
     const { data: createdTenant, error } = await supabase.from('tenants').insert(dbPayload).select().single();
-    if (error) { alert(error.message); return; }
+    if (error) { toast.error(error.message); return; }
+
+    // Optimistically add new tenant to local state immediately
+    const newTenant: Tenant = {
+      ...tenant, id: createdTenant.id, branchId, kycStatus, userId: tenant.userId || undefined
+    };
+    applyOptimistic(prev => ({ ...prev, tenants: [...prev.tenants, newTenant] }));
+
     if (createdTenant && kycDoc) {
       await supabase.from('kyc_documents').insert({
         tenant_id: createdTenant.id, document_type: kycDoc.type, document_url: kycDoc.url, status: 'pending', branch_id: branchId
       });
     }
-    await fetchData();
+    toast.success('Tenant added successfully');
   };
 
   const updateTenant = async (id: string, updates: Partial<Tenant>, kycDoc?: { type: string, url: string }, rentAgreementDoc?: { url: string }) => {
@@ -295,7 +318,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (rentAgreementDoc) dbUpdates.rent_agreement_url = rentAgreementDoc.url;
     if (kycDoc) dbUpdates.kyc_status = 'pending';
 
-    await refetch(supabase.from('tenants').update(dbUpdates).eq('id', id));
+    await refetch(supabase.from('tenants').update(dbUpdates).eq('id', id), 'Tenant updated successfully');
     if (kycDoc) {
       const tenant = data.tenants.find((t: any) => t.id === id);
       await refetch(supabase.from('kyc_documents').insert({
@@ -304,14 +327,30 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const deleteTenant = async (id: string) => { await refetch(supabase.from('tenants').delete().eq('id', id)); };
+  const deleteTenant = async (id: string) => {
+    // Optimistically remove from local state immediately for instant UI feedback
+    applyOptimistic(prev => ({
+      ...prev,
+      tenants: prev.tenants.filter((t: any) => t.id !== id),
+      payments: prev.payments.filter((p: any) => p.tenantId !== id),
+      complaints: prev.complaints.filter((c: any) => c.tenantId !== id),
+      kycs: prev.kycs.filter((k: any) => k.tenantId !== id)
+    }));
+    toast.success('Tenant deleted successfully');
+    // Cascade-delete related records in background
+    await supabase.from('payments').delete().eq('tenant_id', id);
+    await supabase.from('complaints').delete().eq('tenant_id', id);
+    await supabase.from('kyc_documents').delete().eq('tenant_id', id);
+    const { error } = await supabase.from('tenants').delete().eq('id', id);
+    if (error) { toast.error(`Delete failed: ${error.message}`); fetchData(); }
+  };
 
   const addRoom = async (room: Omit<Room, 'id' | 'branchId'>) => {
     if (!user?.branchId) return;
     await refetch(supabase.from('rooms').insert({
       room_number: room.roomNumber, floor: room.floor, total_beds: room.totalBeds, occupied_beds: room.occupiedBeds,
       type: room.type, price: room.price, branch_id: user.branchId
-    }));
+    }), 'Room added successfully');
   };
 
   const updateRoom = async (id: string, updates: Partial<Room>) => {
@@ -322,10 +361,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.occupiedBeds !== undefined) dbUpdates.occupied_beds = updates.occupiedBeds;
     if (updates.type !== undefined) dbUpdates.type = updates.type;
     if (updates.price !== undefined) dbUpdates.price = updates.price;
-    await refetch(supabase.from('rooms').update(dbUpdates).eq('id', id));
+    await refetch(supabase.from('rooms').update(dbUpdates).eq('id', id), 'Room updated successfully');
   };
 
-  const deleteRoom = async (id: string) => { await refetch(supabase.from('rooms').delete().eq('id', id)); };
+  const deleteRoom = async (id: string) => { await refetch(supabase.from('rooms').delete().eq('id', id), 'Room deleted'); };
 
   const addPayment = async (payment: Omit<Payment, 'id' | 'branchId'>) => {
     if (!user?.branchId) return;
@@ -333,7 +372,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       tenant_id: payment.tenantId, amount: payment.amount, late_fee: payment.lateFee, total_amount: payment.totalAmount,
       payment_date: payment.paymentDate, month: payment.month, status: payment.status, method: payment.method,
       transaction_id: payment.transactionId || null, receipt_url: payment.receiptUrl || null, branch_id: user.branchId
-    }));
+    }), 'Payment recorded');
   };
 
   const updatePayment = async (id: string, updates: Partial<Payment>) => {
@@ -348,17 +387,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.method !== undefined) dbUpdates.method = updates.method;
     if (updates.transactionId !== undefined) dbUpdates.transaction_id = updates.transactionId;
     if (updates.receiptUrl !== undefined) dbUpdates.receipt_url = updates.receiptUrl;
-    await refetch(supabase.from('payments').update(dbUpdates).eq('id', id));
+    await refetch(supabase.from('payments').update(dbUpdates).eq('id', id), 'Payment updated');
   };
 
-  const deletePayment = async (id: string) => { await refetch(supabase.from('payments').delete().eq('id', id)); };
+  const deletePayment = async (id: string) => { await refetch(supabase.from('payments').delete().eq('id', id), 'Payment deleted'); };
 
   const addComplaint = async (complaint: Omit<Complaint, 'id' | 'branchId'>) => {
     if (!user?.branchId) return;
     await refetch(supabase.from('complaints').insert({
       tenant_id: complaint.tenantId, title: complaint.title, description: complaint.description, category: complaint.category,
       priority: complaint.priority, status: complaint.status, assigned_to: complaint.assignedTo || null, branch_id: user.branchId
-    }));
+    }), 'Complaint registered');
   };
 
   const updateComplaint = async (id: string, updates: Partial<Complaint>) => {
@@ -371,10 +410,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.status !== undefined) dbUpdates.status = updates.status;
     if (updates.assignedTo !== undefined) dbUpdates.assigned_to = updates.assignedTo;
     if (updates.resolvedAt !== undefined) dbUpdates.resolved_at = updates.resolvedAt;
-    await refetch(supabase.from('complaints').update(dbUpdates).eq('id', id));
+    await refetch(supabase.from('complaints').update(dbUpdates).eq('id', id), 'Complaint updated');
   };
 
-  const deleteComplaint = async (id: string) => { await refetch(supabase.from('complaints').delete().eq('id', id)); };
+  const deleteComplaint = async (id: string) => { await refetch(supabase.from('complaints').delete().eq('id', id), 'Complaint deleted'); };
 
   const addEmployee = async (employee: Omit<Employee, 'id' | 'kycStatus' | 'branchId'>, kycDoc?: { type: string, url: string }) => {
     if (!user?.branchId) return;
@@ -383,12 +422,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       user_id: employee.userId || null, name: employee.name, role: employee.role, email: employee.email, phone: employee.phone,
       salary: employee.salary, joining_date: employee.joiningDate, kyc_status: kycStatus, branch_id: user.branchId
     }).select().single();
-    if (error) { alert(error.message); return; }
+    if (error) { toast.error(error.message); return; }
     if (createdEm && kycDoc) {
       await supabase.from('kyc_documents').insert({
         employee_id: createdEm.id, document_type: kycDoc.type, document_url: kycDoc.url, status: 'pending', branch_id: user.branchId
       });
     }
+    toast.success('Employee added successfully');
     await fetchData();
   };
 
@@ -404,7 +444,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.userId !== undefined) dbUpdates.user_id = updates.userId;
     if (kycDoc) dbUpdates.kyc_status = 'pending';
 
-    await refetch(supabase.from('employees').update(dbUpdates).eq('id', id));
+    await refetch(supabase.from('employees').update(dbUpdates).eq('id', id), 'Employee updated successfully');
     if (kycDoc) {
       const e = data.employees.find((e: any) => e.id === id);
       await refetch(supabase.from('kyc_documents').insert({
@@ -413,7 +453,23 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const deleteEmployee = async (id: string) => { await refetch(supabase.from('employees').delete().eq('id', id)); };
+  const deleteEmployee = async (id: string) => {
+    // Optimistically remove from local state immediately
+    applyOptimistic(prev => ({
+      ...prev,
+      employees: prev.employees.filter((e: any) => e.id !== id),
+      kycs: prev.kycs.filter((k: any) => k.employeeId !== id),
+      salaryPayments: prev.salaryPayments.filter((s: any) => s.employeeId !== id),
+      tasks: prev.tasks.filter((t: any) => t.employeeId !== id)
+    }));
+    toast.success('Employee deleted successfully');
+    // Cascade-delete related records in background
+    await supabase.from('kyc_documents').delete().eq('employee_id', id);
+    await supabase.from('salary_payments').delete().eq('employee_id', id);
+    await supabase.from('tasks').delete().eq('employee_id', id);
+    const { error } = await supabase.from('employees').delete().eq('id', id);
+    if (error) { toast.error(`Delete failed: ${error.message}`); fetchData(); }
+  };
 
   const updateKYC = async (id: string, updates: Partial<KYCData>) => {
     const dbUpdates: any = {};
@@ -425,7 +481,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.rejectionReason !== undefined) dbUpdates.rejection_reason = updates.rejectionReason;
 
     const kyc = data.kycs.find((k: any) => k.id === id);
-    await refetch(supabase.from('kyc_documents').update(dbUpdates).eq('id', id));
+    await refetch(supabase.from('kyc_documents').update(dbUpdates).eq('id', id), `KYC ${updates.status || 'updated'}`);
 
     // Also sync the tenant or employee status
     if (kyc && updates.status) {
@@ -440,17 +496,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await refetch(supabase.from('announcements').insert({
       title: announcement.title, content: announcement.content, target: announcement.target,
       created_by: announcement.createdBy, branch_id: user.branchId
-    }));
+    }), 'Announcement published');
   };
 
-  const deleteAnnouncement = async (id: string) => { await refetch(supabase.from('announcements').delete().eq('id', id)); };
+  const deleteAnnouncement = async (id: string) => { await refetch(supabase.from('announcements').delete().eq('id', id), 'Announcement deleted'); };
 
   const addSalaryPayment = async (payment: Omit<SalaryPayment, 'id' | 'branchId'>) => {
     if (!user?.branchId) return;
     await refetch(supabase.from('salary_payments').insert({
       employee_id: payment.employeeId, amount: payment.amount, month: payment.month, payment_date: payment.paymentDate,
       status: payment.status, method: payment.method, transaction_id: payment.transactionId || null, branch_id: user.branchId
-    }));
+    }), 'Salary payment recorded');
   };
 
   const updateSalaryPayment = async (id: string, updates: Partial<SalaryPayment>) => {
@@ -461,7 +517,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.status !== undefined) dbUpdates.status = updates.status;
     if (updates.method !== undefined) dbUpdates.method = updates.method;
     if (updates.transactionId !== undefined) dbUpdates.transaction_id = updates.transactionId;
-    await refetch(supabase.from('salary_payments').update(dbUpdates).eq('id', id));
+    await refetch(supabase.from('salary_payments').update(dbUpdates).eq('id', id), 'Salary payment updated');
   };
 
   const addTask = async (task: Omit<Task, 'id' | 'branchId'>) => {
@@ -469,7 +525,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await refetch(supabase.from('tasks').insert({
       employee_id: task.employeeId, title: task.title, description: task.description, status: task.status,
       priority: task.priority, due_date: task.dueDate, completed_at: task.completedAt || null, branch_id: user.branchId
-    }));
+    }), 'Task assigned');
   };
 
   const updateTask = async (id: string, updates: Partial<Task>) => {
@@ -481,10 +537,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.priority !== undefined) dbUpdates.priority = updates.priority;
     if (updates.dueDate !== undefined) dbUpdates.due_date = updates.dueDate;
     if (updates.completedAt !== undefined) dbUpdates.completed_at = updates.completedAt;
-    await refetch(supabase.from('tasks').update(dbUpdates).eq('id', id));
+    await refetch(supabase.from('tasks').update(dbUpdates).eq('id', id), 'Task updated');
   };
 
-  const deleteTask = async (id: string) => { await refetch(supabase.from('tasks').delete().eq('id', id)); };
+  const deleteTask = async (id: string) => { await refetch(supabase.from('tasks').delete().eq('id', id), 'Task deleted'); };
 
   const updatePGConfig = async (updates: Partial<PGConfig>) => {
     if (!user?.branchId) return;
@@ -495,9 +551,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     // Check if PG Config already exists
     const existing = data.pgConfigs.find((c: any) => c.branchId === user.branchId);
     if (existing) {
-      await refetch(supabase.from('pg_configs').update(dbUpdates).eq('branch_id', user.branchId));
+      await refetch(supabase.from('pg_configs').update(dbUpdates).eq('branch_id', user.branchId), 'Settings updated');
     } else {
-      await refetch(supabase.from('pg_configs').insert({ ...dbUpdates, branch_id: user.branchId }));
+      await refetch(supabase.from('pg_configs').insert({ ...dbUpdates, branch_id: user.branchId }), 'Settings initialized');
     }
   };
 
@@ -506,10 +562,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       name: branch.name, branch_name: branch.branchName, address: branch.address, phone: branch.phone,
       plan_id: null, subscription_status: 'trial', subscription_end_date: null
     }).select().single();
-    if (error) { alert(error.message); return; }
+    if (error) { toast.error(error.message); return; }
     if (bData) {
       // Create initial config
       await supabase.from('pg_configs').insert({ branch_id: bData.id, rules: [], role_permissions: [] });
+      toast.success('Branch added successfully');
       await fetchData();
     }
   };
@@ -520,16 +577,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.branchName !== undefined) dbUpdates.branch_name = updates.branchName;
     if (updates.address !== undefined) dbUpdates.address = updates.address;
     if (updates.phone !== undefined) dbUpdates.phone = updates.phone;
-    await refetch(supabase.from('pg_branches').update(dbUpdates).eq('id', id));
+    await refetch(supabase.from('pg_branches').update(dbUpdates).eq('id', id), 'Branch updated');
   };
 
-  const deleteBranch = async (id: string) => { await refetch(supabase.from('pg_branches').delete().eq('id', id)); };
+  const deleteBranch = async (id: string) => { await refetch(supabase.from('pg_branches').delete().eq('id', id), 'Branch removed'); };
 
   const addSubscriptionPlan = async (plan: Omit<SubscriptionPlan, 'id'>) => {
     await refetch(supabase.from('subscription_plans').insert({
       name: plan.name, price: plan.price, features: plan.features, max_tenants: plan.maxTenants,
       max_rooms: plan.maxRooms, billing_cycle: plan.billingCycle
-    }));
+    }), 'Plan created');
   };
 
   const updateSubscriptionPlan = async (id: string, updates: Partial<SubscriptionPlan>) => {
@@ -540,15 +597,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.maxTenants !== undefined) dbUpdates.max_tenants = updates.maxTenants;
     if (updates.maxRooms !== undefined) dbUpdates.max_rooms = updates.maxRooms;
     if (updates.billingCycle !== undefined) dbUpdates.billing_cycle = updates.billingCycle;
-    await refetch(supabase.from('subscription_plans').update(dbUpdates).eq('id', id));
+    await refetch(supabase.from('subscription_plans').update(dbUpdates).eq('id', id), 'Plan updated');
   };
 
-  const deleteSubscriptionPlan = async (id: string) => { await refetch(supabase.from('subscription_plans').delete().eq('id', id)); };
+  const deleteSubscriptionPlan = async (id: string) => { await refetch(supabase.from('subscription_plans').delete().eq('id', id), 'Plan deleted'); };
 
   const updateBranchSubscription = async (branchId: string, planId: string, status: 'active' | 'expired' | 'trial', endDate: string) => {
     await refetch(supabase.from('pg_branches').update({
       plan_id: planId, subscription_status: status, subscription_end_date: endDate
-    }).eq('id', branchId));
+    }).eq('id', branchId), 'Subscription updated');
   };
 
   const getStats = () => {

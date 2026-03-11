@@ -59,7 +59,10 @@ export const EmployeesPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [employeeForLogin, setEmployeeForLogin] = useState<Employee | null>(null);
   const [createUsername, setCreateUsername] = useState('');
-  const [loginPassword, setLoginPassword] = useState('123456');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [kycToReject, setKycToReject] = useState<string | null>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [employeeToDelete, setEmployeeToDelete] = useState<Employee | null>(null);
 
   // Task Modal State
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
@@ -132,7 +135,7 @@ export const EmployeesPage = () => {
       );
 
       if (duplicateRole) {
-        alert(`An employee with the role "${formData.role}" already exists in this branch. Each specialized role can only be assigned once.`);
+        toast.error(`An employee with the role "${formData.role}" already exists in this branch. Each specialized role can only be assigned once.`);
         return;
       }
     }
@@ -161,7 +164,7 @@ export const EmployeesPage = () => {
       return;
     }
 
-    const newUser = await register({
+    const result = await register({
       username: finalUsername,
       name: employeeForLogin.name,
       email: employeeForLogin.email,
@@ -170,12 +173,12 @@ export const EmployeesPage = () => {
       branchId: employeeForLogin.branchId
     }, loginPassword);
 
-    if (newUser) {
-      updateEmployee(employeeForLogin.id, { userId: newUser.id });
+    if (result.success && result.user) {
+      updateEmployee(employeeForLogin.id, { userId: result.user.id });
       toast.success('Login created successfully. The employee must be authorized by an admin before logging in.');
       setEmployeeForLogin(null);
       setCreateUsername('');
-      setLoginPassword('123456');
+      setLoginPassword('');
     }
   };
 
@@ -314,7 +317,7 @@ export const EmployeesPage = () => {
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => deleteEmployee(employee.id)}
+                        onClick={() => setEmployeeToDelete(employee)}
                         className="p-2 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg text-red-400 hover:text-red-600 dark:hover:text-red-300 transition-colors"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -536,7 +539,7 @@ export const EmployeesPage = () => {
                             const file = e.target.files?.[0];
                             if (file) {
                               if (file.size > 1.5 * 1024 * 1024) {
-                                alert('File size too large! Please upload a file smaller than 1.5MB.');
+                                toast.error('File size too large! Please upload a file smaller than 1.5MB.');
                                 return;
                               }
                               const reader = new FileReader();
@@ -749,8 +752,8 @@ export const EmployeesPage = () => {
                                   </button>
                                   <button
                                     onClick={() => {
-                                      const reason = window.prompt('Reason for rejection:');
-                                      if (reason) handleKYCAction(kyc.id, 'reject', reason);
+                                      setKycToReject(kyc.id);
+                                      setRejectionReason('');
                                     }}
                                     className="px-4 py-2 bg-rose-600 text-white text-xs font-bold rounded-xl hover:bg-rose-700 transition-all"
                                   >
@@ -769,6 +772,54 @@ export const EmployeesPage = () => {
                       <p className="text-gray-500 dark:text-gray-400">No KYC documents uploaded yet.</p>
                     </div>
                   )}
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {employeeToDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => setEmployeeToDelete(null)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative bg-white dark:bg-[#111111] rounded-3xl shadow-2xl w-full max-w-md p-8 border border-gray-100 dark:border-white/10"
+            >
+              <div className="flex flex-col items-center text-center gap-4">
+                <div className="w-16 h-16 rounded-2xl bg-red-50 dark:bg-red-500/10 flex items-center justify-center">
+                  <Trash2 className="w-8 h-8 text-red-500" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">Delete Employee?</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                    Are you sure you want to delete <span className="font-bold text-gray-900 dark:text-white">{employeeToDelete.name}</span>?<br />
+                    This will permanently remove their tasks, salary records, and KYC documents.
+                  </p>
+                </div>
+                <div className="flex gap-3 w-full mt-2">
+                  <button
+                    onClick={() => setEmployeeToDelete(null)}
+                    className="flex-1 py-3 rounded-2xl bg-gray-100 dark:bg-white/5 text-gray-700 dark:text-gray-300 font-semibold hover:bg-gray-200 dark:hover:bg-white/10 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => { deleteEmployee(employeeToDelete.id); setEmployeeToDelete(null); }}
+                    className="flex-1 py-3 rounded-2xl bg-red-600 text-white font-semibold hover:bg-red-700 transition-colors"
+                  >
+                    Yes, Delete
+                  </button>
                 </div>
               </div>
             </motion.div>
@@ -988,6 +1039,58 @@ export const EmployeesPage = () => {
                     className="px-6 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
                   >
                     Create Login
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {kycToReject && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setKycToReject(null)}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-md bg-white dark:bg-[#111111] rounded-3xl shadow-2xl overflow-hidden border border-white/5 p-6 sm:p-8"
+            >
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Reject KYC Document</h3>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Reason for Rejection</label>
+                  <textarea
+                    required
+                    value={rejectionReason}
+                    onChange={(e) => setRejectionReason(e.target.value)}
+                    placeholder="E.g. Document is blurry, incorrect document type, etc."
+                    className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border-none rounded-2xl focus:ring-2 focus:ring-rose-500/20 text-gray-900 dark:text-white resize-none"
+                    rows={4}
+                  />
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setKycToReject(null)}
+                    className="flex-1 px-4 py-3 bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-gray-400 font-bold rounded-2xl hover:bg-gray-100 dark:hover:bg-white/10 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    disabled={!rejectionReason.trim()}
+                    onClick={() => {
+                      handleKYCAction(kycToReject, 'reject', rejectionReason);
+                      setKycToReject(null);
+                    }}
+                    className="flex-1 px-4 py-3 bg-rose-600 text-white font-bold rounded-2xl shadow-lg shadow-rose-600/20 hover:bg-rose-700 transition-all disabled:opacity-50"
+                  >
+                    Confirm Rejection
                   </button>
                 </div>
               </div>

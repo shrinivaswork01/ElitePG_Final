@@ -46,6 +46,8 @@ export interface User {
   isAuthorized: boolean;
   password?: string;
   branchId?: string; // Optional for super admin, required for others
+  provider?: 'local' | 'google';
+  google_id?: string;
 }
 
 export type KYCStatus = 'unsubmitted' | 'pending' | 'verified' | 'rejected';

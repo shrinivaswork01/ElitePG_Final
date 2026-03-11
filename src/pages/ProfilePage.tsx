@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { cn } from '../utils';
 import { AnimatePresence } from 'motion/react';
+import toast from 'react-hot-toast';
 
 export const ProfilePage = () => {
   const { user, updateProfile, logout } = useAuth();
@@ -20,7 +21,6 @@ export const ProfilePage = () => {
     password: user?.password || '',
   });
   const [isSaving, setIsSaving] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
   const isTenant = user?.role === 'tenant';
   const tenantData = isTenant ? tenants.find(t => t.userId === user.id) : null;
@@ -69,16 +69,13 @@ export const ProfilePage = () => {
       } else {
         updateEmployee(currentData.id, {}, { type: kycType, url: kycFile.url });
       }
-      setMessage({ type: 'success', text: 'KYC document submitted for verification!' });
+      toast.success('KYC document submitted for verification!');
       setKycFile(null);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSaving(true);
-    setMessage(null);
-
     try {
       await updateProfile(formData);
       if (isTenant && currentData) {
@@ -86,17 +83,17 @@ export const ProfilePage = () => {
       } else if (isEmployee && currentData) {
         await updateEmployee(currentData.id, { name: formData.name, email: formData.email, phone: formData.phone });
       }
-      setMessage({ type: 'success', text: 'Profile updated successfully!' });
+      toast.success('Profile updated successfully!');
     } catch (error) {
-      setMessage({ type: 'error', text: 'Failed to update profile.' });
+      toast.error('Failed to update profile.');
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login', { replace: true });
   };
 
   return (
@@ -137,14 +134,6 @@ export const ProfilePage = () => {
         </div>
 
         <form onSubmit={handleSubmit} className="p-8 space-y-6">
-          {message && (
-            <div className={`p-4 rounded-2xl text-sm font-medium ${message.type === 'success'
-              ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-              : 'bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400'
-              }`}>
-              {message.text}
-            </div>
-          )}
 
           <div className="grid grid-cols-1 gap-6">
             <div className="space-y-2">

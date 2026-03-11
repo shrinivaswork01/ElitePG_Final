@@ -1,7 +1,7 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../utils';
 import { Link } from 'react-router-dom';
 import {
@@ -83,7 +83,7 @@ export const Dashboard = () => {
   const isTenant = user?.role === 'tenant';
   const isEmployee = ['manager', 'caretaker', 'cleaner', 'security'].includes(user?.role || '');
 
-  const tenantData = isTenant ? tenants.find(t => t.userId === user.id) : null;
+  const tenantData = isTenant && user ? tenants.find(t => t.userId === user.id) : null;
   const employeeData = isEmployee ? employees.find(e => e.userId === user?.id) : null;
 
   const tenantRoom = tenantData ? rooms.find(r => r.id === tenantData.roomId) : null;
@@ -156,12 +156,22 @@ export const Dashboard = () => {
     document.body.removeChild(link);
   };
 
+  const [vacateConfirmModal, setVacateConfirmModal] = React.useState<{ isOpen: boolean, tenantId: string, isVacating: boolean } | null>(null);
+
   const handleVacateRequest = () => {
     if (tenantData) {
-      const isVacating = tenantData.status === 'vacating';
-      if (window.confirm(isVacating ? "Do you want to cancel your vacate request?" : "Are you sure you want to request to vacate? This will notify the manager.")) {
-        updateTenant(tenantData.id, { status: isVacating ? 'active' : 'vacating' });
-      }
+      setVacateConfirmModal({
+        isOpen: true,
+        tenantId: tenantData.id,
+        isVacating: tenantData.status === 'vacating'
+      });
+    }
+  };
+
+  const confirmVacateAction = () => {
+    if (vacateConfirmModal) {
+      updateTenant(vacateConfirmModal.tenantId, { status: vacateConfirmModal.isVacating ? 'active' : 'vacating' });
+      setVacateConfirmModal(null);
     }
   };
 
@@ -590,6 +600,51 @@ export const Dashboard = () => {
           )}
         </div>
       )}
+      <AnimatePresence>
+        {vacateConfirmModal?.isOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setVacateConfirmModal(null)}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-sm bg-white dark:bg-[#111111] rounded-3xl shadow-2xl overflow-hidden border border-white/5 p-6 text-center"
+            >
+              <div className="w-16 h-16 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <LogOut className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+                {vacateConfirmModal.isVacating ? 'Cancel Vacate Request?' : 'Request to Vacate?'}
+              </h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+                {vacateConfirmModal.isVacating
+                  ? "Are you sure you want to cancel your request to vacate? Your status will return to active."
+                  : "Are you sure you want to request to vacate? This will notify the manager and start the notice period."}
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setVacateConfirmModal(null)}
+                  className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-gray-400 font-bold rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmVacateAction}
+                  className="flex-1 px-4 py-2.5 bg-rose-600 text-white font-bold rounded-xl shadow-lg shadow-rose-600/20 hover:bg-rose-700 transition-all"
+                >
+                  Confirm
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

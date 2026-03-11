@@ -56,7 +56,8 @@ export const TenantsPage = () => {
   const [viewingAgreement, setViewingAgreement] = useState<Tenant | null>(null);
   const [tenantForLogin, setTenantForLogin] = useState<Tenant | null>(null);
   const [createUsername, setCreateUsername] = useState('');
-  const [loginPassword, setLoginPassword] = useState('123456');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [tenantToDelete, setTenantToDelete] = useState<Tenant | null>(null);
   const { payments } = useApp();
 
   const filteredTenants = tenants.filter(t => {
@@ -153,7 +154,7 @@ export const TenantsPage = () => {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 1.5 * 1024 * 1024) {
-        alert('File size too large! Please upload a file smaller than 1.5MB.');
+        toast.error('File size too large! Please upload a file smaller than 1.5MB.');
         return;
       }
       const reader = new FileReader();
@@ -172,7 +173,7 @@ export const TenantsPage = () => {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 1.5 * 1024 * 1024) {
-        alert('File size too large! Please upload a file smaller than 1.5MB.');
+        toast.error('File size too large! Please upload a file smaller than 1.5MB.');
         return;
       }
       const reader = new FileReader();
@@ -198,28 +199,34 @@ export const TenantsPage = () => {
       return;
     }
 
-    const newUser = await register({
+    const result = await register({
       username: finalUsername,
       name: tenantForLogin.name,
       email: tenantForLogin.email,
       role: 'tenant',
       phone: tenantForLogin.phone,
       branchId: tenantForLogin.branchId
-    }, loginPassword);
+    }, loginPassword || undefined);
 
-    if (newUser) {
-      updateTenant(tenantForLogin.id, { userId: newUser.id });
-      toast.success('Login created successfully. The tenant must be authorized by an admin before logging in.');
+    if (result.success && result.user) {
+      await updateTenant(tenantForLogin.id, { userId: result.user.id });
+      if (!loginPassword) {
+        toast.success('Login account created. Tenant will be prompted to set their password on first login.');
+      } else {
+        toast.success('Login created successfully. The tenant must be authorized by an admin before logging in.');
+      }
       setTenantForLogin(null);
       setCreateUsername('');
-      setLoginPassword('123456');
+      setLoginPassword('');
+    } else {
+      toast.error(result.message || 'Failed to create login.');
     }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.roomId) {
-      alert('Please select a room for the tenant.');
+      toast.error('Please select a room for the tenant.');
       return;
     }
 
@@ -264,7 +271,7 @@ export const TenantsPage = () => {
         <button
           onClick={() => {
             if (isAtLimit) {
-              alert(`Limit reached! Your current plan (${currentPlan?.name}) allows only ${currentPlan?.maxTenants} tenants. Please upgrade your plan.`);
+              toast.error(`Limit reached! Your current plan (${currentPlan?.name}) allows only ${currentPlan?.maxTenants} tenants. Please upgrade your plan.`);
               return;
             }
             setIsAddModalOpen(true);
@@ -352,12 +359,12 @@ export const TenantsPage = () => {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-100 dark:border-white/5">
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tenant</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Room</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">KYC Status</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Rent</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
+                <th className="px-4 sm:px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tenant</th>
+                <th className="hidden sm:table-cell px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Room</th>
+                <th className="hidden md:table-cell px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">KYC Status</th>
+                <th className="px-4 sm:px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Rent</th>
+                <th className="hidden sm:table-cell px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                <th className="px-4 sm:px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 dark:divide-white/5">
@@ -365,9 +372,9 @@ export const TenantsPage = () => {
                 const room = rooms.find(r => r.id === tenant.roomId);
                 return (
                   <tr key={tenant.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors group">
-                    <td className="px-6 py-4">
+                    <td className="px-4 sm:px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
+                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-sm">
                           {tenant.name?.charAt(0) || '?'}
                         </div>
                         <div>
@@ -376,13 +383,13 @@ export const TenantsPage = () => {
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="hidden sm:table-cell px-6 py-4">
                       <div className="flex flex-col">
                         <span className="text-sm font-medium text-gray-900 dark:text-white">Room {room?.roomNumber || 'N/A'}</span>
                         <span className="text-xs text-gray-500 dark:text-gray-400">Bed {tenant.bedNumber}</span>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="hidden md:table-cell px-6 py-4">
                       {checkFeatureAccess('kyc') ? (
                         <span className={cn(
                           "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold",
@@ -400,11 +407,11 @@ export const TenantsPage = () => {
                         </span>
                       )}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 sm:px-6 py-4">
                       <p className="text-sm font-bold text-gray-900 dark:text-white">₹{tenant.rentAmount.toLocaleString()}</p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">Due: {tenant.paymentDueDate}th</p>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="hidden sm:table-cell px-6 py-4">
                       <span className={cn(
                         "px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider",
                         tenant.status === 'active' ? "bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400" :
@@ -414,8 +421,8 @@ export const TenantsPage = () => {
                         {tenant.status}
                       </span>
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                    <td className="px-4 sm:px-6 py-4">
+                      <div className="flex flex-wrap items-center gap-1.5 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={() => setViewingPayments(tenant)}
                           title="Payment History"
@@ -458,7 +465,7 @@ export const TenantsPage = () => {
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => deleteTenant(tenant.id)}
+                          onClick={() => setTenantToDelete(tenant)}
                           title="Delete Tenant"
                           className="p-2 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg text-red-500 transition-colors"
                         >
@@ -476,6 +483,54 @@ export const TenantsPage = () => {
           )}
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {tenantToDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => setTenantToDelete(null)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative bg-white dark:bg-[#111111] rounded-3xl shadow-2xl w-full max-w-md p-8 border border-gray-100 dark:border-white/10"
+            >
+              <div className="flex flex-col items-center text-center gap-4">
+                <div className="w-16 h-16 rounded-2xl bg-red-50 dark:bg-red-500/10 flex items-center justify-center">
+                  <Trash2 className="w-8 h-8 text-red-500" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">Delete Tenant?</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                    Are you sure you want to delete <span className="font-bold text-gray-900 dark:text-white">{tenantToDelete.name}</span>?<br />
+                    This will permanently remove their payments, complaints, and KYC documents.
+                  </p>
+                </div>
+                <div className="flex gap-3 w-full mt-2">
+                  <button
+                    onClick={() => setTenantToDelete(null)}
+                    className="flex-1 py-3 rounded-2xl bg-gray-100 dark:bg-white/5 text-gray-700 dark:text-gray-300 font-semibold hover:bg-gray-200 dark:hover:bg-white/10 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => { deleteTenant(tenantToDelete.id); setTenantToDelete(null); }}
+                    className="flex-1 py-3 rounded-2xl bg-red-600 text-white font-semibold hover:bg-red-700 transition-colors"
+                  >
+                    Yes, Delete
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Add Tenant Modal */}
       <AnimatePresence>
@@ -788,14 +843,15 @@ export const TenantsPage = () => {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Set Password</label>
+                  <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Set Password (Optional)</label>
                   <input
                     type="password"
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
                     className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                    placeholder="Enter password"
+                    placeholder="Leave blank for tenant to set"
                   />
+                  <p className="text-[10px] text-gray-500">If left blank, the tenant must set their password during their first login.</p>
                 </div>
                 <div className="flex justify-end gap-3 pt-4">
                   <button

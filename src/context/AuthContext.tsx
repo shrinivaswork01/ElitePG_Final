@@ -6,9 +6,11 @@ import toast from 'react-hot-toast';
 interface AuthContextType {
   user: User | null;
   users: User[];
-  login: (username: string, password: string) => Promise<{ success: boolean, message?: string }>;
-  register: (userData: Omit<User, 'id' | 'isAuthorized'>, password?: string) => Promise<User | null>;
-  logout: () => void;
+  login: (username: string, password: string) => Promise<{ success: boolean, message?: string, needsPasswordSetup?: boolean }>;
+  loginWithGoogle: (intent: 'login' | 'signup') => Promise<void>;
+  setGoogleUserPassword: (email: string, password: string) => Promise<{ success: boolean, message?: string }>;
+  register: (userData: Omit<User, 'id' | 'isAuthorized'>, password?: string) => Promise<{ success: boolean, message?: string, existingUser?: boolean, user?: User | null }>;
+  logout: () => Promise<void>;
   updateProfile: (updates: Partial<User>) => Promise<void>;
   updateUser: (userId: string, updates: Partial<User>) => Promise<void>;
   markAnnouncementAsRead: (announcementId: string) => Promise<void>;
@@ -16,6 +18,8 @@ interface AuthContextType {
   deleteUser: (userId: string) => Promise<void>;
   isAuthenticated: boolean;
   isInitializing: boolean;
+  googleAuthStatus: 'user_not_found' | 'user_already_exists' | null;
+  clearGoogleAuthStatus: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -32,6 +36,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const { data, error } = await supabase.from('users').select('*');
     if (error) {
       console.error('Error fetching users:', error);
+      setIsInitializing(false);
       return;
     }
     const mappedUsers: User[] = (data || []).map((u: any) => ({
@@ -45,39 +50,189 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       isAuthorized: u.is_authorized,
       password: u.password,
       branchId: u.branch_id,
+      provider: u.provider || 'local',
+      google_id: u.google_id,
       seenAnnouncements: u.seen_announcements || []
     }));
     setUsers(mappedUsers);
 
-    if (user) {
-      const refreshedUser = mappedUsers.find(mu => mu.id === user.id);
+    // Refresh current user: read from localStorage directly to avoid stale closure
+    const saved = localStorage.getItem('elite_pg_user');
+    const currentUser: User | null = saved ? JSON.parse(saved) : null;
+    if (currentUser) {
+      const refreshedUser = mappedUsers.find(mu => mu.id === currentUser.id);
       if (refreshedUser) {
-        setUser(refreshedUser);
-        localStorage.setItem('elite_pg_user', JSON.stringify(refreshedUser));
+        // Admins/supers are always authorized regardless of the DB `is_authorized` flag
+        const authorizedUser: User = {
+          ...refreshedUser,
+          isAuthorized: (refreshedUser.role === 'admin' || refreshedUser.role === 'super') ? true : refreshedUser.isAuthorized
+        };
+        setUser(authorizedUser);
+        localStorage.setItem('elite_pg_user', JSON.stringify(authorizedUser));
       }
     }
     setIsInitializing(false);
   };
 
+  const [googleAuthStatus, setGoogleAuthStatus] = useState<'user_not_found' | 'user_already_exists' | null>(null);
+  const clearGoogleAuthStatus = () => setGoogleAuthStatus(null);
+
   useEffect(() => {
     fetchUsers();
+
+    // Listen for Supabase OAuth sign-ins
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user?.email) {
+        try {
+          const intent = sessionStorage.getItem('google_auth_intent') as 'login' | 'signup' | null;
+          sessionStorage.removeItem('google_auth_intent');
+
+          // Check if user exists in custom users table based on email
+          const { data: existingUsers, error: fetchError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('email', session.user.email);
+
+          let targetUser = existingUsers?.[0];
+
+          // --- INTENT: LOGIN --- User wants to sign in with existing account
+          if (intent === 'login') {
+            if (!targetUser) {
+              // User doesn't exist → reject, tell the page to redirect to sign-up
+              await supabase.auth.signOut();
+              toast.error('No account found for this Google account. Please sign up first.');
+              setGoogleAuthStatus('user_not_found');
+              return;
+            }
+            // User exists → fall through to set user below
+          }
+          // --- INTENT: SIGNUP --- User wants to create a new account
+          else if (intent === 'signup') {
+            if (targetUser) {
+              // User already exists → reject, tell the page to redirect to login
+              await supabase.auth.signOut();
+              toast.error('An account with this Google email already exists. Please sign in instead.');
+              setGoogleAuthStatus('user_already_exists');
+              return;
+            }
+            // User doesn't exist → create a new one
+            const newId = `u${Date.now()}`;
+            const newDbUser = {
+              id: newId,
+              username: session.user.email.split('@')[0] || `user${Date.now()}`,
+              role: 'tenant',
+              name: session.user.user_metadata?.full_name || 'Google User',
+              email: session.user.email,
+              phone: null,
+              avatar: session.user.user_metadata?.avatar_url || null,
+              is_authorized: false,
+              password: null,
+              provider: 'google',
+              google_id: session.user.id,
+              branch_id: null,
+              seen_announcements: []
+            };
+            const { error: insertError } = await supabase.from('users').insert(newDbUser);
+            if (!insertError) {
+              targetUser = newDbUser;
+              // Also create a corresponding tenant record so admin can manage them
+              await supabase.from('tenants').insert({
+                user_id: newId,
+                name: newDbUser.name,
+                email: newDbUser.email,
+                phone: null,
+                room_id: null,
+                bed_number: null,
+                joining_date: new Date().toISOString().split('T')[0],
+                rent_amount: 0,
+                deposit_amount: 0,
+                payment_due_date: 1,
+                status: 'active',
+                kyc_status: 'unsubmitted',
+                branch_id: null,
+                late_fee_per_day: 0,
+                rent_agreement_url: null
+              });
+              toast.success('Account created! Please wait for an admin to authorize your access.');
+            } else {
+              console.error('Failed to auto-register OAuth user:', insertError);
+              await supabase.auth.signOut();
+              return;
+            }
+          }
+          // --- NO INTENT (e.g. INITIAL_SESSION on page load) ---
+          else {
+            // Existing session resume — only accept if user exists in DB
+            if (!targetUser) {
+              // Stale Supabase auth session with no DB user → sign out silently
+              await supabase.auth.signOut();
+              return;
+            }
+          }
+
+          // If the user already exists (perhaps manually created), link their Google account
+          if (targetUser && !targetUser.google_id) {
+            await supabase.from('users').update({ provider: 'google', google_id: session.user.id }).eq('id', targetUser.id);
+            targetUser.provider = 'google';
+            targetUser.google_id = session.user.id;
+          }
+
+          if (targetUser) {
+            const mappedUser: User = {
+              id: targetUser.id,
+              username: targetUser.username,
+              role: targetUser.role as UserRole,
+              name: targetUser.name,
+              email: targetUser.email,
+              phone: targetUser.phone,
+              avatar: targetUser.avatar,
+              isAuthorized: targetUser.is_authorized,
+              password: targetUser.password,
+              branchId: targetUser.branch_id,
+              provider: targetUser.provider || 'local',
+              google_id: targetUser.google_id,
+              seenAnnouncements: targetUser.seen_announcements || []
+            };
+            setUser(mappedUser);
+            localStorage.setItem('elite_pg_user', JSON.stringify(mappedUser));
+            await fetchUsers();
+          }
+        } catch (err) {
+          console.error('Error in auth state change handler:', err);
+        }
+      }
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const login = async (username: string, password: string): Promise<{ success: boolean, message?: string }> => {
+  const login = async (username: string, password: string): Promise<{ success: boolean, message?: string, needsPasswordSetup?: boolean }> => {
     await fetchUsers(); // Refresh to get latest state
 
     const { data, error } = await supabase.from('users')
       .select('*')
-      .or(`username.eq.${username},email.eq.${username}`)
+      .or(`username.ilike.${username},email.ilike.${username}`)
       .single();
 
     if (error || !data) {
-      return { success: false, message: 'User not found' };
+      // For security, we usually say "Invalid username or password",
+      // but for this specific UX requirement, we should be more helpful if they might be a Google user.
+      return { success: false, message: 'Invalid username or password' };
     }
 
-    if (data.password && data.password !== password) {
+    if (data.password === null || data.password === undefined || data.password === '') {
+      const isGoogle = data.provider === 'google';
+      const message = isGoogle
+        ? 'This account was created using Google. Please set a password for future manual logins.'
+        : 'Your account was created by an admin. Please set your password to continue.';
+      return { success: false, message, needsPasswordSetup: true };
+    } else if (password && data.password !== password) {
       return { success: false, message: 'Invalid password' };
+    } else if (!password) {
+      return { success: false, message: 'Please provide a password.' };
     }
 
     const mappedUser: User = {
@@ -91,6 +246,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       isAuthorized: data.is_authorized,
       password: data.password,
       branchId: data.branch_id,
+      provider: data.provider || 'local',
+      google_id: data.google_id,
       seenAnnouncements: data.seen_announcements || []
     };
 
@@ -99,19 +256,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return { success: true };
   };
 
-  const register = async (userData: Omit<User, 'id' | 'isAuthorized'>, password?: string): Promise<User | null> => {
-    const { data: existingData } = await supabase.from('users')
+  const register = async (userData: Omit<User, 'id' | 'isAuthorized'>, password?: string): Promise<{ success: boolean, message?: string, existingUser?: boolean, user?: User | null }> => {
+    const { data: existingUsername } = await supabase.from('users')
       .select('id')
-      .or(`username.eq.${userData.username},email.eq.${userData.email}`);
+      .ilike('username', userData.username)
+      .maybeSingle();
 
-    if (existingData && existingData.length > 0) {
-      toast.error('A user with this username or email already exists.');
-      return null;
+    if (existingUsername) {
+      return { success: false, message: 'Username already taken', existingUser: true };
+    }
+
+    const { data: existingEmail } = await supabase.from('users')
+      .select('id')
+      .ilike('email', userData.email)
+      .maybeSingle();
+
+    if (existingEmail) {
+      return { success: false, message: 'Email already registered', existingUser: true };
     }
 
     const newId = `u${Date.now()}`;
     const newIsAuthorized = userData.role === 'admin' ? true : false;
-    const newPassword = password || '123456';
+    const newPassword = password || null;
 
     const dbData = {
       id: newId,
@@ -124,19 +290,61 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       is_authorized: newIsAuthorized,
       password: newPassword,
       branch_id: userData.branchId || null,
+      provider: 'local',
+      google_id: null,
       seen_announcements: userData.seenAnnouncements || []
     };
 
     const { error } = await supabase.from('users').insert(dbData);
     if (error) {
       console.error(error);
-      toast.error(error.message);
-      return null;
+      return { success: false, message: error.message };
     }
 
     await fetchUsers();
-    const newUser: User = { ...userData, id: newId, isAuthorized: newIsAuthorized, password: newPassword, seenAnnouncements: userData.seenAnnouncements || [] };
-    return newUser;
+    const newUser: User = { ...userData, id: newId, isAuthorized: newIsAuthorized, password: newPassword, provider: 'local', seenAnnouncements: userData.seenAnnouncements || [] };
+    return { success: true, user: newUser };
+  };
+
+  const loginWithGoogle = async (intent: 'login' | 'signup') => {
+    sessionStorage.setItem('google_auth_intent', intent);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin,
+      }
+    });
+    if (error) {
+      sessionStorage.removeItem('google_auth_intent');
+      toast.error(error.message);
+    }
+  };
+
+  const setGoogleUserPassword = async (loginId: string, password: string): Promise<{ success: boolean, message?: string }> => {
+    const { data: userData, error: fetchError } = await supabase
+      .from('users')
+      .select('id, provider')
+      .or(`username.ilike.${loginId},email.ilike.${loginId}`)
+      .maybeSingle();
+
+    if (fetchError || !userData) {
+      return { success: false, message: 'User not found' };
+    }
+
+    if (userData.provider !== 'google') {
+      return { success: false, message: 'This account was not created with Google.' };
+    }
+
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({ password })
+      .eq('id', userData.id);
+
+    if (updateError) {
+      return { success: false, message: updateError.message };
+    }
+
+    return { success: true, message: 'Password set successfully. You can now login.' };
   };
 
   const authorizeUser = async (userId: string) => {
@@ -149,7 +357,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     await fetchUsers();
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await supabase.auth.signOut();
     setUser(null);
     localStorage.removeItem('elite_pg_user');
   };
@@ -176,7 +385,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const { error } = await supabase.from('users').update(dbUpdates).eq('id', userId);
     if (error) {
       console.error(error);
-      alert(error.message);
+      toast.error(error.message);
     } else {
       await fetchUsers();
     }
@@ -196,6 +405,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       user,
       users,
       login,
+      loginWithGoogle,
+      setGoogleUserPassword,
       register,
       logout,
       updateProfile,
@@ -204,7 +415,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       authorizeUser,
       deleteUser,
       isAuthenticated: !!user,
-      isInitializing
+      isInitializing,
+      googleAuthStatus,
+      clearGoogleAuthStatus
     }}>
       {children}
     </AuthContext.Provider>
