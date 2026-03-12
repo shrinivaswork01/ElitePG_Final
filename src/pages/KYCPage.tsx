@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { KYCData, KYCStatus } from '../types';
+import toast from 'react-hot-toast';
 import {
   ShieldCheck,
   ShieldAlert,
@@ -12,14 +13,15 @@ import {
   ExternalLink,
   Search,
   Filter,
-  FileText
+  FileText,
+  Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../utils';
 import { Navigate } from 'react-router-dom';
 
 export const KYCPage = () => {
-  const { kycs, tenants, employees, updateKYC, updateTenant, updateEmployee } = useApp();
+  const { kycs, tenants, employees, updateKYC, deleteKYC, updateTenant, updateEmployee } = useApp();
   const { user, authorizeUser } = useAuth();
 
   if (user?.role === 'tenant') {
@@ -101,6 +103,20 @@ export const KYCPage = () => {
       }
     }
 
+    const isTenantKYC = !!kycs.find(k => k.id === id)?.tenantId || id.startsWith('virtual-t-');
+
+    if (isTenantKYC) {
+      if (!['super', 'admin', 'manager'].includes(user?.role || '')) {
+        toast.error('You do not have permission to verify tenant KYC');
+        return;
+      }
+    } else {
+      if (!['super', 'admin'].includes(user?.role || '')) {
+        toast.error('Only admins can verify staff KYC');
+        return;
+      }
+    }
+
     if (personId) {
       const person = isTenant
         ? tenants.find(t => t.id === personId)
@@ -119,6 +135,19 @@ export const KYCPage = () => {
   };
 
   const handleReject = (id: string) => {
+    const isTenantKYC = !!kycs.find(k => k.id === id)?.tenantId;
+    if (isTenantKYC) {
+      if (!['super', 'admin', 'manager'].includes(user?.role || '')) {
+        toast.error('You do not have permission to reject tenant KYC');
+        return;
+      }
+    } else {
+      if (!['super', 'admin'].includes(user?.role || '')) {
+        toast.error('Only admins can reject staff KYC');
+        return;
+      }
+    }
+
     if (!rejectionReason) return;
     updateKYC(id, {
       status: 'rejected',
@@ -128,6 +157,12 @@ export const KYCPage = () => {
     });
     setSelectedKYC(null);
     setRejectionReason('');
+  };
+
+  const handleDelete = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this KYC record?')) {
+      await deleteKYC(id);
+    }
   };
 
   return (
@@ -247,6 +282,15 @@ export const KYCPage = () => {
                       className="text-[10px] font-bold text-rose-500 hover:underline"
                     >
                       Reset Status
+                    </button>
+                  )}
+                  {kyc.status === 'rejected' && (
+                    <button
+                      onClick={() => handleDelete(kyc.id)}
+                      className="p-2 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-colors"
+                      title="Delete Rejected KYC"
+                    >
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   )}
                   {kyc.status === 'pending' && kyc.documentUrl && (

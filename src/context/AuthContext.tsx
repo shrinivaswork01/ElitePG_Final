@@ -77,6 +77,66 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [googleAuthStatus, setGoogleAuthStatus] = useState<'user_not_found' | 'user_already_exists' | null>(null);
   const clearGoogleAuthStatus = () => setGoogleAuthStatus(null);
 
+  // Helper: creates a new user + tenant record for a Google OAuth user
+  const createGoogleUser = async (session: any) => {
+    const { data: branches } = await supabase.from('pg_branches').select('id').limit(1);
+    const defaultBranchId = branches?.[0]?.id || null;
+    const newId = `u${Date.now()}`;
+    const newDbUser = {
+      id: newId,
+      username: session.user.email.split('@')[0] || `user${Date.now()}`,
+      role: 'tenant',
+      name: session.user.user_metadata?.full_name || 'Google User',
+      email: session.user.email,
+      phone: null,
+      avatar: session.user.user_metadata?.avatar_url || null,
+      is_authorized: false,
+      password: null,
+      provider: 'google',
+      google_id: session.user.id,
+      branch_id: defaultBranchId,
+      seen_announcements: []
+    };
+    const { error: insertError } = await supabase.from('users').insert(newDbUser);
+    if (insertError) {
+      console.error('Failed to create Google user:', insertError);
+      await supabase.auth.signOut();
+      return;
+    }
+    // Create tenant record so admin can see and manage them
+    const { error: tenantError } = await supabase.from('tenants').insert({
+      user_id: newId,
+      name: newDbUser.name,
+      email: newDbUser.email,
+      phone: null,
+      room_id: null,
+      bed_number: null,
+      joining_date: new Date().toISOString().split('T')[0],
+      rent_amount: 0,
+      deposit_amount: 0,
+      payment_due_date: 1,
+      status: 'active',
+      kyc_status: 'unsubmitted',
+      branch_id: defaultBranchId,
+      late_fee_per_day: 0,
+      rent_agreement_url: null
+    });
+    if (tenantError) {
+      console.error('Tenant creation error (non-fatal):', tenantError);
+    }
+    toast.success('Account created! Please wait for an admin to authorize your access.');
+    await fetchUsers();
+    // Map and set the user
+    const mappedUser = {
+      id: newDbUser.id, username: newDbUser.username, role: 'tenant' as any,
+      name: newDbUser.name, email: newDbUser.email, phone: null, avatar: newDbUser.avatar,
+      isAuthorized: false, password: null, branchId: defaultBranchId,
+      provider: 'google' as 'google', google_id: newDbUser.google_id, seenAnnouncements: []
+    };
+    setUser(mappedUser);
+    localStorage.setItem('elite_pg_user', JSON.stringify(mappedUser));
+  };
+
   useEffect(() => {
     fetchUsers();
 
@@ -115,51 +175,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               setGoogleAuthStatus('user_already_exists');
               return;
             }
-            // User doesn't exist → create a new one
-            const newId = `u${Date.now()}`;
-            const newDbUser = {
-              id: newId,
-              username: session.user.email.split('@')[0] || `user${Date.now()}`,
-              role: 'tenant',
-              name: session.user.user_metadata?.full_name || 'Google User',
-              email: session.user.email,
-              phone: null,
-              avatar: session.user.user_metadata?.avatar_url || null,
-              is_authorized: false,
-              password: null,
-              provider: 'google',
-              google_id: session.user.id,
-              branch_id: null,
-              seen_announcements: []
-            };
-            const { error: insertError } = await supabase.from('users').insert(newDbUser);
-            if (!insertError) {
-              targetUser = newDbUser;
-              // Also create a corresponding tenant record so admin can manage them
-              await supabase.from('tenants').insert({
-                user_id: newId,
-                name: newDbUser.name,
-                email: newDbUser.email,
-                phone: null,
-                room_id: null,
-                bed_number: null,
-                joining_date: new Date().toISOString().split('T')[0],
-                rent_amount: 0,
-                deposit_amount: 0,
-                payment_due_date: 1,
-                status: 'active',
-                kyc_status: 'unsubmitted',
-                branch_id: null,
-                late_fee_per_day: 0,
-                rent_agreement_url: null
-              });
-              toast.success('Account created! Please wait for an admin to authorize your access.');
-            } else {
-              console.error('Failed to auto-register OAuth user:', insertError);
-              await supabase.auth.signOut();
-              return;
-            }
+            // Create new user + tenant
+            await createGoogleUser(session);
+            return;
           }
+          // --- NO INTENT (page load / initial session) ---
+          // If the user doesn't exist yet (edge case: intent lost during OAuth redirect), auto-create them
+          else if (!targetUser && session.user.app_metadata?.provider === 'google') {
+            await createGoogleUser(session);
+            return;
+          }
+
           // --- NO INTENT (e.g. INITIAL_SESSION on page load) ---
           else {
             // Existing session resume — only accept if user exists in DB
@@ -299,6 +325,30 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (error) {
       console.error(error);
       return { success: false, message: error.message };
+    }
+
+    // If the new user is a tenant, also create a tenant record so they appear in the Tenants tab
+    if (userData.role === 'tenant') {
+      const { data: branches } = await supabase.from('pg_branches').select('id').limit(1);
+      const defaultBranchId = branches?.[0]?.id || userData.branchId || null;
+
+      await supabase.from('tenants').insert({
+        user_id: newId,
+        name: userData.name,
+        email: userData.email,
+        phone: userData.phone || null,
+        room_id: null,
+        bed_number: null,
+        joining_date: new Date().toISOString().split('T')[0],
+        rent_amount: 0,
+        deposit_amount: 0,
+        payment_due_date: 1,
+        status: 'active',
+        kyc_status: 'unsubmitted',
+        branch_id: defaultBranchId,
+        late_fee_per_day: 0,
+        rent_agreement_url: null
+      });
     }
 
     await fetchUsers();

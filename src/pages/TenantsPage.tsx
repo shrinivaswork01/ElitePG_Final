@@ -30,7 +30,7 @@ import toast from 'react-hot-toast';
 export const TenantsPage = () => {
   const { user, users, register, updateUser } = useAuth();
   const location = useLocation();
-  const { tenants, rooms, addTenant, updateTenant, deleteTenant, checkFeatureAccess, currentPlan } = useApp();
+  const { tenants, rooms, addTenant, updateTenant, deleteTenant, checkFeatureAccess, currentPlan, uploadVerifiedKYC, kycs } = useApp();
   const canSendWhatsApp = checkFeatureAccess('whatsapp');
 
   const currentTenantsCount = tenants.length;
@@ -58,6 +58,9 @@ export const TenantsPage = () => {
   const [createUsername, setCreateUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [tenantToDelete, setTenantToDelete] = useState<Tenant | null>(null);
+  const [kycUploadTenant, setKycUploadTenant] = useState<Tenant | null>(null);
+  const [adminKycFile, setAdminKycFile] = useState<{ type: string; url: string; fileName: string } | null>(null);
+  const [adminKycType, setAdminKycType] = useState('Aadhar Card');
   const { payments } = useApp();
 
   const filteredTenants = tenants.filter(t => {
@@ -458,6 +461,17 @@ export const TenantsPage = () => {
                           </button>
                         )}
                         <button
+                          onClick={() => {
+                            setKycUploadTenant(tenant);
+                            setAdminKycFile(null);
+                            setAdminKycType('Aadhar Card');
+                          }}
+                          title="Upload Verified KYC"
+                          className="p-2 hover:bg-violet-50 dark:hover:bg-violet-500/10 rounded-lg text-violet-600 dark:text-violet-400 transition-colors"
+                        >
+                          <Shield className="w-4 h-4" />
+                        </button>
+                        <button
                           onClick={() => handleEditClick(tenant)}
                           title="Edit Tenant"
                           className="p-2 hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg text-gray-500 dark:text-gray-400 transition-colors"
@@ -524,6 +538,89 @@ export const TenantsPage = () => {
                     className="flex-1 py-3 rounded-2xl bg-red-600 text-white font-semibold hover:bg-red-700 transition-colors"
                   >
                     Yes, Delete
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Admin KYC Upload Modal */}
+      <AnimatePresence>
+        {kycUploadTenant && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setKycUploadTenant(null)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative bg-white dark:bg-[#111111] rounded-3xl shadow-2xl w-full max-w-md p-8 border border-gray-100 dark:border-white/10"
+            >
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-1">Upload Verified KYC</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">For <span className="font-bold text-gray-900 dark:text-white">{kycUploadTenant.name}</span> — Document will be marked as <span className="text-emerald-600 font-bold">Verified</span> immediately.</p>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Document Type</label>
+                  <select
+                    value={adminKycType}
+                    onChange={(e) => setAdminKycType(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                  >
+                    <option value="Aadhar Card">Aadhar Card</option>
+                    <option value="PAN Card">PAN Card</option>
+                    <option value="Voter ID">Voter ID</option>
+                    <option value="Passport">Passport</option>
+                    <option value="Driving License">Driving License</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Upload Document</label>
+                  <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-200 dark:border-white/10 rounded-2xl hover:border-indigo-500/50 transition-colors cursor-pointer bg-gray-50/50 dark:bg-white/[0.02]">
+                    <Upload className="w-8 h-8 text-gray-400 mb-2" />
+                    <span className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                      {adminKycFile ? adminKycFile.fileName : 'Click to upload'}
+                    </span>
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept="image/*,.pdf"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        if (file.size > 5 * 1024 * 1024) { toast.error('File must be under 5MB'); return; }
+                        const reader = new FileReader();
+                        reader.onloadend = () => setAdminKycFile({ type: adminKycType, url: reader.result as string, fileName: file.name });
+                        reader.readAsDataURL(file);
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => setKycUploadTenant(null)}
+                    className="flex-1 py-3 rounded-2xl bg-gray-100 dark:bg-white/5 text-gray-700 dark:text-gray-300 font-semibold hover:bg-gray-200 dark:hover:bg-white/10 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    disabled={!adminKycFile}
+                    onClick={async () => {
+                      if (!adminKycFile) return;
+                      await uploadVerifiedKYC(kycUploadTenant.id, adminKycType, adminKycFile.url);
+                      setKycUploadTenant(null);
+                      setAdminKycFile(null);
+                    }}
+                    className="flex-1 py-3 rounded-2xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Upload & Verify
                   </button>
                 </div>
               </div>

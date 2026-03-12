@@ -445,48 +445,69 @@ export const Dashboard = () => {
           )}
 
           {isTenant && (
-            <div className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden">
-              <div className="p-6 sm:p-8 border-b border-gray-100 dark:border-white/5">
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Manage Stay</h3>
+            <div className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden flex flex-col">
+              <div className="p-6 sm:p-8 border-b border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/[0.02]">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                  <Building2 className="w-5 h-5 text-indigo-600" />
+                  Manage My Stay
+                </h3>
               </div>
-              <div className="p-6 space-y-6">
-                <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-white/5 rounded-2xl">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-xl">
-                      <CalendarDays className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Joining Date</p>
-                      <p className="text-sm font-bold text-gray-900 dark:text-white">{tenantData?.joiningDate}</p>
-                    </div>
+              <div className="p-6 sm:p-8 space-y-6 flex-1">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/5">
+                    <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1">Room No.</p>
+                    <p className="text-lg font-bold text-gray-900 dark:text-white">{tenantRoom?.roomNumber || 'N/A'}</p>
                   </div>
-                  <div className="text-right">
-                    <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Status</p>
-                    <span className={cn(
-                      "text-xs font-bold px-2 py-0.5 rounded-lg",
-                      tenantData?.status === 'active' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                    )}>
-                      {tenantData?.status?.toUpperCase()}
-                    </span>
+                  <div className="p-4 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/5">
+                    <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1">Bed No.</p>
+                    <p className="text-lg font-bold text-gray-900 dark:text-white">{tenantData?.bedNumber || 'N/A'}</p>
                   </div>
                 </div>
 
-                <button
-                  onClick={handleVacateRequest}
-                  className={cn(
-                    "w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-bold transition-all shadow-lg",
-                    tenantData?.status === 'vacating'
-                      ? "bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10 shadow-none"
-                      : "bg-rose-600 text-white hover:bg-rose-700 shadow-rose-600/20"
-                  )}
-                >
-                  <LogOut className="w-5 h-5" />
-                  {tenantData?.status === 'vacating' ? 'Cancel Vacate Request' : 'Request to Vacate'}
-                </button>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-4 bg-indigo-50/50 dark:bg-indigo-500/5 rounded-2xl border border-indigo-100 dark:border-indigo-500/10">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                        <CalendarDays className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold text-indigo-600/60 dark:text-indigo-400/60 uppercase tracking-wider">Joining Date</p>
+                        <p className="text-sm font-bold text-gray-900 dark:text-white">{tenantData?.joiningDate}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Status</p>
+                      <span className={cn(
+                        "text-[10px] font-bold px-2.5 py-1 rounded-lg uppercase tracking-wider",
+                        tenantData?.status === 'active'
+                          ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
+                          : "bg-amber-500/10 text-amber-600 border border-amber-500/20"
+                      )}>
+                        {tenantData?.status}
+                      </span>
+                    </div>
+                  </div>
 
-                <p className="text-[10px] text-center text-gray-400 dark:text-gray-500 italic">
-                  * Vacating requires 30 days notice as per policy.
-                </p>
+                  <button
+                    onClick={handleVacateRequest}
+                    className={cn(
+                      "w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-bold transition-all shadow-lg text-sm",
+                      tenantData?.status === 'vacating'
+                        ? "bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10 shadow-none border border-gray-200 dark:border-white/5"
+                        : "bg-rose-600 text-white hover:bg-rose-700 shadow-rose-600/20 active:scale-[0.98]"
+                    )}
+                  >
+                    <LogOut className="w-5 h-5" />
+                    {tenantData?.status === 'vacating' ? 'Cancel Vacate Request' : 'Request to Vacate'}
+                  </button>
+
+                  <div className="flex items-start gap-2 bg-amber-50/50 dark:bg-amber-500/5 p-3 rounded-xl border border-amber-100/50 dark:border-amber-500/10">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <p className="text-[10px] text-amber-700 dark:text-amber-400/80 leading-relaxed">
+                      Vacating requires 30 days notice. Your request will be reviewed by the property manager.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           )}

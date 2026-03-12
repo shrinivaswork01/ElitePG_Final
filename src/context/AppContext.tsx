@@ -40,6 +40,8 @@ interface AppContextType {
   deleteEmployee: (id: string) => Promise<void>;
 
   updateKYC: (id: string, updates: Partial<KYCData>) => Promise<void>;
+  deleteKYC: (id: string) => Promise<void>;
+  uploadVerifiedKYC: (tenantId: string, docType: string, docUrl: string) => Promise<void>;
 
   addAnnouncement: (announcement: Omit<Announcement, 'id' | 'branchId'>) => Promise<void>;
   deleteAnnouncement: (id: string) => Promise<void>;
@@ -103,6 +105,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (!user) return;
 
     try {
+      const isSuper = user.role === 'super';
+      const branchId = user.branchId;
+      const branchFilter = isSuper ? {} : { branch_id: branchId };
+
       const [
         { data: branches },
         { data: plans },
@@ -117,18 +123,18 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         { data: tasks },
         { data: pgConfigs }
       ] = await Promise.all([
-        supabase.from('pg_branches').select('*'),
+        supabase.from('pg_branches').select('*').match(isSuper ? {} : { id: branchId }),
         supabase.from('subscription_plans').select('*'),
-        supabase.from('tenants').select('*'),
-        supabase.from('rooms').select('*'),
-        supabase.from('payments').select('*'),
-        supabase.from('complaints').select('*'),
-        supabase.from('employees').select('*'),
-        supabase.from('kyc_documents').select('*'),
-        supabase.from('announcements').select('*'),
-        supabase.from('salary_payments').select('*'),
-        supabase.from('tasks').select('*'),
-        supabase.from('pg_configs').select('*')
+        supabase.from('tenants').select('*').match(branchFilter),
+        supabase.from('rooms').select('*').match(branchFilter),
+        supabase.from('payments').select('*').match(branchFilter),
+        supabase.from('complaints').select('*').match(branchFilter),
+        supabase.from('employees').select('*').match(branchFilter),
+        supabase.from('kyc_documents').select('*').match(branchFilter),
+        supabase.from('announcements').select('*').match(branchFilter),
+        supabase.from('salary_payments').select('*').match(branchFilter),
+        supabase.from('tasks').select('*').match(branchFilter),
+        supabase.from('pg_configs').select('*').match(branchFilter)
       ]);
 
       setData({
@@ -167,7 +173,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           id: t.id, employeeId: t.employee_id, title: t.title, description: t.description, status: t.status, priority: t.priority, dueDate: t.due_date, completedAt: t.completed_at, branchId: t.branch_id, createdAt: t.created_at
         })),
         pgConfigs: (pgConfigs || []).map(c => ({
-          branchId: c.branch_id, rules: c.rules, rolePermissions: c.role_permissions, bannerUrl: c.banner_url
+          branchId: c.branch_id, rules: c.rules, rolePermissions: c.role_permissions, bannerUrl: c.banner_url,
+          complaintCategories: c.complaint_categories || ['Plumbing', 'Electrical', 'Internet', 'Cleaning', 'Other']
         }))
       });
     } catch (e) {
@@ -318,12 +325,28 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (rentAgreementDoc) dbUpdates.rent_agreement_url = rentAgreementDoc.url;
     if (kycDoc) dbUpdates.kyc_status = 'pending';
 
-    await refetch(supabase.from('tenants').update(dbUpdates).eq('id', id), 'Tenant updated successfully');
+    // Optimistically update local state immediately so rent/fields reflect instantly
+    if (Object.keys(updates).length > 0 || rentAgreementDoc) {
+      applyOptimistic(prev => ({
+        ...prev,
+        tenants: prev.tenants.map((t: any) =>
+          t.id === id ? { ...t, ...updates, ...(rentAgreementDoc ? { rentAgreementUrl: rentAgreementDoc.url } : {}) } : t
+        )
+      }));
+    }
+
+    const { error } = await supabase.from('tenants').update(dbUpdates).eq('id', id);
+    if (error) { toast.error(error.message); fetchData(); return; }
+    if (!kycDoc) toast.success('Tenant updated successfully');
+
     if (kycDoc) {
       const tenant = data.tenants.find((t: any) => t.id === id);
-      await refetch(supabase.from('kyc_documents').insert({
+      const { error: kycError } = await supabase.from('kyc_documents').insert({
         tenant_id: id, document_type: kycDoc.type, document_url: kycDoc.url, status: 'pending', branch_id: tenant?.branchId
-      }));
+      });
+      if (kycError) { toast.error(kycError.message); }
+      else { toast.success('KYC submitted for verification!'); }
+      setTimeout(() => fetchData(), 500);
     }
   };
 
@@ -444,12 +467,26 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.userId !== undefined) dbUpdates.user_id = updates.userId;
     if (kycDoc) dbUpdates.kyc_status = 'pending';
 
-    await refetch(supabase.from('employees').update(dbUpdates).eq('id', id), 'Employee updated successfully');
+    // Optimistically update local state immediately
+    if (Object.keys(updates).length > 0) {
+      applyOptimistic(prev => ({
+        ...prev,
+        employees: prev.employees.map((e: any) => e.id === id ? { ...e, ...updates } : e)
+      }));
+    }
+
+    const { error } = await supabase.from('employees').update(dbUpdates).eq('id', id);
+    if (error) { toast.error(error.message); fetchData(); return; }
+    if (!kycDoc) toast.success('Employee updated successfully');
+
     if (kycDoc) {
       const e = data.employees.find((e: any) => e.id === id);
-      await refetch(supabase.from('kyc_documents').insert({
+      const { error: kycError } = await supabase.from('kyc_documents').insert({
         employee_id: id, document_type: kycDoc.type, document_url: kycDoc.url, status: 'pending', branch_id: e?.branchId || user?.branchId
-      }));
+      });
+      if (kycError) { toast.error(kycError.message); }
+      else { toast.success('KYC submitted for verification!'); }
+      setTimeout(() => fetchData(), 500);
     }
   };
 
@@ -489,6 +526,40 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       if (kyc.employeeId) await supabase.from('employees').update({ kyc_status: updates.status }).eq('id', kyc.employeeId);
       await fetchData();
     }
+  };
+
+  const deleteKYC = async (id: string) => {
+    const kyc = data.kycs.find((k: any) => k.id === id);
+    await refetch(supabase.from('kyc_documents').delete().eq('id', id), 'KYC document deleted');
+    if (kyc) {
+      if (kyc.tenantId) await supabase.from('tenants').update({ kyc_status: 'unsubmitted' }).eq('id', kyc.tenantId);
+      if (kyc.employeeId) await supabase.from('employees').update({ kyc_status: 'unsubmitted' }).eq('id', kyc.employeeId);
+      await fetchData();
+    }
+  };
+
+  const uploadVerifiedKYC = async (tenantId: string, docType: string, docUrl: string) => {
+    const tenant = data.tenants.find((t: any) => t.id === tenantId);
+    if (!tenant) return;
+    // Remove existing KYC for this tenant if any
+    const existingKYC = data.kycs.find((k: any) => k.tenantId === tenantId);
+    if (existingKYC) {
+      await supabase.from('kyc_documents').delete().eq('id', existingKYC.id);
+    }
+    // Insert a new, pre-verified KYC document
+    await supabase.from('kyc_documents').insert({
+      tenant_id: tenantId,
+      document_type: docType,
+      document_url: docUrl,
+      status: 'verified',
+      verified_by: user?.id,
+      verified_at: new Date().toISOString().split('T')[0],
+      branch_id: tenant.branchId
+    });
+    // Update tenant's kyc_status to verified
+    await supabase.from('tenants').update({ kyc_status: 'verified' }).eq('id', tenantId);
+    toast.success('KYC document uploaded and verified successfully!');
+    await fetchData();
   };
 
   const addAnnouncement = async (announcement: Omit<Announcement, 'id' | 'branchId'>) => {
@@ -547,6 +618,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const dbUpdates: any = {};
     if (updates.rules !== undefined) dbUpdates.rules = updates.rules;
     if (updates.rolePermissions !== undefined) dbUpdates.role_permissions = updates.rolePermissions;
+    if (updates.complaintCategories !== undefined) dbUpdates.complaint_categories = updates.complaintCategories;
 
     // Check if PG Config already exists
     const existing = data.pgConfigs.find((c: any) => c.branchId === user.branchId);
@@ -676,7 +748,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       addPayment, updatePayment, deletePayment,
       addComplaint, updateComplaint, deleteComplaint,
       addEmployee, updateEmployee, deleteEmployee,
-      updateKYC,
+      updateKYC, deleteKYC, uploadVerifiedKYC,
       addAnnouncement, deleteAnnouncement,
       addSalaryPayment, updateSalaryPayment,
       addTask, updateTask, deleteTask,

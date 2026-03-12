@@ -145,7 +145,7 @@ export interface Complaint {
   tenantId: string;
   title: string;
   description: string;
-  category: 'Plumbing' | 'Electrical' | 'Internet' | 'Cleaning' | 'Other';
+  category: string;
   priority: ComplaintPriority;
   status: ComplaintStatus;
   createdAt: string;
@@ -181,4 +181,5 @@ export interface PGConfig {
   rules: string[];
   rolePermissions: RolePermissions[];
   branchId: string;
+  complaintCategories: string[];
 }

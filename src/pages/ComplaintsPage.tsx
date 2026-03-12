@@ -2,11 +2,11 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { Complaint, ComplaintPriority, ComplaintStatus } from '../types';
-import { 
-  Plus, 
-  MessageSquare, 
-  Clock, 
-  CheckCircle2, 
+import {
+  Plus,
+  MessageSquare,
+  Clock,
+  CheckCircle2,
   AlertCircle,
   User,
   Search,
@@ -21,12 +21,14 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../utils';
 
 export const ComplaintsPage = () => {
-  const { complaints, tenants, rooms, employees, addComplaint, updateComplaint, deleteComplaint } = useApp();
+  const { complaints, tenants, rooms, employees, addComplaint, updateComplaint, deleteComplaint, pgConfig, updatePGConfig } = useApp();
   const { user } = useAuth();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingComplaint, setEditingComplaint] = useState<Complaint | null>(null);
   const [filterStatus, setFilterStatus] = useState<ComplaintStatus | 'all'>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [newCategory, setNewCategory] = useState('');
 
   const [formData, setFormData] = useState<Omit<Complaint, 'id' | 'branchId'>>({
     tenantId: '',
@@ -76,8 +78,8 @@ export const ComplaintsPage = () => {
 
   const filteredComplaints = complaints.filter(c => {
     const tenant = tenants.find(t => t.id === c.tenantId);
-    const matchesSearch = c.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         c.category.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = c.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.category.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = filterStatus === 'all' || c.status === filterStatus;
     const isOwner = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'caretaker' || tenant?.userId === user?.id;
     return matchesSearch && matchesStatus && isOwner;
@@ -95,7 +97,7 @@ export const ComplaintsPage = () => {
         Date: c.createdAt
       };
     });
-    const csvContent = "data:text/csv;charset=utf-8," 
+    const csvContent = "data:text/csv;charset=utf-8,"
       + ["Title,Category,Status,Priority,Tenant,Date", ...data.map(r => Object.values(r).join(","))].join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
@@ -130,6 +132,15 @@ export const ComplaintsPage = () => {
             Raise Complaint
           </button>
         )}
+        {user?.role === 'admin' && (
+          <button
+            onClick={() => setIsCategoryModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 transition-all"
+          >
+            <Edit2 className="w-5 h-5" />
+            Manage Categories
+          </button>
+        )}
       </div>
 
       <div className="bg-white dark:bg-[#111111] p-4 rounded-2xl border border-gray-100 dark:border-white/5 shadow-sm flex flex-col sm:flex-row gap-4">
@@ -153,8 +164,8 @@ export const ComplaintsPage = () => {
               onClick={() => setFilterStatus(status as any)}
               className={cn(
                 "px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-all",
-                filterStatus === status 
-                  ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20" 
+                filterStatus === status
+                  ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
                   : "bg-white dark:bg-[#111111] text-gray-500 dark:text-gray-400 border border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5"
               )}
             >
@@ -162,7 +173,7 @@ export const ComplaintsPage = () => {
             </button>
           ))}
         </div>
-        <button 
+        <button
           onClick={handleDownload}
           className="p-2.5 bg-white dark:bg-[#111111] text-gray-500 dark:text-gray-400 rounded-xl border border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors shrink-0"
         >
@@ -175,7 +186,7 @@ export const ComplaintsPage = () => {
           const tenant = tenants.find(t => t.id === complaint.tenantId);
           const room = rooms.find(r => r.id === tenant?.roomId);
           const assignedEmployee = employees.find(e => e.id === complaint.assignedTo);
-          
+
           return (
             <motion.div
               key={complaint.id}
@@ -189,17 +200,17 @@ export const ComplaintsPage = () => {
                   <div className={cn(
                     "p-2.5 sm:p-3 rounded-2xl shrink-0",
                     complaint.status === 'resolved' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" :
-                    complaint.status === 'assigned' ? "bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400" : "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                      complaint.status === 'assigned' ? "bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400" : "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400"
                   )}>
                     {complaint.status === 'resolved' ? <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6" /> :
-                     complaint.status === 'assigned' ? <Clock className="w-5 h-5 sm:w-6 sm:h-6" /> : <AlertCircle className="w-5 h-5 sm:w-6 sm:h-6" />}
+                      complaint.status === 'assigned' ? <Clock className="w-5 h-5 sm:w-6 sm:h-6" /> : <AlertCircle className="w-5 h-5 sm:w-6 sm:h-6" />}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2 mb-1">
                       <span className={cn(
                         "px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider",
                         complaint.priority === 'high' ? "bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400" :
-                        complaint.priority === 'medium' ? "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400" : "bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                          complaint.priority === 'medium' ? "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400" : "bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400"
                       )}>
                         {complaint.priority}
                       </span>
@@ -245,30 +256,30 @@ export const ComplaintsPage = () => {
                     )
                   )}
 
-                    <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto">
-                      {complaint.status !== 'resolved' && (user?.role === 'admin' || user?.role === 'manager' || user?.role === 'caretaker') && (
-                        <button
-                          onClick={() => handleStatusUpdate(complaint.id, 'resolved')}
-                          className="px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-xl shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all flex-1 sm:flex-none"
-                        >
-                          Mark Resolved
-                        </button>
-                      )}
-                      <div className="flex items-center gap-1">
-                        <button 
-                          onClick={() => handleEditClick(complaint)}
-                          className="p-2 hover:bg-gray-100 dark:hover:bg-white/10 rounded-xl text-gray-400 dark:text-gray-500 transition-colors"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button 
-                          onClick={() => deleteComplaint(complaint.id)}
-                          className="p-2 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl text-red-400 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+                  <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto">
+                    {complaint.status !== 'resolved' && (user?.role === 'admin' || user?.role === 'manager' || user?.role === 'caretaker') && (
+                      <button
+                        onClick={() => handleStatusUpdate(complaint.id, 'resolved')}
+                        className="px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-xl shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all flex-1 sm:flex-none"
+                      >
+                        Mark Resolved
+                      </button>
+                    )}
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleEditClick(complaint)}
+                        className="p-2 hover:bg-gray-100 dark:hover:bg-white/10 rounded-xl text-gray-400 dark:text-gray-500 transition-colors"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => deleteComplaint(complaint.id)}
+                        className="p-2 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl text-red-400 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
+                  </div>
                 </div>
               </div>
             </motion.div>
@@ -323,14 +334,12 @@ export const ComplaintsPage = () => {
                     <select
                       required
                       value={formData.category}
-                      onChange={(e) => setFormData({ ...formData, category: e.target.value as any })}
+                      onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                       className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                     >
-                      <option value="Plumbing">Plumbing</option>
-                      <option value="Electrical">Electrical</option>
-                      <option value="Internet">Internet</option>
-                      <option value="Cleaning">Cleaning</option>
-                      <option value="Other">Other</option>
+                      {(pgConfig?.complaintCategories || ['Plumbing', 'Electrical', 'Internet', 'Cleaning', 'Other']).map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
                     </select>
                   </div>
                   <div className="space-y-2">
@@ -343,8 +352,8 @@ export const ComplaintsPage = () => {
                           onClick={() => setFormData({ ...formData, priority: p as any })}
                           className={cn(
                             "flex-1 py-2.5 rounded-xl text-xs font-bold transition-all",
-                            formData.priority === p 
-                              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20" 
+                            formData.priority === p
+                              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
                               : "bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10"
                           )}
                         >
@@ -398,6 +407,72 @@ export const ComplaintsPage = () => {
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {isCategoryModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsCategoryModalOpen(false)}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-md bg-white dark:bg-[#111111] rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto border border-white/5"
+            >
+              <div className="p-6 sm:p-8 border-b border-gray-100 dark:border-white/5 flex items-center justify-between sticky top-0 bg-white dark:bg-[#111111] z-10">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">Manage Categories</h3>
+                <button onClick={() => setIsCategoryModalOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors">
+                  <Plus className="w-6 h-6 rotate-45 text-gray-400" />
+                </button>
+              </div>
+              <div className="p-6 sm:p-8 space-y-6">
+                <div className="space-y-4">
+                  {pgConfig?.complaintCategories.map((cat, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/5">
+                      <span className="text-sm font-medium text-gray-900 dark:text-white">{cat}</span>
+                      <button
+                        onClick={() => {
+                          const newCats = pgConfig.complaintCategories.filter((_, i) => i !== index);
+                          updatePGConfig({ complaintCategories: newCats });
+                        }}
+                        className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newCategory}
+                    onChange={(e) => setNewCategory(e.target.value)}
+                    placeholder="New category name"
+                    className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                  />
+                  <button
+                    onClick={() => {
+                      if (!newCategory.trim()) return;
+                      const currentCats = pgConfig?.complaintCategories || [];
+                      if (currentCats.includes(newCategory.trim())) return;
+                      updatePGConfig({ complaintCategories: [...currentCats, newCategory.trim()] });
+                      setNewCategory('');
+                    }}
+                    className="px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
             </motion.div>
           </div>
         )}

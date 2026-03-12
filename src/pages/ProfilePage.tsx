@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { motion } from 'motion/react';
-import { User, Mail, Phone, Shield, Save, LogOut, Camera, FileText, Upload, CheckCircle, Clock, AlertCircle, X, Zap, Star } from 'lucide-react';
+import { User, Mail, Phone, Shield, Save, LogOut, Camera, FileText, Upload, CheckCircle, Clock, AlertCircle, X, Zap, Star, Eye } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { cn } from '../utils';
@@ -51,14 +51,22 @@ export const ProfilePage = () => {
   const handleKYCUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error('File size exceeds 5MB limit');
+        e.target.value = '';
+        return;
+      }
       const reader = new FileReader();
       reader.onloadend = () => {
         setKycFile({
-          type: 'Aadhar Card', // Default or could be a select
+          type: kycType,
           url: reader.result as string
         });
+        toast.success(`Selected ${file.name} `);
       };
       reader.readAsDataURL(file);
+      // Clear the input value so the same file can be selected again if needed
+      e.target.value = '';
     }
   };
 
@@ -324,6 +332,34 @@ export const ProfilePage = () => {
                     View
                   </button>
                 </div>
+
+                {currentKYC.status === 'verified' && (
+                  <div className="mt-2 p-4 bg-gray-50 dark:bg-white/[0.02] rounded-2xl border border-gray-100 dark:border-white/5">
+                    <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-3">Verified Document Preview</p>
+                    <div className="relative aspect-video rounded-xl overflow-hidden bg-white dark:bg-black/20 group/preview">
+                      {currentKYC.documentUrl.startsWith('data:application/pdf') ? (
+                        <div className="w-full h-full flex flex-col items-center justify-center text-gray-400">
+                          <FileText className="w-12 h-12 mb-2" />
+                          <span className="text-[10px] font-bold uppercase tracking-widest">PDF - Click View to See Full Document</span>
+                        </div>
+                      ) : (
+                        <img
+                          src={currentKYC.documentUrl}
+                          alt="Verified KYC"
+                          className="w-full h-full object-cover"
+                        />
+                      )}
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/preview:opacity-100 transition-opacity flex items-center justify-center">
+                        <button
+                          onClick={() => setIsKYCModalOpen(true)}
+                          className="p-2 bg-white rounded-full text-indigo-600 shadow-lg hover:scale-110 transition-transform"
+                        >
+                          <Eye className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {currentKYC.status === 'rejected' && (
                   <div className="space-y-4 pt-4 border-t border-gray-100 dark:border-white/5">

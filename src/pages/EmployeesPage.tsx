@@ -190,9 +190,77 @@ export const EmployeesPage = () => {
 
   const handleAddSalary = (e: React.FormEvent) => {
     e.preventDefault();
-    addSalaryPayment(salaryFormData);
-    setIsSalaryModalOpen(false);
+
+    const employee = employees.find(emp => emp.id === salaryFormData.employeeId);
+
+    // For cash payments, record directly without Razorpay
+    if (salaryFormData.method === 'Cash') {
+      addSalaryPayment({
+        ...salaryFormData,
+        status: 'paid',
+        transactionId: `cash-${Date.now()}`
+      });
+      setIsSalaryModalOpen(false);
+      toast.success('Cash salary payment recorded successfully');
+      return;
+    }
+
+    const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY;
+    if (!razorpayKey || razorpayKey === 'rzp_test_YOUR_KEY') {
+      toast.error('Razorpay key is not configured. Please add VITE_RAZORPAY_KEY to .env file.');
+      return;
+    }
+
+    if (!(window as any).Razorpay) {
+      toast.error('Razorpay SDK failed to load. Please check your internet connection.');
+      return;
+    }
+
+    const options = {
+      key: razorpayKey,
+      amount: salaryFormData.amount * 100, // Amount in paise
+      currency: 'INR',
+      name: 'Elite PG',
+      description: `Salary for ${employee?.name || 'Employee'} - ${salaryFormData.month}`,
+      handler: function (response: any) {
+        addSalaryPayment({
+          ...salaryFormData,
+          status: 'paid',
+          transactionId: response.razorpay_payment_id
+        });
+        setIsSalaryModalOpen(false);
+        toast.success('Salary paid successfully via Razorpay');
+      },
+      prefill: {
+        name: employee?.name,
+        email: employee?.email,
+        // Pre-fill employee phone number so Razorpay suggests UPI to their mobile
+        contact: employee?.phone ? `+91${employee.phone.replace(/\D/g, '').slice(-10)}` : undefined,
+      },
+      config: {
+        display: {
+          blocks: {
+            banks: {
+              name: 'UPI via Mobile Number',
+              instruments: [{ method: 'upi' }]
+            }
+          },
+          sequence: ['block.banks'],
+          preferences: { show_default_blocks: true }
+        }
+      },
+      theme: {
+        color: '#4f46e5',
+      },
+    };
+
+    const rzp1 = new (window as any).Razorpay(options);
+    rzp1.on('payment.failed', function (response: any) {
+      toast.error('Payment failed: ' + response.error.description);
+    });
+    rzp1.open();
   };
+
 
   const handleKYCAction = (kycId: string, action: 'verify' | 'reject', reason?: string) => {
     if (action === 'verify') {
@@ -976,7 +1044,7 @@ export const EmployeesPage = () => {
                   </div>
                 </div>
                 <button type="submit" className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all mt-4">
-                  Record Payment
+                  {salaryFormData.method === 'Cash' ? 'Record Cash Payment' : 'Pay via Razorpay →'}
                 </button>
               </form>
             </motion.div>
