@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { User, UserRole } from '../types';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
@@ -31,6 +31,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return saved ? JSON.parse(saved) : null;
   });
   const [isInitializing, setIsInitializing] = useState(true);
+  const provisioningRef = useRef(false);
 
   const fetchUsers = async () => {
     const { data, error } = await supabase.from('users').select('*');
@@ -77,8 +78,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [googleAuthStatus, setGoogleAuthStatus] = useState<'user_not_found' | 'user_already_exists' | null>(null);
   const clearGoogleAuthStatus = () => setGoogleAuthStatus(null);
 
-  // Helper: creates a new user + tenant record for a Google OAuth user
-  const createGoogleUser = async (session: any) => {
+  // Helper: creates a new user + tenant record for an OAuth or manually created backend user
+  const provisionNewUser = async (session: any, provider: 'local' | 'google') => {
     const { data: branches } = await supabase.from('pg_branches').select('id').limit(1);
     const defaultBranchId = branches?.[0]?.id || null;
     const newId = `u${Date.now()}`;
@@ -86,20 +87,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       id: newId,
       username: session.user.email.split('@')[0] || `user${Date.now()}`,
       role: 'tenant',
-      name: session.user.user_metadata?.full_name || 'Google User',
+      name: session.user.user_metadata?.full_name || session.user.email.split('@')[0],
       email: session.user.email,
       phone: null,
       avatar: session.user.user_metadata?.avatar_url || null,
       is_authorized: false,
       password: null,
-      provider: 'google',
-      google_id: session.user.id,
+      provider: provider,
+      google_id: provider === 'google' ? session.user.id : null,
       branch_id: defaultBranchId,
       seen_announcements: []
     };
     const { error: insertError } = await supabase.from('users').insert(newDbUser);
     if (insertError) {
-      console.error('Failed to create Google user:', insertError);
+      console.error('Failed to create user:', insertError);
       await supabase.auth.signOut();
       return;
     }
@@ -108,9 +109,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       user_id: newId,
       name: newDbUser.name,
       email: newDbUser.email,
-      phone: null,
+      phone: '0000000000',
       room_id: null,
-      bed_number: null,
+      bed_number: 0,
       joining_date: new Date().toISOString().split('T')[0],
       rent_amount: 0,
       deposit_amount: 0,
@@ -118,20 +119,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       status: 'active',
       kyc_status: 'unsubmitted',
       branch_id: defaultBranchId,
-      late_fee_per_day: 0,
       rent_agreement_url: null
     });
+
     if (tenantError) {
-      console.error('Tenant creation error (non-fatal):', tenantError);
+      console.error('Tenant creation error:', tenantError);
+      toast.error('Secondary record creation failed. Please contact admin.');
+    } else {
+      toast.success('Account created! Please wait for an admin to authorize your access.');
     }
-    toast.success('Account created! Please wait for an admin to authorize your access.');
+
     await fetchUsers();
     // Map and set the user
     const mappedUser = {
       id: newDbUser.id, username: newDbUser.username, role: 'tenant' as any,
       name: newDbUser.name, email: newDbUser.email, phone: null, avatar: newDbUser.avatar,
       isAuthorized: false, password: null, branchId: defaultBranchId,
-      provider: 'google' as 'google', google_id: newDbUser.google_id, seenAnnouncements: []
+      provider: provider, google_id: newDbUser.google_id, seenAnnouncements: []
     };
     setUser(mappedUser);
     localStorage.setItem('elite_pg_user', JSON.stringify(mappedUser));
@@ -175,23 +179,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               setGoogleAuthStatus('user_already_exists');
               return;
             }
-            // Create new user + tenant
-            await createGoogleUser(session);
+            if (provisioningRef.current) return;
+            provisioningRef.current = true;
+            try {
+              // Create new user + tenant
+              await provisionNewUser(session, 'google');
+            } finally {
+              setTimeout(() => { provisioningRef.current = false; }, 2000);
+            }
             return;
           }
-          // --- NO INTENT (page load / initial session) ---
-          // If the user doesn't exist yet (edge case: intent lost during OAuth redirect), auto-create them
-          else if (!targetUser && session.user.app_metadata?.provider === 'google') {
-            await createGoogleUser(session);
-            return;
-          }
-
-          // --- NO INTENT (e.g. INITIAL_SESSION on page load) ---
           else {
-            // Existing session resume — only accept if user exists in DB
             if (!targetUser) {
-              // Stale Supabase auth session with no DB user → sign out silently
-              await supabase.auth.signOut();
+              if (provisioningRef.current) return;
+              provisioningRef.current = true;
+              try {
+                // If the user doesn't exist in our custom table but exists in Auth, provision them (e.g. backend creation)
+                await provisionNewUser(session, session.user.app_metadata?.provider === 'google' ? 'google' : 'local');
+              } finally {
+                setTimeout(() => { provisioningRef.current = false; }, 2000);
+              }
               return;
             }
           }
@@ -329,26 +336,33 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     // If the new user is a tenant, also create a tenant record so they appear in the Tenants tab
     if (userData.role === 'tenant') {
-      const { data: branches } = await supabase.from('pg_branches').select('id').limit(1);
-      const defaultBranchId = branches?.[0]?.id || userData.branchId || null;
+      let finalBranchId = userData.branchId;
+      if (!finalBranchId) {
+        const { data: branches } = await supabase.from('pg_branches').select('id').limit(1);
+        finalBranchId = branches?.[0]?.id || null;
+      }
 
-      await supabase.from('tenants').insert({
+      const { error: tenantError } = await supabase.from('tenants').insert({
         user_id: newId,
         name: userData.name,
         email: userData.email,
-        phone: userData.phone || null,
+        phone: userData.phone || '0000000000',
         room_id: null,
-        bed_number: null,
+        bed_number: 0,
         joining_date: new Date().toISOString().split('T')[0],
         rent_amount: 0,
         deposit_amount: 0,
         payment_due_date: 1,
         status: 'active',
         kyc_status: 'unsubmitted',
-        branch_id: defaultBranchId,
-        late_fee_per_day: 0,
+        branch_id: finalBranchId,
         rent_agreement_url: null
       });
+
+      if (tenantError) {
+        console.error('Tenant insertion error:', tenantError);
+        toast.error('Failed to create tenant record: ' + tenantError.message);
+      }
     }
 
     await fetchUsers();

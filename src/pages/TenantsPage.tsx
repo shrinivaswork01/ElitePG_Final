@@ -683,8 +683,11 @@ export const TenantsPage = () => {
                     <input
                       required
                       type="tel"
+                      pattern="[0-9]{10}"
+                      maxLength={10}
+                      title="Please enter a valid 10-digit mobile number"
                       value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '') })}
                       className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                       placeholder="9876543210"
                     />

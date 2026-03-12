@@ -64,6 +64,7 @@ interface AppContextType {
   deleteSubscriptionPlan: (id: string) => Promise<void>;
   updateBranchSubscription: (branchId: string, planId: string, status: 'active' | 'expired' | 'trial', endDate: string) => Promise<void>;
   checkFeatureAccess: (feature: AppFeature) => boolean;
+  fetchData: () => Promise<void>;
 
   // Stats
   getStats: () => {
@@ -85,28 +86,46 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useAuth();
 
-  const [data, setData] = useState<any>({
-    tenants: [],
-    rooms: [],
-    payments: [],
-    complaints: [],
-    employees: [],
-    kycs: [],
-    announcements: [],
-    salaryPayments: [],
-    tasks: [],
-    pgConfigs: [],
-    branches: [],
-    subscriptionPlans: []
+  const [data, setData] = useState<any>(() => {
+    const cached = localStorage.getItem('elite_pg_cached_data');
+    if (cached) {
+      try {
+        return JSON.parse(cached);
+      } catch (e) {
+        console.error('Failed to parse cached data', e);
+      }
+    }
+    return {
+      tenants: [],
+      rooms: [],
+      payments: [],
+      complaints: [],
+      employees: [],
+      kycs: [],
+      announcements: [],
+      salaryPayments: [],
+      tasks: [],
+      pgConfigs: [],
+      branches: [],
+      subscriptionPlans: []
+    };
   });
+
+  const userId = user?.id;
+  const userRole = user?.role;
+  const userBranchId = user?.branchId;
 
   const fetchData = useCallback(async () => {
     // We only fetch data if user is logged in
-    if (!user) return;
+    if (!userId) {
+      setData({ tenants: [], rooms: [], payments: [], complaints: [], employees: [], kycs: [], announcements: [], salaryPayments: [], tasks: [], pgConfigs: [], branches: [], subscriptionPlans: [] });
+      localStorage.removeItem('elite_pg_cached_data');
+      return;
+    }
 
     try {
-      const isSuper = user.role === 'super';
-      const branchId = user.branchId;
+      const isSuper = userRole === 'super';
+      const branchId = userBranchId;
       const branchFilter = isSuper ? {} : { branch_id: branchId };
 
       const [
@@ -137,7 +156,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         supabase.from('pg_configs').select('*').match(branchFilter)
       ]);
 
-      setData({
+      const newData = {
         branches: (branches || []).map(b => ({
           id: b.id, name: b.name, branchName: b.branch_name, address: b.address, phone: b.phone,
           planId: b.plan_id, subscriptionStatus: b.subscription_status, subscriptionEndDate: b.subscription_end_date, createdAt: b.created_at
@@ -176,11 +195,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           branchId: c.branch_id, rules: c.rules, rolePermissions: c.role_permissions, bannerUrl: c.banner_url,
           complaintCategories: c.complaint_categories || ['Plumbing', 'Electrical', 'Internet', 'Cleaning', 'Other']
         }))
-      });
+      };
+      
+      setData(newData);
+      localStorage.setItem('elite_pg_cached_data', JSON.stringify(newData));
     } catch (e) {
       console.error(e);
     }
-  }, [user]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, userRole, userBranchId]);
 
   useEffect(() => {
     fetchData();
@@ -282,7 +305,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const addTenant = async (tenant: Omit<Tenant, 'id' | 'branchId'>, kycDoc?: { type: string, url: string }, rentAgreementDoc?: { url: string }) => {
     const branchId = user?.branchId || data.branches[0]?.id;
     if (!branchId) return;
-    const kycStatus: KYCStatus = kycDoc ? 'pending' : 'unsubmitted';
+    const isAdmin = ['super', 'admin', 'manager'].includes(user?.role || '');
+    const kycStatus: KYCStatus = kycDoc ? (isAdmin ? 'verified' : 'pending') : 'unsubmitted';
 
     const dbPayload = {
       name: tenant.name, email: tenant.email, phone: tenant.phone, room_id: tenant.roomId, bed_number: tenant.bedNumber,
@@ -301,14 +325,24 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     applyOptimistic(prev => ({ ...prev, tenants: [...prev.tenants, newTenant] }));
 
     if (createdTenant && kycDoc) {
-      await supabase.from('kyc_documents').insert({
-        tenant_id: createdTenant.id, document_type: kycDoc.type, document_url: kycDoc.url, status: 'pending', branch_id: branchId
-      });
+      if (isAdmin) {
+        await supabase.from('kyc_documents').insert({
+          tenant_id: createdTenant.id, document_type: kycDoc.type, document_url: kycDoc.url, status: 'verified', branch_id: branchId, verified_by: user?.name, verified_at: new Date().toISOString().split('T')[0]
+        });
+      } else {
+        await supabase.from('kyc_documents').insert({
+          tenant_id: createdTenant.id, document_type: kycDoc.type, document_url: kycDoc.url, status: 'pending', branch_id: branchId
+        });
+      }
     }
     toast.success('Tenant added successfully');
+    setTimeout(() => fetchData(), 1000);
   };
 
   const updateTenant = async (id: string, updates: Partial<Tenant>, kycDoc?: { type: string, url: string }, rentAgreementDoc?: { url: string }) => {
+    const isAdmin = ['super', 'admin', 'manager'].includes(user?.role || '');
+    const newKycStatus = kycDoc ? (isAdmin ? 'verified' : 'pending') : undefined;
+
     const dbUpdates: any = {};
     if (updates.name !== undefined) dbUpdates.name = updates.name;
     if (updates.email !== undefined) dbUpdates.email = updates.email;
@@ -323,14 +357,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.kycStatus !== undefined) dbUpdates.kyc_status = updates.kycStatus;
     if (updates.userId !== undefined) dbUpdates.user_id = updates.userId;
     if (rentAgreementDoc) dbUpdates.rent_agreement_url = rentAgreementDoc.url;
-    if (kycDoc) dbUpdates.kyc_status = 'pending';
+    if (kycDoc) dbUpdates.kyc_status = newKycStatus;
 
     // Optimistically update local state immediately so rent/fields reflect instantly
-    if (Object.keys(updates).length > 0 || rentAgreementDoc) {
+    if (Object.keys(updates).length > 0 || rentAgreementDoc || kycDoc) {
       applyOptimistic(prev => ({
         ...prev,
         tenants: prev.tenants.map((t: any) =>
-          t.id === id ? { ...t, ...updates, ...(rentAgreementDoc ? { rentAgreementUrl: rentAgreementDoc.url } : {}) } : t
+          t.id === id ? { ...t, ...updates, ...(rentAgreementDoc ? { rentAgreementUrl: rentAgreementDoc.url } : {}), ...(kycDoc ? { kycStatus: newKycStatus } : {}) } : t
         )
       }));
     }
@@ -341,16 +375,22 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     if (kycDoc) {
       const tenant = data.tenants.find((t: any) => t.id === id);
+      const existingKYC = data.kycs.find((k: any) => k.tenantId === id);
+      if (existingKYC) {
+        await supabase.from('kyc_documents').delete().eq('id', existingKYC.id);
+      }
       const { error: kycError } = await supabase.from('kyc_documents').insert({
-        tenant_id: id, document_type: kycDoc.type, document_url: kycDoc.url, status: 'pending', branch_id: tenant?.branchId
+        tenant_id: id, document_type: kycDoc.type, document_url: kycDoc.url, status: newKycStatus, branch_id: tenant?.branchId,
+        ...(isAdmin ? { verified_by: user?.name, verified_at: new Date().toISOString().split('T')[0] } : {})
       });
       if (kycError) { toast.error(kycError.message); }
-      else { toast.success('KYC submitted for verification!'); }
+      else { toast.success(isAdmin ? 'KYC verified and uploaded!' : 'KYC submitted for verification!'); }
       setTimeout(() => fetchData(), 500);
     }
   };
 
   const deleteTenant = async (id: string) => {
+    const targetTenant = data.tenants.find((t: any) => t.id === id);
     // Optimistically remove from local state immediately for instant UI feedback
     applyOptimistic(prev => ({
       ...prev,
@@ -361,6 +401,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }));
     toast.success('Tenant deleted successfully');
     // Cascade-delete related records in background
+    if (targetTenant?.userId) {
+      await supabase.from('users').delete().eq('id', targetTenant.userId);
+    }
     await supabase.from('payments').delete().eq('tenant_id', id);
     await supabase.from('complaints').delete().eq('tenant_id', id);
     await supabase.from('kyc_documents').delete().eq('tenant_id', id);
@@ -370,6 +413,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const addRoom = async (room: Omit<Room, 'id' | 'branchId'>) => {
     if (!user?.branchId) return;
+    applyOptimistic(prev => ({ ...prev, rooms: [...prev.rooms, { ...room, id: `temp-${Date.now()}`, branchId: user.branchId }] }));
     await refetch(supabase.from('rooms').insert({
       room_number: room.roomNumber, floor: room.floor, total_beds: room.totalBeds, occupied_beds: room.occupiedBeds,
       type: room.type, price: room.price, branch_id: user.branchId
@@ -377,6 +421,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updateRoom = async (id: string, updates: Partial<Room>) => {
+    applyOptimistic(prev => ({ ...prev, rooms: prev.rooms.map((r: any) => r.id === id ? { ...r, ...updates } : r) }));
     const dbUpdates: any = {};
     if (updates.roomNumber !== undefined) dbUpdates.room_number = updates.roomNumber;
     if (updates.floor !== undefined) dbUpdates.floor = updates.floor;
@@ -387,10 +432,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await refetch(supabase.from('rooms').update(dbUpdates).eq('id', id), 'Room updated successfully');
   };
 
-  const deleteRoom = async (id: string) => { await refetch(supabase.from('rooms').delete().eq('id', id), 'Room deleted'); };
+  const deleteRoom = async (id: string) => { 
+    applyOptimistic(prev => ({ ...prev, rooms: prev.rooms.filter((r: any) => r.id !== id) }));
+    await refetch(supabase.from('rooms').delete().eq('id', id), 'Room deleted'); 
+  };
 
   const addPayment = async (payment: Omit<Payment, 'id' | 'branchId'>) => {
     if (!user?.branchId) return;
+    applyOptimistic(prev => ({ ...prev, payments: [...prev.payments, { ...payment, id: `temp-${Date.now()}`, branchId: user.branchId }] }));
     await refetch(supabase.from('payments').insert({
       tenant_id: payment.tenantId, amount: payment.amount, late_fee: payment.lateFee, total_amount: payment.totalAmount,
       payment_date: payment.paymentDate, month: payment.month, status: payment.status, method: payment.method,
@@ -399,6 +448,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updatePayment = async (id: string, updates: Partial<Payment>) => {
+    applyOptimistic(prev => ({ ...prev, payments: prev.payments.map((p: any) => p.id === id ? { ...p, ...updates } : p) }));
     const dbUpdates: any = {};
     if (updates.tenantId !== undefined) dbUpdates.tenant_id = updates.tenantId;
     if (updates.amount !== undefined) dbUpdates.amount = updates.amount;
@@ -413,10 +463,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await refetch(supabase.from('payments').update(dbUpdates).eq('id', id), 'Payment updated');
   };
 
-  const deletePayment = async (id: string) => { await refetch(supabase.from('payments').delete().eq('id', id), 'Payment deleted'); };
+  const deletePayment = async (id: string) => { 
+    applyOptimistic(prev => ({ ...prev, payments: prev.payments.filter((p: any) => p.id !== id) }));
+    await refetch(supabase.from('payments').delete().eq('id', id), 'Payment deleted'); 
+  };
 
   const addComplaint = async (complaint: Omit<Complaint, 'id' | 'branchId'>) => {
     if (!user?.branchId) return;
+    applyOptimistic(prev => ({ ...prev, complaints: [...prev.complaints, { ...complaint, id: `temp-${Date.now()}`, branchId: user.branchId, createdAt: new Date().toISOString() }] }));
     await refetch(supabase.from('complaints').insert({
       tenant_id: complaint.tenantId, title: complaint.title, description: complaint.description, category: complaint.category,
       priority: complaint.priority, status: complaint.status, assigned_to: complaint.assignedTo || null, branch_id: user.branchId
@@ -424,6 +478,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updateComplaint = async (id: string, updates: Partial<Complaint>) => {
+    applyOptimistic(prev => ({ ...prev, complaints: prev.complaints.map((c: any) => c.id === id ? { ...c, ...updates } : c) }));
     const dbUpdates: any = {};
     if (updates.tenantId !== undefined) dbUpdates.tenant_id = updates.tenantId;
     if (updates.title !== undefined) dbUpdates.title = updates.title;
@@ -436,11 +491,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await refetch(supabase.from('complaints').update(dbUpdates).eq('id', id), 'Complaint updated');
   };
 
-  const deleteComplaint = async (id: string) => { await refetch(supabase.from('complaints').delete().eq('id', id), 'Complaint deleted'); };
+  const deleteComplaint = async (id: string) => { 
+    applyOptimistic(prev => ({ ...prev, complaints: prev.complaints.filter((c: any) => c.id !== id) }));
+    await refetch(supabase.from('complaints').delete().eq('id', id), 'Complaint deleted'); 
+  };
 
   const addEmployee = async (employee: Omit<Employee, 'id' | 'kycStatus' | 'branchId'>, kycDoc?: { type: string, url: string }) => {
     if (!user?.branchId) return;
-    const kycStatus = kycDoc ? 'pending' : 'unsubmitted';
+    const isAdmin = ['super', 'admin', 'manager'].includes(user?.role || '');
+    const kycStatus = kycDoc ? (isAdmin ? 'verified' : 'pending') : 'unsubmitted';
+    const tempId = `temp-${Date.now()}`;
+    applyOptimistic(prev => ({ ...prev, employees: [...prev.employees, { ...employee, id: tempId, branchId: user.branchId, kycStatus }] }));
     const { data: createdEm, error } = await supabase.from('employees').insert({
       user_id: employee.userId || null, name: employee.name, role: employee.role, email: employee.email, phone: employee.phone,
       salary: employee.salary, joining_date: employee.joiningDate, kyc_status: kycStatus, branch_id: user.branchId
@@ -448,14 +509,18 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (error) { toast.error(error.message); return; }
     if (createdEm && kycDoc) {
       await supabase.from('kyc_documents').insert({
-        employee_id: createdEm.id, document_type: kycDoc.type, document_url: kycDoc.url, status: 'pending', branch_id: user.branchId
+        employee_id: createdEm.id, document_type: kycDoc.type, document_url: kycDoc.url, status: kycStatus, branch_id: user.branchId,
+        ...(isAdmin ? { verified_by: user?.name, verified_at: new Date().toISOString().split('T')[0] } : {})
       });
     }
     toast.success('Employee added successfully');
-    await fetchData();
+    setTimeout(() => fetchData(), 500);
   };
 
   const updateEmployee = async (id: string, updates: Partial<Employee>, kycDoc?: { type: string, url: string }) => {
+    const isAdmin = ['super', 'admin', 'manager'].includes(user?.role || '');
+    const newKycStatus = kycDoc ? (isAdmin ? 'verified' : 'pending') : undefined;
+
     const dbUpdates: any = {};
     if (updates.name !== undefined) dbUpdates.name = updates.name;
     if (updates.role !== undefined) dbUpdates.role = updates.role;
@@ -465,13 +530,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.joiningDate !== undefined) dbUpdates.joining_date = updates.joiningDate;
     if (updates.kycStatus !== undefined) dbUpdates.kyc_status = updates.kycStatus;
     if (updates.userId !== undefined) dbUpdates.user_id = updates.userId;
-    if (kycDoc) dbUpdates.kyc_status = 'pending';
+    if (kycDoc) dbUpdates.kyc_status = newKycStatus;
 
     // Optimistically update local state immediately
-    if (Object.keys(updates).length > 0) {
+    if (Object.keys(updates).length > 0 || kycDoc) {
       applyOptimistic(prev => ({
         ...prev,
-        employees: prev.employees.map((e: any) => e.id === id ? { ...e, ...updates } : e)
+        employees: prev.employees.map((e: any) => e.id === id ? { ...e, ...updates, ...(kycDoc ? { kycStatus: newKycStatus } : {}) } : e)
       }));
     }
 
@@ -480,12 +545,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (!kycDoc) toast.success('Employee updated successfully');
 
     if (kycDoc) {
-      const e = data.employees.find((e: any) => e.id === id);
+      const eObj = data.employees.find((e: any) => e.id === id);
+      const existingKYC = data.kycs.find((k: any) => k.employeeId === id);
+      if (existingKYC) {
+        await supabase.from('kyc_documents').delete().eq('id', existingKYC.id);
+      }
       const { error: kycError } = await supabase.from('kyc_documents').insert({
-        employee_id: id, document_type: kycDoc.type, document_url: kycDoc.url, status: 'pending', branch_id: e?.branchId || user?.branchId
+        employee_id: id, document_type: kycDoc.type, document_url: kycDoc.url, status: newKycStatus, branch_id: eObj?.branchId || user?.branchId,
+        ...(isAdmin ? { verified_by: user?.name, verified_at: new Date().toISOString().split('T')[0] } : {})
       });
       if (kycError) { toast.error(kycError.message); }
-      else { toast.success('KYC submitted for verification!'); }
+      else { toast.success(isAdmin ? 'KYC verified and uploaded!' : 'KYC submitted for verification!'); }
       setTimeout(() => fetchData(), 500);
     }
   };
@@ -564,16 +634,21 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const addAnnouncement = async (announcement: Omit<Announcement, 'id' | 'branchId'>) => {
     if (!user?.branchId) return;
+    applyOptimistic(prev => ({ ...prev, announcements: [...prev.announcements, { ...announcement, id: `temp-${Date.now()}`, branchId: user.branchId, createdAt: new Date().toISOString() }] }));
     await refetch(supabase.from('announcements').insert({
       title: announcement.title, content: announcement.content, target: announcement.target,
       created_by: announcement.createdBy, branch_id: user.branchId
     }), 'Announcement published');
   };
 
-  const deleteAnnouncement = async (id: string) => { await refetch(supabase.from('announcements').delete().eq('id', id), 'Announcement deleted'); };
+  const deleteAnnouncement = async (id: string) => { 
+    applyOptimistic(prev => ({ ...prev, announcements: prev.announcements.filter((a: any) => a.id !== id) }));
+    await refetch(supabase.from('announcements').delete().eq('id', id), 'Announcement deleted'); 
+  };
 
   const addSalaryPayment = async (payment: Omit<SalaryPayment, 'id' | 'branchId'>) => {
     if (!user?.branchId) return;
+    applyOptimistic(prev => ({ ...prev, salaryPayments: [...prev.salaryPayments, { ...payment, id: `temp-${Date.now()}`, branchId: user.branchId }] }));
     await refetch(supabase.from('salary_payments').insert({
       employee_id: payment.employeeId, amount: payment.amount, month: payment.month, payment_date: payment.paymentDate,
       status: payment.status, method: payment.method, transaction_id: payment.transactionId || null, branch_id: user.branchId
@@ -581,6 +656,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updateSalaryPayment = async (id: string, updates: Partial<SalaryPayment>) => {
+    applyOptimistic(prev => ({ ...prev, salaryPayments: prev.salaryPayments.map((p: any) => p.id === id ? { ...p, ...updates } : p) }));
     const dbUpdates: any = {};
     if (updates.amount !== undefined) dbUpdates.amount = updates.amount;
     if (updates.month !== undefined) dbUpdates.month = updates.month;
@@ -593,6 +669,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const addTask = async (task: Omit<Task, 'id' | 'branchId'>) => {
     if (!user?.branchId) return;
+    applyOptimistic(prev => ({ ...prev, tasks: [...prev.tasks, { ...task, id: `temp-${Date.now()}`, branchId: user.branchId, createdAt: new Date().toISOString() }] }));
     await refetch(supabase.from('tasks').insert({
       employee_id: task.employeeId, title: task.title, description: task.description, status: task.status,
       priority: task.priority, due_date: task.dueDate, completed_at: task.completedAt || null, branch_id: user.branchId
@@ -600,6 +677,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updateTask = async (id: string, updates: Partial<Task>) => {
+    applyOptimistic(prev => ({ ...prev, tasks: prev.tasks.map((t: any) => t.id === id ? { ...t, ...updates } : t) }));
     const dbUpdates: any = {};
     if (updates.employeeId !== undefined) dbUpdates.employee_id = updates.employeeId;
     if (updates.title !== undefined) dbUpdates.title = updates.title;
@@ -611,7 +689,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await refetch(supabase.from('tasks').update(dbUpdates).eq('id', id), 'Task updated');
   };
 
-  const deleteTask = async (id: string) => { await refetch(supabase.from('tasks').delete().eq('id', id), 'Task deleted'); };
+  const deleteTask = async (id: string) => { 
+    applyOptimistic(prev => ({ ...prev, tasks: prev.tasks.filter((t: any) => t.id !== id) }));
+    await refetch(supabase.from('tasks').delete().eq('id', id), 'Task deleted'); 
+  };
 
   const updatePGConfig = async (updates: Partial<PGConfig>) => {
     if (!user?.branchId) return;
@@ -619,6 +700,22 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.rules !== undefined) dbUpdates.rules = updates.rules;
     if (updates.rolePermissions !== undefined) dbUpdates.role_permissions = updates.rolePermissions;
     if (updates.complaintCategories !== undefined) dbUpdates.complaint_categories = updates.complaintCategories;
+
+    // Optimistically update PG config to prevent UI lagging on changes
+    applyOptimistic(prev => {
+      const existing = prev.pgConfigs.find((c: any) => c.branchId === user.branchId);
+      if (existing) {
+        return {
+          ...prev,
+          pgConfigs: prev.pgConfigs.map((c: any) => c.branchId === user.branchId ? { ...c, ...updates } : c)
+        };
+      } else {
+        return {
+          ...prev,
+          pgConfigs: [...prev.pgConfigs, { branchId: user.branchId, rules: updates.rules || [], rolePermissions: updates.rolePermissions || [], complaintCategories: updates.complaintCategories || [] }]
+        };
+      }
+    });
 
     // Check if PG Config already exists
     const existing = data.pgConfigs.find((c: any) => c.branchId === user.branchId);
@@ -680,13 +777,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }).eq('id', branchId), 'Subscription updated');
   };
 
-  const getStats = () => {
+  const computedStats = useMemo(() => {
     const currentMonth = new Date().toISOString().substring(0, 7);
-    const payments = filteredData.payments;
-    const rooms = filteredData.rooms;
-    const tenants = filteredData.tenants;
-    const kycs = filteredData.kycs;
-    const complaints = filteredData.complaints;
+    const payments = filteredData.payments || [];
+    const rooms = filteredData.rooms || [];
+    const tenants = filteredData.tenants || [];
+    const kycs = filteredData.kycs || [];
+    const complaints = filteredData.complaints || [];
 
     const monthlyRevenue = payments
       .filter((p: Payment) => p.month === currentMonth && p.status === 'paid')
@@ -716,7 +813,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
 
     const floors = [...new Set(rooms.map((r: Room) => r.floor))].sort();
-    const occupancyByFloor = rooms.length > 0 && floors.length > 0 ? floors.map(floor => {
+    const occupancyByFloor = rooms.length > 0 && floors.length > 0 ? floors.map((floor) => {
       const floorRooms = rooms.filter((r: Room) => r.floor === floor);
 
       const floorRoomIds = floorRooms.map((r: Room) => r.id);
@@ -738,7 +835,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       revenueHistory,
       occupancyByFloor
     };
-  };
+  }, [filteredData]);
+
+  const getStats = useCallback(() => computedStats, [computedStats]);
 
   return (
     <AppContext.Provider value={{
@@ -757,6 +856,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       addSubscriptionPlan, updateSubscriptionPlan, deleteSubscriptionPlan,
       updateBranchSubscription,
       checkFeatureAccess,
+      fetchData,
       getStats
     }}>
       {children}

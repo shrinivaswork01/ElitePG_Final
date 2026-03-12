@@ -193,7 +193,7 @@ export const EmployeesPage = () => {
 
     const employee = employees.find(emp => emp.id === salaryFormData.employeeId);
 
-    // For cash payments, record directly without Razorpay
+    // For cash payments, record directly
     if (salaryFormData.method === 'Cash') {
       addSalaryPayment({
         ...salaryFormData,
@@ -205,60 +205,23 @@ export const EmployeesPage = () => {
       return;
     }
 
-    const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY;
-    if (!razorpayKey || razorpayKey === 'rzp_test_YOUR_KEY') {
-      toast.error('Razorpay key is not configured. Please add VITE_RAZORPAY_KEY to .env file.');
-      return;
-    }
+    // For UPI / Bank Transfer payments, launch a direct UPI deep intent
+    const upiId = employee?.phone ? `${employee.phone.replace(/\D/g, '').slice(-10)}@ybl` : 'merchant@upi';
+    const encodedName = encodeURIComponent(employee?.name || 'Employee');
+    const uUrl = `upi://pay?pa=${upiId}&pn=${encodedName}&am=${salaryFormData.amount}&cu=INR&tn=Salary Payment - ${salaryFormData.month}`;
+    
+    // Attempt to open the UPI app natively on the user's mobile device
+    window.location.href = uUrl;
 
-    if (!(window as any).Razorpay) {
-      toast.error('Razorpay SDK failed to load. Please check your internet connection.');
-      return;
-    }
-
-    const options = {
-      key: razorpayKey,
-      amount: salaryFormData.amount * 100, // Amount in paise
-      currency: 'INR',
-      name: 'Elite PG',
-      description: `Salary for ${employee?.name || 'Employee'} - ${salaryFormData.month}`,
-      handler: function (response: any) {
-        addSalaryPayment({
-          ...salaryFormData,
-          status: 'paid',
-          transactionId: response.razorpay_payment_id
-        });
-        setIsSalaryModalOpen(false);
-        toast.success('Salary paid successfully via Razorpay');
-      },
-      prefill: {
-        name: employee?.name,
-        email: employee?.email,
-        // Pre-fill employee phone number so Razorpay suggests UPI to their mobile
-        contact: employee?.phone ? `+91${employee.phone.replace(/\D/g, '').slice(-10)}` : undefined,
-      },
-      config: {
-        display: {
-          blocks: {
-            banks: {
-              name: 'UPI via Mobile Number',
-              instruments: [{ method: 'upi' }]
-            }
-          },
-          sequence: ['block.banks'],
-          preferences: { show_default_blocks: true }
-        }
-      },
-      theme: {
-        color: '#4f46e5',
-      },
-    };
-
-    const rzp1 = new (window as any).Razorpay(options);
-    rzp1.on('payment.failed', function (response: any) {
-      toast.error('Payment failed: ' + response.error.description);
+    // Record the payment
+    addSalaryPayment({
+      ...salaryFormData,
+      status: 'paid',
+      transactionId: `upi-${Date.now()}`
     });
-    rzp1.open();
+    
+    setIsSalaryModalOpen(false);
+    toast.success('UPI intent launched. Recorded salary payment successfully.');
   };
 
 
@@ -566,8 +529,11 @@ export const EmployeesPage = () => {
                       <input
                         required
                         type="tel"
+                        pattern="[0-9]{10}"
+                        maxLength={10}
+                        title="Please enter a valid 10-digit mobile number"
                         value={formData.phone}
-                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                        onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '') })}
                         className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                       />
                     </div>
@@ -1044,7 +1010,7 @@ export const EmployeesPage = () => {
                   </div>
                 </div>
                 <button type="submit" className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all mt-4">
-                  {salaryFormData.method === 'Cash' ? 'Record Cash Payment' : 'Pay via Razorpay →'}
+                  {salaryFormData.method === 'Cash' ? 'Record Cash Payment' : 'Pay via UPI →'}
                 </button>
               </form>
             </motion.div>

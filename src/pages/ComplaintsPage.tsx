@@ -65,12 +65,22 @@ export const ComplaintsPage = () => {
     if (editingComplaint) {
       updateComplaint(editingComplaint.id, formData);
     } else {
-      const tenant = tenants.find(t => t.userId === user?.id);
-      if (tenant) {
-        addComplaint({
-          ...formData as Omit<Complaint, 'id'>,
-          tenantId: tenant.id,
-        });
+      if (user?.role === 'tenant') {
+        const tenant = tenants.find(t => t.userId === user?.id);
+        if (tenant) {
+          addComplaint({
+            ...formData as Omit<Complaint, 'id'>,
+            tenantId: tenant.id,
+          });
+        } else {
+          import('react-hot-toast').then(m => m.default.error("Could not find your tenant profile."));
+        }
+      } else {
+        if (!formData.tenantId) {
+          import('react-hot-toast').then(m => m.default.error("Please select a tenant."));
+          return;
+        }
+        addComplaint(formData as Omit<Complaint, 'id'>);
       }
     }
     handleCloseModal();
@@ -123,7 +133,7 @@ export const ComplaintsPage = () => {
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Complaints</h2>
           <p className="text-gray-500 dark:text-gray-400">Track and resolve resident issues.</p>
         </div>
-        {user?.role === 'tenant' && (
+        {user?.role !== 'super' && (
           <button
             onClick={() => setIsAddModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
@@ -329,6 +339,25 @@ export const ComplaintsPage = () => {
                       placeholder="Brief title of the issue"
                     />
                   </div>
+                  {(user?.role === 'admin' || user?.role === 'manager' || user?.role === 'caretaker') && !editingComplaint && (
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Reporting For Tenant</label>
+                      <select
+                        required
+                        value={formData.tenantId}
+                        onChange={(e) => setFormData({ ...formData, tenantId: e.target.value })}
+                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                      >
+                        <option value="">Select Tenant</option>
+                        {tenants.map(t => {
+                          const room = rooms.find(r => r.id === t.roomId);
+                          return (
+                            <option key={t.id} value={t.id}>{t.name} (Room {room?.roomNumber || 'N/A'})</option>
+                          );
+                        })}
+                      </select>
+                    </div>
+                  )}
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Category</label>
                     <select

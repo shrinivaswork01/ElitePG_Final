@@ -726,8 +726,11 @@ export const SuperAdminPage = () => {
                   <input
                     required
                     type="tel"
+                    pattern="[0-9]{10}"
+                    maxLength={10}
+                    title="Please enter a valid 10-digit mobile number"
                     value={branchForm.phone}
-                    onChange={(e) => setBranchForm({ ...branchForm, phone: e.target.value })}
+                    onChange={(e) => setBranchForm({ ...branchForm, phone: e.target.value.replace(/\D/g, '') })}
                     className="w-full px-4 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
                     placeholder="Contact number"
                   />

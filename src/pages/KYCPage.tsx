@@ -447,6 +447,18 @@ export const KYCPage = () => {
                             <p className="text-sm text-gray-600 dark:text-gray-400">{selectedKYC.rejectionReason}</p>
                           </div>
                         )}
+                        {selectedKYC.status === 'rejected' && (
+                          <button
+                            onClick={() => {
+                              handleDelete(selectedKYC.id);
+                              setSelectedKYC(null);
+                            }}
+                            className="w-full mt-4 flex items-center justify-center gap-2 px-4 py-2.5 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 text-sm font-bold rounded-xl border border-rose-200 dark:border-rose-500/20 hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-all"
+                          >
+                            <XCircle className="w-4 h-4" />
+                            Delete Rejected Record
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>

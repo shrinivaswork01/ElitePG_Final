@@ -136,7 +136,7 @@ export const PaymentsPage = () => {
         }
 
         const options = {
-          key: 'rzp_test_SP0eWvOa0JBuER',
+          key: 'rzp_test_SPuhgTcTc6kl88', // User provided key
           amount: totalAmount * 100, // Amount in paise
           currency: 'INR',
           name: 'ElitePG',
