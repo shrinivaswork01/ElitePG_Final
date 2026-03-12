@@ -7,6 +7,7 @@ import { cn } from '../utils';
 import { SubscriptionPlan } from '../types';
 import { format, addMonths } from 'date-fns';
 import toast from 'react-hot-toast';
+import { loadRazorpayScript } from '../utils/razorpay';
 
 export const SubscriptionPage = () => {
   const { subscriptionPlans, currentBranch, currentPlan, updateBranchSubscription } = useApp();
@@ -25,31 +26,56 @@ export const SubscriptionPage = () => {
   }
 
   const handleDirectUpgrade = async (plan: SubscriptionPlan) => {
+    if (!currentBranch || !user) return;
+
     setIsProcessing(true);
 
-    if (currentBranch && user) {
-      const superAdminPhone = '9999999999';
-      const upiId = `${superAdminPhone}@upi`;
-      const upiUrl = `upi://pay?pa=${upiId}&pn=ElitePG%20SuperAdmin&am=${plan.price}&cu=INR&tn=Upgrade%20to%20${encodeURIComponent(plan.name)}`;
+    const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY || 'rzp_test_SPuhgTcTc6kl88';
 
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      if (isMobile) {
-        window.location.href = upiUrl;
-      } else {
-        toast(`Please scan or pay ₹${plan.price} to UPI ID: ${upiId}`, { icon: '💰' });
-      }
+    const scriptLoaded = await loadRazorpayScript();
+    if (!scriptLoaded) {
+      toast.error('Razorpay SDK failed to load. Check your internet connection.');
+      setIsProcessing(false);
+      return;
+    }
 
-      // Simulate payment completion and optimistically upgrade
-      setTimeout(() => {
+    const options = {
+      key: razorpayKey,
+      amount: plan.price * 100, // in paise
+      currency: 'INR',
+      name: 'ElitePG',
+      description: `Upgrade to ${plan.name} Plan`,
+      image: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&q=80&w=150&h=150',
+      handler: function (response: any) {
         const nextMonth = format(addMonths(new Date(), 1), 'yyyy-MM-dd');
         updateBranchSubscription(currentBranch.id, plan.id, 'active', nextMonth);
         setIsProcessing(false);
-        toast.success(`Plan upgraded to ${plan.name}. Please ensure your payment to the SuperAdmin was successful!`);
-      }, 2500);
+        toast.success(`🎉 Plan upgraded to ${plan.name}! Transaction ID: ${response.razorpay_payment_id}`);
+      },
+      prefill: {
+        name: user.name || 'Admin',
+        email: user.email || '',
+        contact: '',
+      },
+      notes: {
+        plan_id: plan.id,
+        branch_id: currentBranch.id,
+      },
+      theme: { color: '#4F46E5' },
+      modal: {
+        ondismiss: () => {
+          setIsProcessing(false);
+          toast('Payment cancelled.', { icon: 'ℹ️' });
+        },
+      },
+    };
 
-    } else {
+    const rzp = new (window as any).Razorpay(options);
+    rzp.on('payment.failed', (response: any) => {
       setIsProcessing(false);
-    }
+      toast.error(`Payment failed: ${response.error.description}`);
+    });
+    rzp.open();
   };
 
   return (
