@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useMemo, useCallback } from 'react';
-import { Tenant, Room, Payment, Complaint, Employee, KYCData, Announcement, SalaryPayment, Task, PGConfig, PGBranch, RolePermissions, SubscriptionPlan, AppFeature, KYCStatus } from '../types';
+import { Tenant, Room, Payment, Complaint, Employee, KYCData, Announcement, SalaryPayment, Task, PGConfig, PGBranch, RolePermissions, SubscriptionPlan, AppFeature, KYCStatus, UserInvite } from '../types';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import toast from 'react-hot-toast';
@@ -17,6 +17,7 @@ interface AppContextType {
   pgConfig: PGConfig | null;
   branches: PGBranch[];
   subscriptionPlans: SubscriptionPlan[];
+  userInvites: UserInvite[];
 
   // Actions
   addTenant: (tenant: Omit<Tenant, 'id' | 'branchId'>, kycDoc?: { type: string, url: string }, rentAgreementDoc?: { url: string }) => Promise<void>;
@@ -107,7 +108,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       tasks: [],
       pgConfigs: [],
       branches: [],
-      subscriptionPlans: []
+      subscriptionPlans: [],
+      userInvites: []
     };
   });
 
@@ -140,7 +142,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         { data: announcements },
         { data: salaryPayments },
         { data: tasks },
-        { data: pgConfigs }
+        { data: pgConfigs },
+        { data: userInvites }
       ] = await Promise.all([
         supabase.from('pg_branches').select('*').match(isSuper ? {} : { id: branchId }),
         supabase.from('subscription_plans').select('*'),
@@ -153,7 +156,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         supabase.from('announcements').select('*').match(branchFilter),
         supabase.from('salary_payments').select('*').match(branchFilter),
         supabase.from('tasks').select('*').match(branchFilter),
-        supabase.from('pg_configs').select('*').match(branchFilter)
+        supabase.from('pg_configs').select('*').match(branchFilter),
+        supabase.from('user_invites').select('*').match(branchFilter)
       ]);
 
       const newData = {
@@ -194,6 +198,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         pgConfigs: (pgConfigs || []).map(c => ({
           branchId: c.branch_id, rules: c.rules, rolePermissions: c.role_permissions, bannerUrl: c.banner_url,
           complaintCategories: c.complaint_categories || ['Plumbing', 'Electrical', 'Internet', 'Cleaning', 'Other']
+        })),
+        userInvites: (userInvites || []).map(i => ({
+          id: i.id, inviteCode: i.invite_code, email: i.email, branchId: i.branch_id, role: i.role as any, status: i.status as any, createdAt: i.created_at
         }))
       };
       
@@ -235,7 +242,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // Filtered data based on branchId
   const filteredData = useMemo(() => {
     if (!user) return {
-      tenants: [], rooms: [], payments: [], complaints: [], employees: [], kycs: [], announcements: [], salaryPayments: [], tasks: [], pgConfig: null, subscriptionPlans: [], branches: []
+      tenants: [], rooms: [], payments: [], complaints: [], employees: [], kycs: [], announcements: [], salaryPayments: [], tasks: [], pgConfig: null, subscriptionPlans: [], branches: [], userInvites: []
     };
 
     if (user.role === 'super') return {
@@ -262,6 +269,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       pgConfig: data.pgConfigs.find((c: PGConfig) => c.branchId === branchId) || null,
       subscriptionPlans: data.subscriptionPlans,
       branches: data.branches,
+      userInvites: data.userInvites,
       currentBranch: branch,
       currentPlan: plan
     };
@@ -735,6 +743,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (bData) {
       // Create initial config
       await supabase.from('pg_configs').insert({ branch_id: bData.id, rules: [], role_permissions: [] });
+      
+      // Auto-generate a random 8-character invite code for this branch
+      const randomCode = Math.random().toString(36).substring(2, 10).toUpperCase();
+      await supabase.from('user_invites').insert({
+        invite_code: randomCode,
+        branch_id: bData.id,
+        role: 'tenant',
+        status: 'pending'
+      });
+      
       toast.success('Branch added successfully');
       await fetchData();
     }

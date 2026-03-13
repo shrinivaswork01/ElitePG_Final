@@ -49,7 +49,6 @@ export const Layout = ({ children }: LayoutProps) => {
     { name: 'Employees', href: '/employees', icon: UserCog, roles: ['admin', 'manager', 'caretaker', 'cleaner', 'security'] },
     { name: 'Reports', href: '/reports', icon: BarChart3, roles: ['admin', 'manager'] },
     { name: 'Broadcast', href: '/broadcast', icon: Megaphone, roles: ['admin'] },
-    { name: 'Authorize Users', href: '/authorize', icon: ShieldCheck, roles: ['admin'] },
     { name: 'Subscription', href: '/subscription', icon: Zap, roles: ['admin'] },
     { name: 'Settings', href: '/settings', icon: UserCog, roles: ['admin'] },
     { name: 'PG Branches', href: '/branches', icon: Building2, roles: ['super'] },

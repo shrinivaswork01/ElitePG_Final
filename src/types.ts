@@ -50,6 +50,16 @@ export interface User {
   google_id?: string;
 }
 
+export interface UserInvite {
+  id: string;
+  inviteCode: string;
+  email?: string;
+  branchId: string;
+  role: UserRole;
+  status: 'pending' | 'accepted';
+  createdAt: string;
+}
+
 export type KYCStatus = 'unsubmitted' | 'pending' | 'verified' | 'rejected';
 
 export interface KYCData {

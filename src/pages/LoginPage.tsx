@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Shield,
   Lock,
-  User,
   ArrowRight,
   ArrowLeft,
   Quote,
@@ -34,12 +33,16 @@ const GoogleIcon = () => (
   </svg>
 );
 
-export const LoginPage = () => {
+interface LoginPageProps {
+  isSignUp?: boolean;
+}
+
+export const LoginPage = ({ isSignUp = false }: LoginPageProps) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isRegistering, setIsRegistering] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(isSignUp);
   const [regData, setRegData] = useState({
     username: '',
     name: '',
@@ -57,6 +60,16 @@ export const LoginPage = () => {
   const { login, register, loginWithGoogle, setGoogleUserPassword, user, isAuthenticated, googleAuthStatus, clearGoogleAuthStatus } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
+
+  const [inviteCode, setInviteCode] = useState(searchParams.get('invite') || '');
+
+  // Pre-switch to registration mode if there's an invite link
+  React.useEffect(() => {
+    if (searchParams.get('invite') && !isRegistering) {
+      setIsRegistering(true);
+    }
+  }, [searchParams]);
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,12 +97,10 @@ export const LoginPage = () => {
   // Watch for Google auth result after OAuth redirect
   React.useEffect(() => {
     if (googleAuthStatus === 'user_not_found') {
-      // On sign-in mode: user doesn't have an account → switch to sign-up
       setIsRegistering(true);
       setError('No account found. Please create an account first.');
       clearGoogleAuthStatus();
     } else if (googleAuthStatus === 'user_already_exists') {
-      // On sign-up mode: user already has an account → switch to sign-in
       setIsRegistering(false);
       setError('An account with this Google email already exists. Please sign in.');
       clearGoogleAuthStatus();
@@ -111,19 +122,24 @@ export const LoginPage = () => {
 
     try {
       if (isRegistering) {
+        if (!inviteCode) {
+           setError('An invite code is required to register.');
+           setIsLoading(false);
+           return;
+        }
+
         const result = await register({
           username: regData.username,
           name: regData.name,
           email: regData.email,
-          role: regData.role
-        }, regData.password);
+          role: regData.role,
+          inviteCode: inviteCode
+        } as any, regData.password);
 
         if (result?.success) {
-          toast.success('Registration successful! Please wait for an admin to authorize your account.', {
-            duration: 6000,
-          });
+          toast.success('Registration successful!', { duration: 6000 });
           setIsRegistering(false);
-          setUsername(regData.username); // Pre-fill for login
+          setUsername(regData.username);
         } else if (result?.existingUser) {
           const msg = result.message || 'Account already exists. Please login.';
           setError(msg);
@@ -168,7 +184,6 @@ export const LoginPage = () => {
       const result = await setGoogleUserPassword(username, newPassword);
       if (result.success) {
         toast.success('Password set successfully!');
-        // Automatically log in after setting password
         const loginResult = await login(username, newPassword);
         if (loginResult.success) {
           toast.success('Logged in successfully!');
@@ -176,7 +191,6 @@ export const LoginPage = () => {
           const from = fromPath && fromPath !== '/login' ? fromPath : '/';
           navigate(from, { replace: true });
         } else {
-          console.warn('Auto-login failed after password setup:', loginResult.message);
           setIsSettingPassword(false);
           setPassword(newPassword);
           toast('Please sign in with your new password.');
@@ -196,7 +210,6 @@ export const LoginPage = () => {
 
   return (
     <div className="h-screen w-screen bg-[#0a0a0a] flex items-center justify-center p-4 relative overflow-hidden font-sans">
-      {/* Immersive Background Gradients */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-pink-600/20 blur-[120px] rounded-full animate-pulse" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-orange-600/20 blur-[120px] rounded-full animate-pulse delay-700" />
@@ -207,148 +220,151 @@ export const LoginPage = () => {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
-        className="w-full max-w-5xl h-[92vh] max-h-[720px] glass-card rounded-[32px] lg:rounded-[40px] shadow-2xl overflow-hidden flex flex-col lg:flex-row relative z-10"
+        className="w-full max-w-5xl h-[95vh] max-h-[850px] lg:h-[90vh] scale-90 lg:scale-[0.95] origin-center glass-card rounded-[32px] lg:rounded-[40px] shadow-2xl overflow-hidden flex flex-col lg:flex-row relative z-10"
       >
-        {/* Left Side: Login Form */}
-        <div className="w-full lg:w-[45%] p-5 lg:p-8 flex flex-col justify-center overflow-hidden">
-          <div className="mb-8">
+        <div className="w-full lg:w-[45%] p-6 lg:p-8 flex flex-col justify-center overflow-hidden">
+          <div className="mb-4 lg:mb-6 shrink-0">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-8 h-8 lg:w-10 lg:h-10 bg-white/10 rounded-xl flex items-center justify-center border border-white/10 shrink-0">
-                <Shield className="w-5 h-5 lg:w-6 lg:h-6 text-white" />
+              <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center border border-white/10 shrink-0">
+                <Shield className="w-6 h-6 text-white" />
               </div>
-              <h1 className="text-xl lg:text-2xl font-black text-white tracking-tight font-display">
+              <h1 className="text-2xl font-black text-white tracking-tight font-display">
                 Elite<span className="text-indigo-500">PG</span>
               </h1>
             </div>
-            <h2 className="text-xl lg:text-2xl font-bold text-white mb-1 tracking-tight">
-              {isRegistering ? 'Create Account' : (isSettingPassword ? 'Set Password' : 'Welcome back')}
+            <h2 className="text-2xl font-bold text-white mb-1 tracking-tight">
+              {isSettingPassword ? 'Set Password' : (isRegistering ? 'Create Account' : 'Welcome back')}
             </h2>
-            <p className="text-gray-400 font-medium text-[10px] lg:text-xs">
+            <p className="text-gray-400 font-medium text-xs">
               {isSettingPassword ? (setupInstructions || 'Create a password for your account') : (isRegistering ? 'Join the ElitePG community' : 'Please Enter your Account details')}
             </p>
           </div>
 
-          <form onSubmit={isSettingPassword ? handleSetPassword : handleSubmit} className="space-y-3 lg:space-y-4 flex-1 flex flex-col justify-center">
+          <form onSubmit={isSettingPassword ? handleSetPassword : handleSubmit} className="space-y-4 shrink-0">
             {isSettingPassword ? (
-              <div className="space-y-3 lg:space-y-4">
+              <div className="space-y-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] lg:text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Account Email</label>
+                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Account Email</label>
                   <input
                     type="text"
                     disabled
                     value={username}
-                    className="w-full bg-black/20 border border-white/5 rounded-xl lg:rounded-2xl py-2.5 lg:py-3 px-4 lg:px-5 text-sm lg:text-base text-gray-500 cursor-not-allowed transition-all"
+                    className="w-full bg-black/20 border border-white/5 rounded-2xl py-3 px-5 text-base text-gray-500 cursor-not-allowed"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] lg:text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">New Password</label>
+                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">New Password</label>
                   <input
                     type="password"
                     required
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    className="w-full bg-black/40 border border-white/5 rounded-xl lg:rounded-2xl py-2.5 lg:py-3 px-4 lg:px-5 text-sm lg:text-base text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 inner-shadow-dark transition-all"
+                    className="w-full bg-black/40 border border-white/5 rounded-2xl py-3 px-5 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 transition-all font-sans"
                     minLength={6}
                   />
-                  <p className="text-[9px] lg:text-[10px] text-gray-500 ml-1">This will enable email/password login for your account in the future.</p>
                 </div>
               </div>
             ) : isRegistering ? (
-              <div className="space-y-2 lg:space-y-3">
+              <div className="space-y-3">
                 <div className="space-y-1">
-                  <label className="text-[9px] lg:text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Full Name</label>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Full Name</label>
                   <input
                     type="text"
                     required
                     value={regData.name}
                     onChange={(e) => setRegData({ ...regData, name: e.target.value })}
-                    className="w-full bg-black/40 border border-white/5 rounded-xl lg:rounded-2xl py-2 px-4 text-xs lg:text-sm text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 inner-shadow-dark transition-all"
+                    className="w-full bg-black/40 border border-white/5 rounded-xl py-2 px-4 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 transition-all"
                     placeholder="John Doe"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[9px] lg:text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Username / Email</label>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Invite Code <span className="text-[8px] opacity-70">(Required)</span></label>
+                  <input
+                    type="text"
+                    required
+                    value={inviteCode}
+                    onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                    className="w-full bg-black/40 border border-white/5 rounded-xl py-2 px-4 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 transition-all uppercase tracking-wider font-mono font-bold"
+                    placeholder="ENTER CODE"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Email / Username</label>
                   <input
                     type="text"
                     required
                     value={regData.username}
                     onChange={(e) => setRegData({ ...regData, username: e.target.value, email: e.target.value })}
-                    className="w-full bg-black/40 border border-white/5 rounded-xl lg:rounded-2xl py-2 px-4 text-xs lg:text-sm text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 inner-shadow-dark transition-all"
+                    className="w-full bg-black/40 border border-white/5 rounded-xl py-2 px-4 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 transition-all"
                     placeholder="johndoe@example.com"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[9px] lg:text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Password</label>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Password</label>
                   <input
                     type="password"
                     required
                     value={regData.password}
                     onChange={(e) => setRegData({ ...regData, password: e.target.value })}
-                    className="w-full bg-black/40 border border-white/5 rounded-xl lg:rounded-2xl py-2 px-4 text-xs lg:text-sm text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 inner-shadow-dark transition-all"
+                    className="w-full bg-black/40 border border-white/5 rounded-xl py-2 px-4 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 transition-all"
                     placeholder="••••••••"
                   />
                 </div>
               </div>
             ) : (
-              <div className="space-y-2 lg:space-y-3">
+              <div className="space-y-4">
                 <div className="space-y-1">
-                  <label className="text-[9px] lg:text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Email / Username</label>
-                  <div className="relative group">
-                    <input
-                      type="text"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      placeholder="Johndoe@gmail.com"
-                      className="w-full bg-black/40 border border-white/5 rounded-xl lg:rounded-2xl py-2 lg:py-2.5 px-4 text-xs lg:text-sm text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 inner-shadow-dark transition-all"
-                      required
-                    />
-                  </div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Email / Username</label>
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="Johndoe@gmail.com"
+                    className="w-full bg-black/40 border border-white/5 rounded-xl py-2.5 px-4 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 transition-all"
+                    required
+                  />
                 </div>
-
                 <div className="space-y-1">
-                  <label className="text-[9px] lg:text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Password</label>
-                  <div className="relative group">
-                    <input
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className="w-full bg-black/40 border border-white/5 rounded-xl lg:rounded-2xl py-2 lg:py-2.5 px-4 text-xs lg:text-sm text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 inner-shadow-dark transition-all"
-                    />
-                  </div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Password</label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full bg-black/40 border border-white/5 rounded-xl py-2.5 px-4 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 transition-all"
+                    required
+                  />
                 </div>
               </div>
             )}
 
-            <div className="flex items-center justify-end text-sm">
-              <button
-                type="button"
-                onClick={() => setShowForgotPassword(true)}
-                className="text-indigo-400 hover:text-white underline underline-offset-4 transition-colors"
-              >
-                Forgot Password?
-              </button>
-            </div>
+            {!isSettingPassword && !isRegistering && (
+                <div className="flex items-center justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setShowForgotPassword(true)}
+                    className="text-indigo-400 hover:text-white text-xs underline underline-offset-4 transition-colors"
+                  >
+                    Forgot Password?
+                  </button>
+                </div>
+            )}
 
             {error && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-4"
-              >
-                <p className="text-rose-400 text-sm font-bold text-center">{error}</p>
-              </motion.div>
+              <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-3">
+                <p className="text-rose-400 text-xs font-bold text-center">{error}</p>
+              </div>
             )}
 
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:opacity-90 text-white font-bold py-2.5 lg:py-3 mt-1 lg:mt-2 rounded-2xl lg:rounded-3xl transition-all shadow-xl shadow-indigo-600/20 active:scale-[0.98] disabled:opacity-50 text-xs lg:text-sm"
+              className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:opacity-90 text-white font-bold py-3 mt-2 rounded-2xl transition-all shadow-xl shadow-indigo-600/20 active:scale-[0.98] disabled:opacity-50 text-sm"
             >
               {isLoading ? 'Processing...' : (isSettingPassword ? 'Save Password' : (isRegistering ? 'Create Account' : 'Sign in'))}
             </button>
 
-            <div className="text-center">
+            <div className="text-center pt-1">
               <button
                 type="button"
                 onClick={() => {
@@ -359,24 +375,29 @@ export const LoginPage = () => {
                   }
                   setError('');
                 }}
-                className="text-gray-400 hover:text-white text-[10px] lg:text-xs font-medium transition-colors"
+                className="text-gray-400 hover:text-white text-xs font-medium transition-colors"
               >
                 {isSettingPassword ? 'Back to Sign in' : (isRegistering ? 'Already have an account? Sign in' : "Don't have an account? Sign up")}
               </button>
             </div>
           </form>
 
-          <div className="mt-4 lg:mt-6 flex flex-col items-center gap-3 lg:gap-4">
+          <div className="mt-4 lg:mt-6 flex flex-col items-center gap-3 shrink-0 pb-4">
             <div className="flex items-center gap-4 w-full">
               <div className="h-px flex-1 bg-white/5" />
-              <span className="text-[9px] lg:text-[10px] text-gray-600 font-bold uppercase tracking-[0.3em] whitespace-nowrap">Or continue with</span>
+              <span className="text-[10px] text-gray-600 font-bold uppercase tracking-[0.3em] whitespace-nowrap">Or continue with</span>
               <div className="h-px flex-1 bg-white/5" />
             </div>
 
             <button
               type="button"
-              onClick={() => loginWithGoogle(isRegistering ? 'signup' : 'login')}
-              className="w-full h-9 lg:h-11 rounded-2xl lg:rounded-3xl bg-white flex items-center justify-center gap-3 hover:bg-gray-50 transition-all shadow-lg active:scale-[0.98] font-semibold text-gray-900 text-xs lg:text-sm"
+              onClick={() => {
+                if (inviteCode) {
+                  sessionStorage.setItem('elitepg_invite_code', inviteCode);
+                }
+                loginWithGoogle(isRegistering ? 'signup' : 'login');
+              }}
+              className="w-full h-12 rounded-2xl bg-white flex items-center justify-center gap-3 hover:bg-gray-50 transition-all shadow-lg active:scale-[0.98] font-semibold text-gray-900 text-sm"
             >
               <GoogleIcon />
               {isRegistering ? 'Sign up with Google' : 'Continue with Google'}
@@ -384,9 +405,7 @@ export const LoginPage = () => {
           </div>
         </div>
 
-        {/* Right Side: Marketing/Testimonial */}
-        <div className="hidden lg:flex w-[55%] bg-black/40 relative p-8 lg:p-12 pb-16 lg:pb-20 flex-col justify-between border-l border-white/5 overflow-hidden">
-          {/* Decorative Star/Geometric Shape */}
+        <div className="hidden lg:flex w-[55%] bg-black/40 relative p-12 flex-col justify-between border-l border-white/5 overflow-hidden">
           <div className="absolute top-1/2 right-[-10%] -translate-y-1/2 w-[400px] h-[400px] opacity-20 pointer-events-none">
             <svg viewBox="0 0 200 200" className="w-full h-full text-indigo-500 animate-[spin_60s_linear_infinite]">
               <path fill="currentColor" d="M100 0 L110 90 L200 100 L110 110 L100 200 L90 110 L0 100 L90 90 Z" />
@@ -394,41 +413,40 @@ export const LoginPage = () => {
           </div>
 
           <div className="relative z-10 flex-1 flex flex-col justify-center">
-            <h2 className="text-2xl lg:text-4xl font-bold text-white mb-4 lg:mb-6 leading-[1.1] tracking-tight">
+            <h2 className="text-4xl font-bold text-white mb-6 leading-[1.1] tracking-tight">
               What's our <br /> Residents Said.
             </h2>
-            <Quote className="w-5 h-5 lg:w-8 lg:h-8 text-white/20 mb-2 lg:mb-4" />
-            <p className="text-sm lg:text-lg text-gray-300 font-medium leading-relaxed mb-4 lg:mb-6 max-w-lg">
+            <Quote className="w-8 h-8 text-white/20 mb-4" />
+            <p className="text-lg text-gray-300 font-medium leading-relaxed mb-6 max-w-lg">
               "Finding a safe and premium PG was never this easy. The ElitePG portal makes everything seamless from KYC to payments."
             </p>
 
             <div className="flex items-center justify-between">
               <div>
-                <h4 className="text-sm lg:text-lg font-bold text-white">Anil Kumar</h4>
-                <p className="text-[10px] lg:text-sm text-gray-500 font-medium">Resident at BKC Mumbai</p>
+                <h4 className="text-lg font-bold text-white">Anil Kumar</h4>
+                <p className="text-sm text-gray-500 font-medium">Resident at BKC Mumbai</p>
               </div>
-              <div className="flex gap-2 lg:gap-3">
-                <button className="w-8 h-8 lg:w-10 lg:h-10 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center hover:bg-indigo-500/20 transition-all">
-                  <ArrowLeft className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
+              <div className="flex gap-3">
+                <button className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center hover:bg-indigo-500/20 transition-all">
+                  <ArrowLeft className="w-4 h-4" />
                 </button>
-                <button className="w-8 h-8 lg:w-10 lg:h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center hover:bg-emerald-500/20 transition-all">
-                  <ArrowRight className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
+                <button className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center hover:bg-emerald-500/20 transition-all">
+                  <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Floating Feature Card */}
           <motion.div
             initial={{ x: 50, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             transition={{ delay: 0.5 }}
-            className="self-end bg-white rounded-[20px] lg:rounded-[24px] p-5 lg:p-6 w-full max-w-[320px] shadow-2xl relative z-10 mb-4 mr-4"
+            className="self-end bg-white rounded-[24px] p-6 w-full max-w-[320px] shadow-2xl relative z-10 mr-4 mb-4"
           >
-            <h3 className="text-base lg:text-lg font-bold text-gray-900 mb-1 lg:mb-2 leading-tight">
+            <h3 className="text-lg font-bold text-gray-900 mb-2 leading-tight">
               Get your right room and right place stay now
             </h3>
-            <p className="text-[10px] lg:text-xs text-gray-500 mb-3 lg:mb-4 leading-relaxed">
+            <p className="text-xs text-gray-500 mb-4 leading-relaxed">
               Be among the first residents to experience the easiest way to manage your stay.
             </p>
             <div className="flex items-center gap-2">
@@ -450,7 +468,6 @@ export const LoginPage = () => {
         </div>
       </motion.div>
 
-      {/* Forgot Password Modal */}
       <AnimatePresence>
         {showForgotPassword && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">

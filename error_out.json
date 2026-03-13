@@ -2,7 +2,7 @@
   "tData": null,
   "tErr": {
     "code": "23502",
-    "details": "Failing row contains (80e3f980-30cb-407d-ac0c-5a2a131cf659, u1773294732825, Test Tenant, test@example.com, 1234567890, null, 0, 0, 0, 2026-03-12, 1, active, unsubmitted, null, null, 2026-03-12 05:52:14.463556+00).",
+    "details": "Failing row contains (a02a26f3-ba16-4a47-915a-dc0d70882c5e, u1773384810507, Test Tenant, test@example.com, 1234567890, null, 0, 0, 0, 2026-03-13, 1, active, unsubmitted, null, null, 2026-03-13 06:53:32.237295+00).",
     "hint": null,
     "message": "null value in column \"branch_id\" of relation \"tenants\" violates not-null constraint"
   }

@@ -52,7 +52,6 @@ export const SettingsPage = () => {
     { name: 'KYC Verification', href: '/kyc', id: 'kyc' },
     { name: 'Employees', href: '/employees', id: 'employees' },
     { name: 'Broadcast', href: '/broadcast', id: 'broadcast' },
-    { name: 'Authorize Users', href: '/authorize', id: 'tenants' }, // Tied to general tenant/employee access
     { name: 'Profile', href: '/profile', id: 'dashboard' },
   ];
 

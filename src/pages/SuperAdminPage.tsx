@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import toast from 'react-hot-toast';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { 
@@ -34,7 +35,8 @@ export const SuperAdminPage = () => {
     addSubscriptionPlan, 
     updateSubscriptionPlan, 
     deleteSubscriptionPlan,
-    updateBranchSubscription 
+    updateBranchSubscription,
+    userInvites
   } = useApp();
   const { users, register, deleteUser, updateUser } = useAuth();
   const [activeTab, setActiveTab] = useState<'branches' | 'admins' | 'subscriptions'>('branches');
@@ -301,6 +303,27 @@ export const SuperAdminPage = () => {
                   </div>
                 </div>
                 <div className="mt-6 pt-6 border-t border-gray-100 dark:border-white/5 flex flex-col gap-4">
+                  <div className="flex justify-between items-center text-xs text-indigo-400">
+                    <span className="text-gray-400">Invite Code</span>
+                    <div className="flex items-center gap-1 bg-white/5 px-2 py-1 rounded-md">
+                      <span className="font-mono tracking-wider font-bold">
+                        {userInvites?.find(i => i.branchId === branch.id)?.inviteCode || 'N/A'}
+                      </span>
+                      <button 
+                        onClick={() => {
+                          const code = userInvites?.find(i => i.branchId === branch.id)?.inviteCode;
+                          if (code) {
+                            navigator.clipboard.writeText(`${window.location.origin}/signup?invite=${code}`);
+                            toast.success('Invite link copied!');
+                          }
+                        }}
+                        className="p-1 hover:bg-white/10 rounded ml-1 transition-colors"
+                        title="Copy Invite Link"
+                      >
+                        <UserPlus className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
                   <div className="flex justify-between items-center">
                     <span className="text-xs text-gray-400">Subscription</span>
                     <button 

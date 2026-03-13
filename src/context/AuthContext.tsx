@@ -9,7 +9,7 @@ interface AuthContextType {
   login: (username: string, password: string) => Promise<{ success: boolean, message?: string, needsPasswordSetup?: boolean }>;
   loginWithGoogle: (intent: 'login' | 'signup') => Promise<void>;
   setGoogleUserPassword: (email: string, password: string) => Promise<{ success: boolean, message?: string }>;
-  register: (userData: Omit<User, 'id' | 'isAuthorized'>, password?: string) => Promise<{ success: boolean, message?: string, existingUser?: boolean, user?: User | null }>;
+  register: (userData: Omit<User, 'id' | 'isAuthorized'> & { inviteCode?: string }, password?: string) => Promise<{ success: boolean, message?: string, existingUser?: boolean, user?: User | null }>;
   logout: () => Promise<void>;
   updateProfile: (updates: Partial<User>) => Promise<void>;
   updateUser: (userId: string, updates: Partial<User>) => Promise<void>;
@@ -79,23 +79,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const clearGoogleAuthStatus = () => setGoogleAuthStatus(null);
 
   // Helper: creates a new user + tenant record for an OAuth or manually created backend user
-  const provisionNewUser = async (session: any, provider: 'local' | 'google') => {
-    const { data: branches } = await supabase.from('pg_branches').select('id').limit(1);
-    const defaultBranchId = branches?.[0]?.id || null;
+  const provisionNewUser = async (session: any, provider: 'local' | 'google', overrideBranchId?: string, isAuthorizedOverride?: boolean, roleOverride?: UserRole) => {
+    let finalBranchId = overrideBranchId;
+    if (!finalBranchId) {
+      const { data: branches } = await supabase.from('pg_branches').select('id').limit(1);
+      finalBranchId = branches?.[0]?.id || null;
+    }
     const newId = `u${Date.now()}`;
     const newDbUser = {
       id: newId,
       username: session.user.email.split('@')[0] || `user${Date.now()}`,
-      role: 'tenant',
+      role: roleOverride || 'tenant',
       name: session.user.user_metadata?.full_name || session.user.email.split('@')[0],
       email: session.user.email,
       phone: null,
       avatar: session.user.user_metadata?.avatar_url || null,
-      is_authorized: false,
+      is_authorized: isAuthorizedOverride !== undefined ? isAuthorizedOverride : false,
       password: null,
       provider: provider,
       google_id: provider === 'google' ? session.user.id : null,
-      branch_id: defaultBranchId,
+      branch_id: finalBranchId,
       seen_announcements: []
     };
     const { error: insertError } = await supabase.from('users').insert(newDbUser);
@@ -104,37 +107,50 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       await supabase.auth.signOut();
       return;
     }
-    // Create tenant record so admin can see and manage them
-    const { error: tenantError } = await supabase.from('tenants').insert({
-      user_id: newId,
-      name: newDbUser.name,
-      email: newDbUser.email,
-      phone: '0000000000',
-      room_id: null,
-      bed_number: 0,
-      joining_date: new Date().toISOString().split('T')[0],
-      rent_amount: 0,
-      deposit_amount: 0,
-      payment_due_date: 1,
-      status: 'active',
-      kyc_status: 'unsubmitted',
-      branch_id: defaultBranchId,
-      rent_agreement_url: null
-    });
+    
+    // Only conditionally create tenant record if role is tenant
+    if (newDbUser.role === 'tenant') {
+      const { error: tenantError } = await supabase.from('tenants').insert({
+        user_id: newId,
+        name: newDbUser.name,
+        email: newDbUser.email,
+        phone: '0000000000',
+        room_id: null,
+        bed_number: 0,
+        joining_date: new Date().toISOString().split('T')[0],
+        rent_amount: 0,
+        deposit_amount: 0,
+        payment_due_date: 1,
+        status: 'active',
+        kyc_status: 'unsubmitted',
+        branch_id: finalBranchId,
+        rent_agreement_url: null
+      });
 
-    if (tenantError) {
-      console.error('Tenant creation error:', tenantError);
-      toast.error('Secondary record creation failed. Please contact admin.');
+      if (tenantError) {
+        console.error('Tenant creation error:', tenantError);
+        toast.error('Secondary record creation failed. Please contact admin.');
+      } else {
+        if (isAuthorizedOverride) {
+          toast.success('Account created from invite successfully!');
+        } else {
+          toast.success('Account created! Please wait for an admin to authorize your access.');
+        }
+      }
     } else {
-      toast.success('Account created! Please wait for an admin to authorize your access.');
+       if (isAuthorizedOverride) {
+          toast.success('Admin/Staff Account created from invite successfully!');
+       } else {
+          toast.success('Account created! Please wait for an admin to authorize your access.');
+       }
     }
 
     await fetchUsers();
     // Map and set the user
     const mappedUser = {
-      id: newDbUser.id, username: newDbUser.username, role: 'tenant' as any,
+      id: newDbUser.id, username: newDbUser.username, role: newDbUser.role as any,
       name: newDbUser.name, email: newDbUser.email, phone: null, avatar: newDbUser.avatar,
-      isAuthorized: false, password: null, branchId: defaultBranchId,
+      isAuthorized: newDbUser.is_authorized, password: null, branchId: finalBranchId,
       provider: provider, google_id: newDbUser.google_id, seenAnnouncements: []
     };
     setUser(mappedUser);
@@ -182,8 +198,41 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             if (provisioningRef.current) return;
             provisioningRef.current = true;
             try {
-              // Create new user + tenant
-              await provisionNewUser(session, 'google');
+              // Extract invite code
+              const inviteCode = sessionStorage.getItem('elitepg_invite_code');
+              sessionStorage.removeItem('elitepg_invite_code'); // clean up
+              
+              let validInvite = null;
+              
+              if (inviteCode) {
+                 const { data: codeInvites } = await supabase.from('user_invites').select('*').eq('invite_code', inviteCode).in('status', ['pending', 'active']).maybeSingle();
+                 if (codeInvites) validInvite = codeInvites;
+              }
+              
+              if (!validInvite) {
+                 const { data: emailInvites } = await supabase.from('user_invites').select('*').eq('email', session.user.email).in('status', ['pending', 'active']).maybeSingle();
+                 if (emailInvites) validInvite = emailInvites;
+              }
+
+              if (validInvite) {
+                // Mark invite as accepted only if it's a specific single-user invite (has email)
+                if (validInvite.email) {
+                  await supabase.from('user_invites').update({ status: 'accepted' }).eq('id', validInvite.id);
+                }
+                // Create new user + tenant with branch assigned and authorized
+                await provisionNewUser(session, 'google', validInvite.branch_id, true, validInvite.role as any);
+                toast.success('Successfully joined branch from invite!');
+              } else {
+                // Reject login
+                await supabase.auth.signOut();
+                toast.error('You are not assigned to any PG branch. Please grab a valid invite link.');
+                setGoogleAuthStatus('user_not_found'); // forces them back to sign in
+                return;
+              }
+            } catch (err) {
+               console.error("Error during invite signup processing:", err);
+               await supabase.auth.signOut();
+               toast.error("Registration failed. Try again.");
             } finally {
               setTimeout(() => { provisioningRef.current = false; }, 2000);
             }
@@ -194,9 +243,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               if (provisioningRef.current) return;
               provisioningRef.current = true;
               try {
-                // If the user doesn't exist in our custom table but exists in Auth, provision them (e.g. backend creation)
-                await provisionNewUser(session, session.user.app_metadata?.provider === 'google' ? 'google' : 'local');
+                // Background provisioning (e.g. from a deep link or unknown flow)
+                // We also need to check invites here just in case they arrived without Intent
+                
+                const inviteCode = sessionStorage.getItem('elitepg_invite_code');
+                let validInvite = null;
+                
+                if (inviteCode) {
+                   const { data: codeInvites } = await supabase.from('user_invites').select('*').eq('invite_code', inviteCode).in('status', ['pending', 'active']).maybeSingle();
+                   if (codeInvites) validInvite = codeInvites;
+                }
+                
+                if (!validInvite) {
+                   const { data: emailInvites } = await supabase.from('user_invites').select('*').eq('email', session.user.email).in('status', ['pending', 'active']).maybeSingle();
+                   if (emailInvites) validInvite = emailInvites;
+                }
+
+                if (validInvite) {
+                   if (validInvite.email) {
+                     await supabase.from('user_invites').update({ status: 'accepted' }).eq('id', validInvite.id);
+                   }
+                   await provisionNewUser(session, session.user.app_metadata?.provider === 'google' ? 'google' : 'local', validInvite.branch_id, true, validInvite.role as any);
+                } else {
+                   await supabase.auth.signOut();
+                   toast.error('You are not assigned to any PG branch. Please grab a valid invite link.');
+                   return;
+                }
               } finally {
+                sessionStorage.removeItem('elitepg_invite_code');
                 setTimeout(() => { provisioningRef.current = false; }, 2000);
               }
               return;
@@ -289,7 +363,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return { success: true };
   };
 
-  const register = async (userData: Omit<User, 'id' | 'isAuthorized'>, password?: string): Promise<{ success: boolean, message?: string, existingUser?: boolean, user?: User | null }> => {
+  const register = async (userData: Omit<User, 'id' | 'isAuthorized'> & { inviteCode?: string }, password?: string): Promise<{ success: boolean, message?: string, existingUser?: boolean, user?: User | null }> => {
     const { data: existingUsername } = await supabase.from('users')
       .select('id')
       .ilike('username', userData.username)
@@ -309,20 +383,45 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     const newId = `u${Date.now()}`;
-    const newIsAuthorized = userData.role === 'admin' ? true : false;
+    let newIsAuthorized = userData.role === 'admin' ? true : false;
+    let finalBranchId = userData.branchId;
+    let finalRole = userData.role;
+
+    if (userData.inviteCode) {
+      const { data: inviteData, error: inviteErr } = await supabase.from('user_invites')
+         .select('*')
+         .eq('invite_code', userData.inviteCode)
+         .in('status', ['pending', 'active'])
+         .maybeSingle();
+
+      if (inviteData && !inviteErr) {
+        finalBranchId = inviteData.branch_id;
+        finalRole = inviteData.role as UserRole;
+        newIsAuthorized = true;
+        // mark as accepted only if it's a specific single-user invite (has email)
+        if (inviteData.email) {
+          await supabase.from('user_invites').update({ status: 'accepted' }).eq('id', inviteData.id);
+        }
+      } else {
+        return { success: false, message: 'Invalid or expired invite code' };
+      }
+    } else if (userData.role !== 'admin' && userData.role !== 'super') {
+      return { success: false, message: 'An invite code is required to create an account.' };
+    }
+
     const newPassword = password || null;
 
     const dbData = {
       id: newId,
       username: userData.username,
-      role: userData.role,
+      role: finalRole,
       name: userData.name,
       email: userData.email,
       phone: userData.phone || null,
       avatar: userData.avatar || null,
       is_authorized: newIsAuthorized,
       password: newPassword,
-      branch_id: userData.branchId || null,
+      branch_id: finalBranchId || null,
       provider: 'local',
       google_id: null,
       seen_announcements: userData.seenAnnouncements || []
@@ -335,8 +434,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     // If the new user is a tenant, also create a tenant record so they appear in the Tenants tab
-    if (userData.role === 'tenant') {
-      let finalBranchId = userData.branchId;
+    if (finalRole === 'tenant') {
       if (!finalBranchId) {
         const { data: branches } = await supabase.from('pg_branches').select('id').limit(1);
         finalBranchId = branches?.[0]?.id || null;
@@ -366,7 +464,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     await fetchUsers();
-    const newUser: User = { ...userData, id: newId, isAuthorized: newIsAuthorized, password: newPassword, provider: 'local', seenAnnouncements: userData.seenAnnouncements || [] };
+    const newUser: User = { ...userData, role: finalRole, branchId: finalBranchId, id: newId, isAuthorized: newIsAuthorized, password: newPassword, provider: 'local', seenAnnouncements: userData.seenAnnouncements || [] };
     return { success: true, user: newUser };
   };
 

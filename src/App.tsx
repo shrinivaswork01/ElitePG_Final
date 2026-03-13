@@ -17,7 +17,6 @@ import { EmployeesPage } from './pages/EmployeesPage';
 import { BroadcastPage } from './pages/BroadcastPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { UnauthorizedPage } from './pages/UnauthorizedPage';
-import { AuthorizationPage } from './pages/AuthorizationPage';
 import { SuperAdminPage } from './pages/SuperAdminPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ReportsPage } from './pages/ReportsPage';
@@ -43,6 +42,7 @@ export default function App() {
           <Router>
             <Routes>
               <Route path="/login" element={<LoginPage />} />
+              <Route path="/signup" element={<LoginPage isSignUp={true} />} />
 
               <Route path="/" element={
                 <ProtectedRoute>
@@ -112,14 +112,6 @@ export default function App() {
                 <ProtectedRoute allowedRoles={['admin', 'manager']}>
                   <Layout>
                     <ReportsPage />
-                  </Layout>
-                </ProtectedRoute>
-              } />
-
-              <Route path="/authorize" element={
-                <ProtectedRoute allowedRoles={['admin']}>
-                  <Layout>
-                    <AuthorizationPage />
                   </Layout>
                 </ProtectedRoute>
               } />
