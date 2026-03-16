@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { motion } from 'motion/react';
-import { User, Mail, Phone, Shield, Save, LogOut, Camera, FileText, Upload, CheckCircle, Clock, AlertCircle, X, Zap, Star, Eye } from 'lucide-react';
+import { User, Mail, Phone, Shield, Save, LogOut, Camera, FileText, Upload, CheckCircle, Clock, AlertCircle, X, Zap, Star, Eye, EyeOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { cn } from '../utils';
@@ -21,6 +21,7 @@ export const ProfilePage = () => {
     password: user?.password || '',
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const isTenant = user?.role === 'tenant';
   const tenantData = isTenant ? tenants.find(t => t.userId === user.id) : null;
@@ -211,14 +212,23 @@ export const ProfilePage = () => {
                 <Shield className="w-4 h-4 text-gray-400" />
                 Password
               </label>
-              <input
-                type="password"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white transition-all shadow-inner"
-                placeholder="••••••••"
-                required
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white transition-all shadow-inner pr-12"
+                  placeholder="••••••••"
+                  required={!user?.password}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                >
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
+              </div>
             </div>
           </div>
 

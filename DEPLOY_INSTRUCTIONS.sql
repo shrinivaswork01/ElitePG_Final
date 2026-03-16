@@ -1,0 +1,42 @@
+-- Deploy Instructions for Supabase Edge Functions
+-- Follow these steps after setting up the code
+
+-- ════════════════════════════════════════
+-- STEP 1: Deploy Edge Functions via Supabase CLI
+-- ════════════════════════════════════════
+-- Run these in your terminal from the project root:
+--
+--   npx supabase login
+--   npx supabase link --project-ref opztcswszobvknfwpoij
+--   npx supabase functions deploy create-razorpay-subscription
+--   npx supabase functions deploy razorpay-webhook
+
+-- ════════════════════════════════════════
+-- STEP 2: Set Edge Function Secrets in Supabase Dashboard
+-- ════════════════════════════════════════
+-- Go to: Supabase Dashboard → Settings → Edge Functions → Secrets
+-- Add these secrets:
+--
+--   RAZORPAY_KEY_ID        = rzp_test_SPuhgTcTc6kl88  (or live key)
+--   RAZORPAY_KEY_SECRET    = <your razorpay SECRET key>
+--   RAZORPAY_WEBHOOK_SECRET = <set this when configuring webhook below>
+--
+-- Note: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are auto-injected by Supabase.
+
+-- ════════════════════════════════════════
+-- STEP 3: Configure Razorpay Webhook
+-- ════════════════════════════════════════
+-- Go to: Razorpay Dashboard → Settings → Webhooks → Add New Webhook
+--
+--   Webhook URL: https://opztcswszobvknfwpoij.supabase.co/functions/v1/razorpay-webhook
+--   Secret: (generate a random string and save it as RAZORPAY_WEBHOOK_SECRET above)
+--   Active Events:
+--     ✅ subscription.charged
+--     ✅ subscription.halted
+--     ✅ subscription.cancelled
+--     ✅ subscription.activated
+
+-- ════════════════════════════════════════
+-- STEP 4: Fix invite codes for existing branches
+-- ════════════════════════════════════════
+-- Run fix_elitepg_invite.sql in Supabase SQL Editor

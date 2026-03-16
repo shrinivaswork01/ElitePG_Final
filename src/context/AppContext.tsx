@@ -63,7 +63,7 @@ interface AppContextType {
   addSubscriptionPlan: (plan: Omit<SubscriptionPlan, 'id'>) => Promise<void>;
   updateSubscriptionPlan: (id: string, updates: Partial<SubscriptionPlan>) => Promise<void>;
   deleteSubscriptionPlan: (id: string) => Promise<void>;
-  updateBranchSubscription: (branchId: string, planId: string, status: 'active' | 'expired' | 'trial', endDate: string) => Promise<void>;
+  updateBranchSubscription: (branchId: string, planId: string, status: 'active' | 'expired' | 'trial', endDate: string, razorpayCustomerId?: string, razorpaySubscriptionId?: string) => Promise<void>;
   checkFeatureAccess: (feature: AppFeature) => boolean;
   fetchData: () => Promise<void>;
 
@@ -163,10 +163,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const newData = {
         branches: (branches || []).map(b => ({
           id: b.id, name: b.name, branchName: b.branch_name, address: b.address, phone: b.phone,
-          planId: b.plan_id, subscriptionStatus: b.subscription_status, subscriptionEndDate: b.subscription_end_date, createdAt: b.created_at
+          planId: b.plan_id, subscriptionStatus: b.subscription_status, subscriptionEndDate: b.subscription_end_date, createdAt: b.created_at,
+          razorpayCustomerId: b.razorpay_customer_id, razorpaySubscriptionId: b.razorpay_subscription_id
         })),
         subscriptionPlans: (plans || []).map(p => ({
-          id: p.id, name: p.name, price: p.price, features: p.features, maxTenants: p.max_tenants, maxRooms: p.max_rooms, billingCycle: p.billing_cycle
+          id: p.id, name: p.name, price: p.price, annualPrice: p.annual_price || 0, features: p.features,
+          maxTenants: p.max_tenants, maxRooms: p.max_rooms,
+          razorpayMonthlyPlanId: p.razorpay_plan_id, razorpayAnnualPlanId: p.razorpay_annual_plan_id
         })),
         tenants: (tenants || []).map(t => ({
           id: t.id, userId: t.user_id, name: t.name, email: t.email, phone: t.phone, roomId: t.room_id, bedNumber: t.bed_number, rentAmount: t.rent_amount, depositAmount: t.deposit_amount, joiningDate: t.joining_date, paymentDueDate: t.payment_due_date, status: t.status, kycStatus: t.kyc_status, rentAgreementUrl: t.rent_agreement_url, branchId: t.branch_id
@@ -771,8 +774,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const addSubscriptionPlan = async (plan: Omit<SubscriptionPlan, 'id'>) => {
     await refetch(supabase.from('subscription_plans').insert({
-      name: plan.name, price: plan.price, features: plan.features, max_tenants: plan.maxTenants,
-      max_rooms: plan.maxRooms, billing_cycle: plan.billingCycle
+      name: plan.name, price: plan.price, annual_price: plan.annualPrice, features: plan.features,
+      max_tenants: plan.maxTenants, max_rooms: plan.maxRooms,
+      razorpay_plan_id: plan.razorpayMonthlyPlanId, razorpay_annual_plan_id: plan.razorpayAnnualPlanId
     }), 'Plan created');
   };
 
@@ -783,16 +787,32 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.features !== undefined) dbUpdates.features = updates.features;
     if (updates.maxTenants !== undefined) dbUpdates.max_tenants = updates.maxTenants;
     if (updates.maxRooms !== undefined) dbUpdates.max_rooms = updates.maxRooms;
-    if (updates.billingCycle !== undefined) dbUpdates.billing_cycle = updates.billingCycle;
+    if (updates.annualPrice !== undefined) dbUpdates.annual_price = updates.annualPrice;
+    if (updates.razorpayMonthlyPlanId !== undefined) dbUpdates.razorpay_plan_id = updates.razorpayMonthlyPlanId;
+    if (updates.razorpayAnnualPlanId !== undefined) dbUpdates.razorpay_annual_plan_id = updates.razorpayAnnualPlanId;
     await refetch(supabase.from('subscription_plans').update(dbUpdates).eq('id', id), 'Plan updated');
   };
 
   const deleteSubscriptionPlan = async (id: string) => { await refetch(supabase.from('subscription_plans').delete().eq('id', id), 'Plan deleted'); };
 
-  const updateBranchSubscription = async (branchId: string, planId: string, status: 'active' | 'expired' | 'trial', endDate: string) => {
-    await refetch(supabase.from('pg_branches').update({
-      plan_id: planId, subscription_status: status, subscription_end_date: endDate
-    }).eq('id', branchId), 'Subscription updated');
+  const updateBranchSubscription = async (
+    branchId: string, 
+    planId: string, 
+    status: 'active' | 'expired' | 'trial', 
+    endDate: string,
+    razorpayCustomerId?: string,
+    razorpaySubscriptionId?: string
+  ) => {
+    const updates: any = {
+      plan_id: planId,
+      subscription_status: status,
+      subscription_end_date: endDate
+    };
+
+    if (razorpayCustomerId) updates.razorpay_customer_id = razorpayCustomerId;
+    if (razorpaySubscriptionId) updates.razorpay_subscription_id = razorpaySubscriptionId;
+
+    await refetch(supabase.from('pg_branches').update(updates).eq('id', branchId), 'Subscription updated');
   };
 
   const computedStats = useMemo(() => {

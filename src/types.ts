@@ -10,11 +10,13 @@ export type AppFeature = 'tenants' | 'rooms' | 'payments' | 'complaints' | 'kyc'
 export interface SubscriptionPlan {
   id: string;
   name: string;
-  price: number;
+  price: number;         // Monthly price (e.g. 499)
+  annualPrice: number;   // Annual total price (e.g. 4999)
   features: AppFeature[];
   maxTenants: number;
   maxRooms: number;
-  billingCycle: 'monthly' | 'yearly';
+  razorpayMonthlyPlanId?: string; // Razorpay plan ID for monthly billing
+  razorpayAnnualPlanId?: string;  // Razorpay plan ID for annual billing
 }
 
 export interface PGBranch {
@@ -27,6 +29,8 @@ export interface PGBranch {
   planId: string;
   subscriptionStatus: 'active' | 'expired' | 'trial';
   subscriptionEndDate: string;
+  razorpayCustomerId?: string;
+  razorpaySubscriptionId?: string;
 }
 
 export interface RolePermissions {
