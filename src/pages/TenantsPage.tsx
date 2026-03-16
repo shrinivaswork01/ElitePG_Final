@@ -59,6 +59,7 @@ export const TenantsPage = () => {
   const [loginPassword, setLoginPassword] = useState('');
   const [tenantToDelete, setTenantToDelete] = useState<Tenant | null>(null);
   const [kycUploadTenant, setKycUploadTenant] = useState<Tenant | null>(null);
+  const [menuTenant, setMenuTenant] = useState<Tenant | null>(null);
   const [adminKycFile, setAdminKycFile] = useState<{ type: string; url: string; fileName: string } | null>(null);
   const [adminKycType, setAdminKycType] = useState('Aadhar Card');
   const { payments } = useApp();
@@ -358,16 +359,17 @@ export const TenantsPage = () => {
       </div>
 
       <div className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Desktop View Table */}
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-100 dark:border-white/5">
                 <th className="px-4 sm:px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tenant</th>
-                <th className="hidden sm:table-cell px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Room</th>
-                <th className="hidden md:table-cell px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">KYC Status</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Room</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">KYC Status</th>
                 <th className="px-4 sm:px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Rent</th>
-                <th className="hidden sm:table-cell px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
-                <th className="px-4 sm:px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                <th className="px-4 sm:px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 dark:divide-white/5">
@@ -386,13 +388,13 @@ export const TenantsPage = () => {
                         </div>
                       </div>
                     </td>
-                    <td className="hidden sm:table-cell px-6 py-4">
+                    <td className="px-6 py-4">
                       <div className="flex flex-col">
                         <span className="text-sm font-medium text-gray-900 dark:text-white">Room {room?.roomNumber || 'N/A'}</span>
                         <span className="text-xs text-gray-500 dark:text-gray-400">Bed {tenant.bedNumber}</span>
                       </div>
                     </td>
-                    <td className="hidden md:table-cell px-6 py-4">
+                    <td className="px-6 py-4">
                       {checkFeatureAccess('kyc') ? (
                         <span className={cn(
                           "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold",
@@ -414,7 +416,7 @@ export const TenantsPage = () => {
                       <p className="text-sm font-bold text-gray-900 dark:text-white">₹{tenant.rentAmount.toLocaleString()}</p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">Due: {tenant.paymentDueDate}th</p>
                     </td>
-                    <td className="hidden sm:table-cell px-6 py-4">
+                    <td className="px-6 py-4">
                       <span className={cn(
                         "px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider",
                         tenant.status === 'active' ? "bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400" :
@@ -425,7 +427,7 @@ export const TenantsPage = () => {
                       </span>
                     </td>
                     <td className="px-4 sm:px-6 py-4">
-                      <div className="flex flex-wrap items-center gap-1.5 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex flex-wrap items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={() => setViewingPayments(tenant)}
                           title="Payment History"
@@ -492,11 +494,213 @@ export const TenantsPage = () => {
               })}
             </tbody>
           </table>
-          {filteredTenants.length === 0 && (
-            <div className="p-12 text-center text-gray-500 dark:text-gray-400">No tenants found</div>
-          )}
         </div>
+
+        {/* Mobile Grid View */}
+        <div className="block sm:hidden space-y-4 p-4">
+          {filteredTenants.map((tenant) => {
+            const room = rooms.find(r => r.id === tenant.roomId);
+            const currentMonth = format(new Date(), 'yyyy-MM');
+            const payment = payments.find(p => p.tenantId === tenant.id && p.month === currentMonth);
+            const isPaid = payment?.status === 'paid';
+            const today = new Date().getDate();
+            const isOverdue = !isPaid && today > tenant.paymentDueDate;
+            
+            return (
+              <motion.div
+                key={tenant.id}
+                layout
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden"
+              >
+                <div className="p-5">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-black text-xl shadow-sm border border-indigo-100/50 dark:border-indigo-500/10">
+                        {tenant.name?.charAt(0) || '?'}
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-gray-900 dark:text-white leading-tight">{tenant.name}</h4>
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400">{tenant.email}</p>
+                      </div>
+                    </div>
+                    <span className={cn(
+                      "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-sm",
+                      isPaid ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600" :
+                        isOverdue ? "bg-rose-50 dark:bg-rose-500/10 text-rose-600" :
+                          "bg-amber-50 dark:bg-amber-500/10 text-amber-600"
+                    )}>
+                      {isPaid ? 'Paid' : isOverdue ? 'Overdue' : 'Pending'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div className="p-2.5 rounded-2xl bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter mb-0.5">Room & Floor</p>
+                      <p className="text-sm font-bold text-gray-900 dark:text-white">
+                        {room?.roomNumber || 'N/A'} <span className="text-[10px] text-gray-500 font-medium ml-1">(Floor {room?.floor || 0})</span>
+                      </p>
+                    </div>
+                    <div className="p-2.5 rounded-2xl bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter mb-0.5">Monthly Rent</p>
+                      <p className="text-sm font-bold text-gray-900 dark:text-white">₹{tenant.rentAmount.toLocaleString()}</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 mb-4">
+                    <div className="flex items-center justify-between text-[10px]">
+                      <span className="text-gray-500 font-bold uppercase tracking-tighter">Rent Payment Status</span>
+                      <span className="font-black text-gray-900 dark:text-white">Due: {tenant.paymentDueDate}th</span>
+                    </div>
+                    <div className="w-full bg-gray-100 dark:bg-white/5 h-2 rounded-full overflow-hidden">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: isPaid ? '100%' : '0%' }}
+                        className={cn(
+                          "h-full transition-all duration-700",
+                          isPaid ? "bg-emerald-500" : isOverdue ? "bg-rose-500" : "bg-amber-400"
+                        )}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleSendWhatsAppReminder(tenant)}
+                      className="flex-1 flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white py-2.5 rounded-xl text-xs font-black shadow-lg shadow-emerald-500/20 active:scale-95 transition-all"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                      CHAT
+                    </button>
+                    <button
+                      onClick={() => setViewingPayments(tenant)}
+                      className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl text-xs font-black shadow-lg shadow-indigo-600/20 active:scale-95 transition-all"
+                    >
+                      <History className="w-4 h-4" />
+                      HISTORY
+                    </button>
+                    <button
+                      onClick={() => setMenuTenant(tenant)}
+                      className="w-11 h-10 flex items-center justify-center bg-gray-50 dark:bg-white/5 text-gray-400 dark:text-gray-500 rounded-xl border border-gray-100 dark:border-white/5 active:scale-95 transition-all"
+                    >
+                      <MoreVertical className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+
+        {filteredTenants.length === 0 && (
+          <div className="p-12 text-center text-gray-500 dark:text-gray-400">No tenants found</div>
+        )}
       </div>
+
+      {/* Mobile Action Bottom Sheet */}
+      <AnimatePresence>
+        {menuTenant && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setMenuTenant(null)}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] sm:hidden"
+            />
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="fixed bottom-0 left-0 right-0 bg-white dark:bg-[#111111] rounded-t-[32px] z-[101] sm:hidden border-t border-white/5"
+            >
+              <div className="p-4 sm:p-6 pb-10">
+                <div className="w-12 h-1.5 bg-gray-200 dark:bg-white/10 rounded-full mx-auto mb-6" />
+
+                <div className="flex items-center gap-4 mb-6 px-2">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-black text-xl">
+                    {menuTenant.name.charAt(0)}
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-gray-900 dark:text-white leading-tight">{menuTenant.name}</h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">{menuTenant.phone}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  <button
+                    onClick={() => { handleSendWhatsAppReminder(menuTenant); setMenuTenant(null); }}
+                    className="flex flex-col items-center justify-center gap-2 p-4 rounded-3xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-500/10 transition-all active:scale-95"
+                  >
+                    <MessageCircle className="w-6 h-6" />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-center">Chat Tenant</span>
+                  </button>
+
+                  <button
+                    onClick={() => { setViewingPayments(menuTenant); setMenuTenant(null); }}
+                    className="flex flex-col items-center justify-center gap-2 p-4 rounded-3xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-500/10 transition-all active:scale-95"
+                  >
+                    <History className="w-6 h-6" />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-center">History</span>
+                  </button>
+
+                  <button
+                    onClick={() => { handleEditClick(menuTenant); setMenuTenant(null); }}
+                    className="flex flex-col items-center justify-center gap-2 p-4 rounded-3xl bg-gray-50 dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-100 dark:border-white/5 transition-all active:scale-95"
+                  >
+                    <Edit2 className="w-6 h-6" />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-center">Edit</span>
+                  </button>
+
+                  <button
+                    onClick={() => { setTenantToDelete(menuTenant); setMenuTenant(null); }}
+                    className="flex flex-col items-center justify-center gap-2 p-4 rounded-3xl bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-500/10 transition-all active:scale-95"
+                  >
+                    <Trash2 className="w-6 h-6" />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-center">Delete</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setKycUploadTenant(menuTenant);
+                      setAdminKycFile(null);
+                      setAdminKycType('Aadhar Card');
+                      setMenuTenant(null);
+                    }}
+                    className="flex flex-col items-center justify-center gap-2 p-4 rounded-3xl bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-100 dark:border-violet-500/10 transition-all active:scale-95"
+                  >
+                    <Shield className="w-6 h-6" />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-center">Verify KYC</span>
+                  </button>
+
+                  <button
+                    disabled={!menuTenant.rentAgreementUrl}
+                    onClick={() => { if (menuTenant.rentAgreementUrl) { setViewingAgreement(menuTenant); setMenuTenant(null); } }}
+                    className={cn(
+                      "flex flex-col items-center justify-center gap-2 p-4 rounded-3xl transition-all active:scale-95 border",
+                      menuTenant.rentAgreementUrl 
+                        ? "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-500/10" 
+                        : "bg-gray-50 dark:bg-white/5 text-gray-300 dark:text-gray-600 border-gray-100 dark:border-white/5 opacity-50 cursor-not-allowed"
+                    )}
+                  >
+                    <FileCheck className="w-6 h-6" />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-center">Agreement</span>
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => setMenuTenant(null)}
+                  className="w-full py-4 rounded-2xl bg-gray-100 dark:bg-white/5 text-gray-900 dark:text-white font-black uppercase tracking-widest text-xs mt-4"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Delete Confirmation Modal */}
       <AnimatePresence>
