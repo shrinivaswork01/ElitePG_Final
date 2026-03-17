@@ -49,6 +49,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       phone: u.phone,
       avatar: u.avatar,
       isAuthorized: u.is_authorized,
+      requiresPasswordChange: u.requires_password_change || false,
       password: u.password,
       branchId: u.branch_id,
       provider: u.provider || 'local',
@@ -317,26 +318,38 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const login = async (username: string, password: string): Promise<{ success: boolean, message?: string, needsPasswordSetup?: boolean }> => {
+    const trimmedUsername = username.trim();
+    console.log(`[Login Attempt] Username: "${trimmedUsername}"`);
+
     await fetchUsers(); // Refresh to get latest state
 
     const { data, error } = await supabase.from('users')
       .select('*')
-      .or(`username.ilike.${username},email.ilike.${username}`)
-      .single();
+      .or(`username.ilike.${trimmedUsername},email.ilike.${trimmedUsername}`)
+      .maybeSingle();
 
-    if (error || !data) {
-      // For security, we usually say "Invalid username or password",
-      // but for this specific UX requirement, we should be more helpful if they might be a Google user.
-      return { success: false, message: 'Invalid username or password' };
+    if (error) {
+      console.error('[Login Error] Supabase Query:', error);
+      return { success: false, message: 'Database error. Please try again later.' };
+    }
+
+    if (!data) {
+      console.warn(`[Login Warning] User not found: "${trimmedUsername}"`);
+      return { success: false, message: 'Invalid username or email' };
     }
 
     if (data.password === null || data.password === undefined || data.password === '') {
+      console.info(`[Login Info] User needs password setup: "${trimmedUsername}"`);
       const isGoogle = data.provider === 'google';
       const message = isGoogle
         ? 'This account was created using Google. Please set a password for future manual logins.'
         : 'Your account was created by an admin. Please set your password to continue.';
       return { success: false, message, needsPasswordSetup: true };
+    } else if (data.requires_password_change) {
+      console.info(`[Login Info] User requires first-time password change: "${trimmedUsername}"`);
+      return { success: false, message: 'Your account was created by an admin. Please set a new password to continue.', needsPasswordSetup: true };
     } else if (password && data.password !== password) {
+      console.warn(`[Login Warning] Password mismatch for: "${trimmedUsername}"`);
       return { success: false, message: 'Invalid password' };
     } else if (!password) {
       return { success: false, message: 'Please provide a password.' };
@@ -363,7 +376,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return { success: true };
   };
 
-  const register = async (userData: Omit<User, 'id' | 'isAuthorized'> & { inviteCode?: string }, password?: string): Promise<{ success: boolean, message?: string, existingUser?: boolean, user?: User | null }> => {
+  const register = async (userData: Omit<User, 'id' | 'isAuthorized'> & { inviteCode?: string, requiresPasswordChange?: boolean }, password?: string): Promise<{ success: boolean, message?: string, existingUser?: boolean, user?: User | null }> => {
     const { data: existingUsername } = await supabase.from('users')
       .select('id')
       .ilike('username', userData.username)
@@ -383,7 +396,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     const newId = `u${Date.now()}`;
-    let newIsAuthorized = userData.role === 'admin' ? true : false;
+    let newIsAuthorized = (userData.role === 'admin' || userData.requiresPasswordChange) ? true : false;
     let finalBranchId = userData.branchId;
     let finalRole = userData.role;
 
@@ -405,7 +418,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } else {
         return { success: false, message: 'Invalid or expired invite code' };
       }
-    } else if (userData.role !== 'admin' && userData.role !== 'super') {
+    } else if (userData.role !== 'admin' && userData.role !== 'super' && !userData.requiresPasswordChange) {
       return { success: false, message: 'An invite code is required to create an account.' };
     }
 
@@ -424,7 +437,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       branch_id: finalBranchId || null,
       provider: 'local',
       google_id: null,
-      seen_announcements: userData.seenAnnouncements || []
+      seen_announcements: userData.seenAnnouncements || [],
+      requires_password_change: userData.requiresPasswordChange || false
     };
 
     const { error } = await supabase.from('users').insert(dbData);
@@ -493,13 +507,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       return { success: false, message: 'User not found' };
     }
 
-    if (userData.provider !== 'google') {
-      return { success: false, message: 'This account was not created with Google.' };
-    }
-
     const { error: updateError } = await supabase
       .from('users')
-      .update({ password })
+      .update({ 
+        password,
+        requires_password_change: false 
+      })
       .eq('id', userData.id);
 
     if (updateError) {

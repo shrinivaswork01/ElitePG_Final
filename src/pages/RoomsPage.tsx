@@ -11,7 +11,8 @@ import {
   Trash2,
   Edit2,
   Wind,
-  Sun
+  Sun,
+  Search
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../utils';
@@ -30,6 +31,7 @@ export const RoomsPage = () => {
   }
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
   const [formData, setFormData] = useState<Omit<Room, 'id' | 'branchId'>>({
     roomNumber: '',
     floor: 1,
@@ -38,6 +40,11 @@ export const RoomsPage = () => {
     type: 'Non-AC',
     price: 6000
   });
+
+  const filteredRooms = rooms.filter(room => 
+    room.roomNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    room.floor.toString().includes(searchTerm)
+  );
 
   const handleEditClick = (room: Room) => {
     setEditingRoom(room);
@@ -79,22 +86,34 @@ export const RoomsPage = () => {
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Rooms</h2>
           <p className="text-gray-500 dark:text-gray-400">Manage property inventory and occupancy.</p>
         </div>
-        <button
-          onClick={() => {
-            if (isAtLimit) {
-              toast.error(`Limit reached! Your current plan (${currentPlan?.name}) allows only ${currentPlan?.maxRooms} rooms. Please upgrade your plan.`);
-              return;
-            }
-            setIsAddModalOpen(true);
-          }}
-          className={cn(
-            "flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all",
-            isAtLimit && "opacity-50 cursor-not-allowed"
-          )}
-        >
-          <Plus className="w-5 h-5" />
-          Add Room
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 md:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search room no. or floor..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-white dark:bg-[#111111] border border-gray-100 dark:border-white/5 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+            />
+          </div>
+          <button
+            onClick={() => {
+              if (isAtLimit) {
+                toast.error(`Limit reached! Your current plan (${currentPlan?.name}) allows only ${currentPlan?.maxRooms} rooms. Please upgrade your plan.`);
+                return;
+              }
+              setIsAddModalOpen(true);
+            }}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all",
+              isAtLimit && "opacity-50 cursor-not-allowed"
+            )}
+          >
+            <Plus className="w-5 h-5" />
+            Add Room
+          </button>
+        </div>
       </div>
 
       {isNearLimit && (
@@ -131,7 +150,7 @@ export const RoomsPage = () => {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        {rooms.map((room) => (
+        {filteredRooms.map((room) => (
           <motion.div
             key={room.id}
             layout

@@ -128,18 +128,24 @@ export const LoginPage = ({ isSignUp = false }: LoginPageProps) => {
            return;
         }
 
+        const trimmedRegData = {
+          ...regData,
+          username: regData.username.trim(),
+          email: regData.email.trim()
+        };
+
         const result = await register({
-          username: regData.username,
-          name: regData.name,
-          email: regData.email,
-          role: regData.role,
+          username: trimmedRegData.username,
+          name: trimmedRegData.name,
+          email: trimmedRegData.email,
+          role: trimmedRegData.role,
           inviteCode: inviteCode
-        } as any, regData.password);
+        } as any, trimmedRegData.password);
 
         if (result?.success) {
           toast.success('Registration successful!', { duration: 6000 });
           setIsRegistering(false);
-          setUsername(regData.username);
+          setUsername(trimmedRegData.username);
         } else if (result?.existingUser) {
           const msg = result.message || 'Account already exists. Please login.';
           setError(msg);
@@ -150,7 +156,8 @@ export const LoginPage = ({ isSignUp = false }: LoginPageProps) => {
           toast.error(msg);
         }
       } else {
-        const result = await login(username, password);
+        const trimmedUsername = username.trim();
+        const result = await login(trimmedUsername, password);
         if (result.success) {
           toast.success('Signed in successfully!');
           const fromPath = (location.state as any)?.from?.pathname;

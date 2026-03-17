@@ -19,9 +19,10 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../utils';
+import toast from 'react-hot-toast';
 
 export const ComplaintsPage = () => {
-  const { complaints, tenants, rooms, employees, addComplaint, updateComplaint, deleteComplaint, pgConfig, updatePGConfig } = useApp();
+  const { complaints, tenants, rooms, employees, addComplaint, updateComplaint, deleteComplaint, pgConfig, updatePGConfig, addTask } = useApp();
   const { user } = useAuth();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingComplaint, setEditingComplaint] = useState<Complaint | null>(null);
@@ -123,7 +124,23 @@ export const ComplaintsPage = () => {
   };
 
   const handleAssign = (id: string, employeeId: string) => {
+    const complaint = complaints.find(c => c.id === id);
+    if (!complaint) return;
+    
     updateComplaint(id, { assignedTo: employeeId, status: 'assigned' });
+    
+    // Create a corresponding task for the employee
+    addTask({
+      employeeId,
+      title: `Complaint: ${complaint.title}`,
+      description: `Resolve complaint from tenant. Description: ${complaint.description}`,
+      status: 'pending',
+      priority: complaint.priority,
+      dueDate: new Date().toISOString().split('T')[0],
+      createdAt: new Date().toISOString()
+    });
+    
+    toast.success('Complaint assigned and task created for employee');
   };
 
   return (
@@ -231,8 +248,20 @@ export const ComplaintsPage = () => {
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-4 text-[10px] sm:text-xs font-medium text-gray-400 dark:text-gray-500">
                       <span className="flex items-center gap-1">
                         <User className="w-3 h-3" />
-                        {tenant?.name} (Room {room?.roomNumber || 'N/A'})
+                        {tenant?.name || 'Unknown Tenant'} (Room {room?.roomNumber || 'N/A'})
                       </span>
+                      {tenant?.email && (
+                        <span className="flex items-center gap-1">
+                          <MessageSquare className="w-3 h-3" />
+                          {tenant.email}
+                        </span>
+                      )}
+                      {tenant?.phone && (
+                        <span className="flex items-center gap-1 text-indigo-500">
+                          <Plus className="w-3 h-3" />
+                          {tenant.phone}
+                        </span>
+                      )}
                       <span className="flex items-center gap-1">
                         <Clock className="w-3 h-3" />
                         {complaint.createdAt}

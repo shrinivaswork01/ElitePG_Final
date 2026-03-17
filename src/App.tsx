@@ -21,6 +21,8 @@ import { SuperAdminPage } from './pages/SuperAdminPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SubscriptionPage } from './pages/SubscriptionPage';
+import { HelpSupportPage } from './pages/HelpSupportPage';
+import { TasksPage } from './pages/TasksPage';
 
 export default function App() {
   return (
@@ -144,6 +146,22 @@ export default function App() {
                 <ProtectedRoute>
                   <Layout>
                     <ProfilePage />
+                  </Layout>
+                </ProtectedRoute>
+              } />
+              
+              <Route path="/help" element={
+                <ProtectedRoute>
+                  <Layout>
+                    <HelpSupportPage />
+                  </Layout>
+                </ProtectedRoute>
+              } />
+
+              <Route path="/tasks" element={
+                <ProtectedRoute>
+                  <Layout>
+                    <TasksPage />
                   </Layout>
                 </ProtectedRoute>
               } />

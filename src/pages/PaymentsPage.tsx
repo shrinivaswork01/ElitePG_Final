@@ -28,7 +28,7 @@ import toast from 'react-hot-toast';
 
 export const PaymentsPage = () => {
   const { user } = useAuth();
-  const { payments, tenants, addPayment, updatePayment, deletePayment } = useApp();
+  const { payments, tenants, rooms, addPayment, updatePayment, deletePayment } = useApp();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
@@ -136,15 +136,14 @@ export const PaymentsPage = () => {
         }
 
         const options = {
-          key: 'rzp_test_SPuhgTcTc6kl88', // User provided key
+          key: import.meta.env.VITE_RAZORPAY_KEY || 'rzp_test_SPuhgTcTc6kl88',
           amount: totalAmount * 100, // Amount in paise
           currency: 'INR',
           name: 'ElitePG',
           description: `Rent Payment for ${format(parseISO(`${due.month}-01`), 'MMMM yyyy')}`,
-          image: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&q=80&w=150&h=150', // Replace with your logo
+          image: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&q=80&w=150&h=150',
           handler: function (response: any) {
-            // Documenting response: response.razorpay_payment_id
-            addPayment({
+            const paymentRecord: Omit<Payment, 'id' | 'branchId'> = {
               tenantId: tenantData.id,
               amount: due.amount,
               lateFee: due.lateFee,
@@ -154,9 +153,15 @@ export const PaymentsPage = () => {
               status: 'paid',
               method: 'Online',
               transactionId: response.razorpay_payment_id
-            });
+            };
+            
+            addPayment(paymentRecord);
             setIsPayModalOpen(false);
-            toast.success(`Payment of ₹${totalAmount.toLocaleString()} successful via Razorpay! Transaction ID: ${response.razorpay_payment_id}`);
+            toast.success(`Payment successful! Transaction ID: ${response.razorpay_payment_id}`);
+
+            // Immediate receipt download
+            const receiptPayment: Payment = { ...paymentRecord, id: response.razorpay_payment_id } as Payment;
+            handleDownloadReceipt(receiptPayment);
           },
           prefill: {
             name: tenantData.name,
@@ -234,26 +239,29 @@ export const PaymentsPage = () => {
     setIsReceiptModalOpen(true);
   };
 
-  const handleDownloadReceipt = () => {
-    if (!selectedPayment) return;
-    const tenant = tenants.find(t => t.id === selectedPayment.tenantId);
+  const handleDownloadReceipt = (payment: Payment | null = selectedPayment) => {
+    if (!payment) return;
+    const tenant = tenants.find(t => t.id === payment.tenantId);
+    
+    const room = rooms.find(r => r.id === tenant?.roomId);
+    
     const receiptContent = `
 ELITE PG - Payment Receipt
 --------------------------
-Receipt #: REC-${selectedPayment.id?.slice(-6).toUpperCase()}
-Date: ${selectedPayment.paymentDate}
-Month: ${format(parseISO(`${selectedPayment.month}-01`), 'MMMM yyyy')}
+Receipt #: REC-${(payment.id || 'NEW').slice(-6).toUpperCase()}
+Date: ${payment.paymentDate}
+Month: ${format(parseISO(`${payment.month}-01`), 'MMMM yyyy')}
 
 Billed To:
-Name: ${tenant?.name}
-Email: ${tenant?.email}
-Room: ${tenant?.roomId}
+Name: ${tenant?.name || 'N/A'}
+Email: ${tenant?.email || 'N/A'}
+Room: ${room?.roomNumber || 'N/A'}
 
 Payment Details:
-Monthly Rent: ₹${selectedPayment.amount.toLocaleString()}
-Late Fee: ₹${selectedPayment.lateFee.toLocaleString()}
-Total Paid: ₹${selectedPayment.totalAmount.toLocaleString()}
-Method: ${selectedPayment.method}
+Monthly Rent: ₹${payment.amount.toLocaleString()}
+Late Fee: ₹${payment.lateFee.toLocaleString()}
+Total Paid: ₹${payment.totalAmount.toLocaleString()}
+Method: ${payment.method}
 
 Note: ${receiptNotes || 'N/A'}
 
@@ -265,7 +273,7 @@ This is a computer generated receipt.
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Receipt_${selectedPayment.id?.slice(-6).toUpperCase()}.txt`;
+    link.download = `Receipt_${(payment.id || 'NEW').slice(-6).toUpperCase()}.txt`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -274,7 +282,7 @@ This is a computer generated receipt.
 
   const filteredPayments = payments.filter(p => {
     const tenant = tenants.find(t => t.id === p.tenantId);
-    const matchesSearch = tenant?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const matchesSearch = (tenant?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.month.includes(searchTerm);
     const isOwner = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'caretaker' || tenant?.userId === user?.id;
     return matchesSearch && isOwner;
@@ -459,7 +467,7 @@ This is a computer generated receipt.
                         <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-white/5 flex items-center justify-center font-bold text-xs text-gray-900 dark:text-white">
                           {tenant?.name?.charAt(0) || '?'}
                         </div>
-                        <span className="text-sm font-bold text-gray-900 dark:text-white">{tenant?.name}</span>
+                        <span className="text-sm font-bold text-gray-900 dark:text-white">{tenant?.name || 'Unknown Tenant'}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">{format(parseISO(`${payment.month}-01`), 'MMMM yyyy')}</td>
@@ -643,7 +651,7 @@ This is a computer generated receipt.
                 <h3 className="text-xl font-bold text-gray-900 dark:text-white">Payment Receipt</h3>
                 <div className="flex gap-2">
                   <button
-                    onClick={handleDownloadReceipt}
+                    onClick={() => handleDownloadReceipt()}
                     className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl font-bold text-sm hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-all"
                   >
                     <Download className="w-4 h-4" />
@@ -711,7 +719,7 @@ This is a computer generated receipt.
 
                 <div className="flex gap-3 pt-4 no-print">
                   <button
-                    onClick={handleDownloadReceipt}
+                    onClick={() => handleDownloadReceipt()}
                     className="flex-1 flex items-center justify-center gap-2 py-3 bg-gray-100 dark:bg-white/5 text-gray-700 dark:text-gray-300 rounded-xl font-bold hover:bg-gray-200 dark:hover:bg-white/10 transition-all"
                   >
                     <Download className="w-5 h-5" />

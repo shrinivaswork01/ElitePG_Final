@@ -26,6 +26,40 @@ export const SubscriptionPage = () => {
     );
   }
 
+  const handleDownloadReceipt = (paymentId: string, plan: SubscriptionPlan, billing: 'monthly' | 'annual') => {
+    const amount = billing === 'annual' ? plan.annualPrice : plan.price;
+    const receiptContent = `
+ELITE PG - Subscription Receipt
+-------------------------------
+Receipt #: SUB-${paymentId.slice(-6).toUpperCase()}
+Date: ${format(new Date(), 'yyyy-MM-dd')}
+Plan: ${plan.name} (${billing.toUpperCase()})
+
+Billed To:
+Name: ${user?.name || 'Admin'}
+Email: ${user?.email || 'N/A'}
+Branch: ${currentBranch?.name || 'N/A'}
+
+Payment Details:
+Subscription Fee: ₹${amount.toLocaleString()}
+Total Paid: ₹${amount.toLocaleString()}
+Method: Razorpay Online
+
+Status: PAYMENT SUCCESSFUL
+-------------------------------
+This is a computer generated receipt.
+`;
+    const blob = new Blob([receiptContent], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Subscription_Receipt_${paymentId.slice(-6).toUpperCase()}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const handleDirectUpgrade = async (plan: SubscriptionPlan) => {
     if (!currentBranch || !user) return;
     setIsProcessing(true);
@@ -53,7 +87,6 @@ export const SubscriptionPage = () => {
     if (useSubscriptionFlow) {
       // ── RECURRING SUBSCRIPTION FLOW ──
       console.log('Initiating Recurring Subscription flow...');
-      // Call Edge Function to create a Razorpay subscription
       try {
         const res = await fetch(`${supabaseUrl}/functions/v1/create-razorpay-subscription`, {
           method: 'POST',
@@ -84,9 +117,6 @@ export const SubscriptionPage = () => {
           return;
         }
 
-        console.log('Subscription created successfully:', data.subscriptionId);
-
-        // Open Razorpay checkout with subscription_id (not amount)
         const options = {
           key: razorpayKey,
           subscription_id: data.subscriptionId,
@@ -94,12 +124,12 @@ export const SubscriptionPage = () => {
           description: `${plan.name} Plan — ${activeBilling === 'annual' ? 'Annual' : 'Monthly'} Subscription`,
           image: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&q=80&w=150&h=150',
           handler: function (response: any) {
-            // Store the Razorpay subscription ID in the branch
             const months = activeBilling === 'annual' ? 12 : 1;
             const endDate = format(addMonths(new Date(), months), 'yyyy-MM-dd');
             updateBranchSubscription(currentBranch.id, plan.id, 'active', endDate, undefined, response.razorpay_subscription_id);
             setIsProcessing(false);
-            toast.success(`🎉 ${plan.name} subscription activated! Auto-renews ${activeBilling}.`);
+            toast.success(`🎉 ${plan.name} subscription activated!`);
+            handleDownloadReceipt(response.razorpay_subscription_id, plan, activeBilling);
           },
           prefill: { name: user.name || 'Admin', email: user.email || '', contact: '' },
           notes: { plan_id: plan.id, branch_id: currentBranch.id },
@@ -113,12 +143,10 @@ export const SubscriptionPage = () => {
         rzp.open();
       } catch (err: any) {
         toast.error('Failed to connect to subscription service.');
-        console.error(err);
         setIsProcessing(false);
       }
     } else {
       // ── ONE-TIME PAYMENT FALLBACK ──
-      // Used when no Razorpay plan ID is configured yet
       const amount = activeBilling === 'annual' ? plan.annualPrice : plan.price;
       const options = {
         key: razorpayKey,
@@ -130,10 +158,10 @@ export const SubscriptionPage = () => {
         handler: function (response: any) {
           const months = activeBilling === 'annual' ? 12 : 1;
           const endDate = format(addMonths(new Date(), months), 'yyyy-MM-dd');
-          // Save payment ID as customer ID in fallback mode for tracking
           updateBranchSubscription(currentBranch.id, plan.id, 'active', endDate, response.razorpay_payment_id);
           setIsProcessing(false);
-          toast.success(`🎉 Plan upgraded to ${plan.name}! ID: ${response.razorpay_payment_id}`);
+          toast.success(`🎉 Plan upgraded to ${plan.name}!`);
+          handleDownloadReceipt(response.razorpay_payment_id, plan, activeBilling);
         },
         prefill: { name: user.name || 'Admin', email: user.email || '', contact: '' },
         notes: { plan_id: plan.id, branch_id: currentBranch.id },

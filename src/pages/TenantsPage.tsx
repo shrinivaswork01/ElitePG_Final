@@ -927,6 +927,34 @@ export const TenantsPage = () => {
                     </select>
                   </div>
                   <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Bed Number</label>
+                    <select
+                      required
+                      value={formData.bedNumber}
+                      onChange={(e) => setFormData({ ...formData, bedNumber: Number(e.target.value) })}
+                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                    >
+                      {(() => {
+                        const room = rooms.find(r => r.id === formData.roomId);
+                        if (!room) return <option value="">Select room first</option>;
+                        const beds = Array.from({ length: room.totalBeds }, (_, i) => i + 1);
+                        return beds.map(bed => {
+                          const isOccupied = tenants.some(t => 
+                            t.roomId === room.id && 
+                            t.bedNumber === bed && 
+                            t.status === 'active' &&
+                            t.id !== editingTenant?.id
+                          );
+                          return (
+                            <option key={bed} value={bed} disabled={isOccupied}>
+                              Bed {bed} {isOccupied ? '(Occupied)' : ''}
+                            </option>
+                          );
+                        });
+                      })()}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Rent Amount (₹)</label>
                     <input
                       required

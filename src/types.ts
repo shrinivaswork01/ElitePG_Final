@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export type UserRole = 'super' | 'admin' | 'manager' | 'caretaker' | 'tenant' | 'cleaner' | 'security' | 'none';
+export type UserRole = 'super' | 'admin' | 'manager' | 'caretaker' | 'tenant' | 'cleaner' | 'security' | 'none' | (string & {});
 
 export type AppFeature = 'tenants' | 'rooms' | 'payments' | 'complaints' | 'kyc' | 'employees' | 'broadcast' | 'analytics' | 'whatsapp' | 'reports' | 'multi-branch';
 
@@ -48,6 +48,7 @@ export interface User {
   avatar?: string;
   seenAnnouncements?: string[]; // Array of announcement IDs
   isAuthorized: boolean;
+  requiresPasswordChange?: boolean;
   password?: string;
   branchId?: string; // Optional for super admin, required for others
   provider?: 'local' | 'google';
@@ -148,6 +149,8 @@ export interface Task {
   dueDate: string;
   createdAt: string;
   completedAt?: string;
+  completionComment?: string;
+  completionImages?: string[];
   branchId: string;
 }
 
@@ -181,7 +184,7 @@ export interface Announcement {
 export interface Employee {
   id: string;
   name: string;
-  role: 'manager' | 'caretaker' | 'cleaner' | 'security' | 'none';
+  role: string;
   email: string;
   phone: string;
   salary: number;
@@ -196,4 +199,9 @@ export interface PGConfig {
   rolePermissions: RolePermissions[];
   branchId: string;
   complaintCategories: string[];
+  customRoles?: string[];
+  logoUrl?: string;
+  pgName?: string;
+  primaryColor?: string;
+  theme?: 'light' | 'dark' | 'system';
 }

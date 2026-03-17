@@ -91,6 +91,7 @@ export const Dashboard = () => {
   const tenantPayments = isTenant ? payments.filter(p => p.tenantId === tenantData?.id) : [];
 
   const employeeTasks = isEmployee ? tasks.filter(t => t.employeeId === employeeData?.id) : [];
+  const employeeComplaints = isEmployee ? complaints.filter(c => c.assignedTo === employeeData?.id) : [];
   const employeeSalaries = isEmployee ? salaryPayments.filter(p => p.employeeId === employeeData?.id) : [];
 
   // Calculate trends for last 30 days
@@ -116,9 +117,9 @@ export const Dashboard = () => {
     ];
   } else if (isEmployee) {
     statCards = [
-      { label: 'Pending Tasks', value: employeeTasks.filter(t => t.status === 'pending').length, icon: ClipboardList, color: 'bg-amber-500', trend: 'Action Needed', link: '/employees' },
+      { label: 'Pending Tasks', value: employeeTasks.filter(t => t.status === 'pending').length, icon: ClipboardList, color: 'bg-amber-500', trend: 'Action Needed', link: '/tasks' },
       { label: 'KYC Status', value: employeeData?.kycStatus?.toUpperCase() || 'UNKNOWN', icon: ShieldCheck, color: employeeData?.kycStatus === 'verified' ? 'bg-emerald-500' : 'bg-amber-500', trend: 'Identity', link: '/profile' },
-      { label: 'Tasks Completed', value: employeeTasks.filter(t => t.status === 'completed').length, icon: CheckCircle, color: 'bg-emerald-500', trend: 'Lifetime', link: '/employees' },
+      { label: 'Tasks Completed', value: employeeTasks.filter(t => t.status === 'completed').length, icon: CheckCircle, color: 'bg-emerald-500', trend: 'Lifetime', link: '/tasks' },
       { label: 'Total Salary Received', value: `₹${employeeSalaries.reduce((sum, p) => sum + p.amount, 0).toLocaleString()}`, icon: DollarSign, color: 'bg-violet-500', trend: 'Earnings', link: '/employees' },
     ];
   } else {
@@ -204,7 +205,9 @@ export const Dashboard = () => {
             {user?.avatar ? (
               <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
             ) : (
-              user?.name?.charAt(0) || '?'
+              <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: pgConfig?.primaryColor }}>
+                {user?.name?.charAt(0) || '?'}
+              </div>
             )}
           </div>
           <div>
@@ -215,7 +218,7 @@ export const Dashboard = () => {
                   {isEmployee ? `Staff Dashboard - ${user?.role}` : isTenant ? 'Your resident dashboard' : "Here's what's happening with your property today."}
                   {user?.branchId && (
                     <span className="block text-indigo-600 dark:text-indigo-400 font-medium mt-1">
-                      {branches.find(b => b.id === user.branchId)?.name} - {branches.find(b => b.id === user.branchId)?.branchName}
+                      {pgConfig?.pgName || branches.find(b => b.id === user.branchId)?.name} - {branches.find(b => b.id === user.branchId)?.branchName}
                     </span>
                   )}
                 </>
@@ -231,6 +234,7 @@ export const Dashboard = () => {
             <button
               onClick={handleDownloadReport}
               className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-medium shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-colors"
+              style={{ backgroundColor: pgConfig?.primaryColor }}
             >
               Download Report
             </button>
@@ -347,25 +351,41 @@ export const Dashboard = () => {
               <h3 className="text-lg font-bold text-gray-900 dark:text-white">
                 {isEmployee ? 'My Recent Tasks' : isTenant ? 'My Recent Complaints' : 'Recent Complaints'}
               </h3>
-              <Link to={isEmployee ? "/employees" : "/complaints"} className="text-indigo-600 dark:text-indigo-400 text-sm font-semibold hover:underline">View All</Link>
+              <Link to={isEmployee ? "/tasks" : "/complaints"} className="text-indigo-600 dark:text-indigo-400 text-sm font-semibold hover:underline">View All</Link>
             </div>
             <div className="divide-y divide-gray-50 dark:divide-white/5">
               {isEmployee ? (
-                employeeTasks.slice(0, 5).map((task) => (
-                  <div key={task.id} className="p-4 sm:p-6 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-                    <div className="flex items-center gap-4">
-                      <div className={cn(
-                        "w-2 h-2 rounded-full",
-                        task.priority === 'high' ? "bg-red-500" : task.priority === 'medium' ? "bg-amber-500" : "bg-blue-500"
-                      )} />
-                      <div>
-                        <p className="text-sm font-semibold text-gray-900 dark:text-white">{task.title}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">{task.status} • Due: {task.dueDate}</p>
+                <>
+                  {[...employeeTasks.map(t => ({ ...t, type: 'task' })), ...employeeComplaints.map(c => ({ ...c, type: 'complaint' }))]
+                    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                    .slice(0, 5)
+                    .map((item: any) => (
+                      <div key={item.id} className="p-4 sm:p-6 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                        <div className="flex items-center gap-4">
+                          <div className={cn(
+                            "w-10 h-10 rounded-xl flex items-center justify-center",
+                            item.type === 'task' ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600" : "bg-rose-50 dark:bg-rose-500/10 text-rose-600"
+                          )}>
+                            {item.type === 'task' ? <ClipboardList className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                              <span className="text-[10px] font-bold uppercase tracking-widest opacity-50 block mb-0.5">{item.type}</span>
+                              {item.title}
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              {item.status} • {item.type === 'task' ? `Due: ${item.dueDate}` : item.category}
+                            </p>
+                          </div>
+                        </div>
+                        <span className="text-xs font-medium text-gray-400">{item.createdAt}</span>
                       </div>
-                    </div>
-                    <span className="text-xs font-medium text-gray-400">{task.createdAt}</span>
-                  </div>
-                ))
+                    ))
+                  }
+                  {employeeTasks.length === 0 && employeeComplaints.length === 0 && (
+                    <div className="p-12 text-center text-gray-500 dark:text-gray-400">No recent tasks or complaints</div>
+                  )}
+                </>
               ) : (isTenant ? tenantComplaints : complaints).slice(0, 5).map((complaint) => (
                 <div key={complaint.id} className="p-4 sm:p-6 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                   <div className="flex items-center gap-4">

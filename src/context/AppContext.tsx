@@ -44,11 +44,9 @@ interface AppContextType {
   deleteKYC: (id: string) => Promise<void>;
   uploadVerifiedKYC: (tenantId: string, docType: string, docUrl: string) => Promise<void>;
 
-  addAnnouncement: (announcement: Omit<Announcement, 'id' | 'branchId'>) => Promise<void>;
-  deleteAnnouncement: (id: string) => Promise<void>;
-
   addSalaryPayment: (payment: Omit<SalaryPayment, 'id' | 'branchId'>) => Promise<void>;
   updateSalaryPayment: (id: string, updates: Partial<SalaryPayment>) => Promise<void>;
+  deleteSalaryPayment: (id: string) => Promise<void>;
 
   addTask: (task: Omit<Task, 'id' | 'branchId'>) => Promise<void>;
   updateTask: (id: string, updates: Partial<Task>) => Promise<void>;
@@ -85,7 +83,7 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
-  const { user } = useAuth();
+  const { register, user } = useAuth();
 
   const [data, setData] = useState<any>(() => {
     const cached = localStorage.getItem('elite_pg_cached_data');
@@ -200,7 +198,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         })),
         pgConfigs: (pgConfigs || []).map(c => ({
           branchId: c.branch_id, rules: c.rules, rolePermissions: c.role_permissions, bannerUrl: c.banner_url,
-          complaintCategories: c.complaint_categories || ['Plumbing', 'Electrical', 'Internet', 'Cleaning', 'Other']
+          complaintCategories: c.complaint_categories || ['Plumbing', 'Electrical', 'Internet', 'Cleaning', 'Other'],
+          customRoles: c.custom_roles || [],
+          logoUrl: c.logo_url,
+          pgName: c.pg_name,
+          primaryColor: c.primary_color,
+          theme: c.theme
         })),
         userInvites: (userInvites || []).map(i => ({
           id: i.id, inviteCode: i.invite_code, email: i.email, branchId: i.branch_id, role: i.role as any, status: i.status as any, createdAt: i.created_at
@@ -509,22 +512,64 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const addEmployee = async (employee: Omit<Employee, 'id' | 'kycStatus' | 'branchId'>, kycDoc?: { type: string, url: string }) => {
     if (!user?.branchId) return;
+    
     const isAdmin = ['super', 'admin', 'manager'].includes(user?.role || '');
     const kycStatus = kycDoc ? (isAdmin ? 'verified' : 'pending') : 'unsubmitted';
     const tempId = `temp-${Date.now()}`;
-    applyOptimistic(prev => ({ ...prev, employees: [...prev.employees, { ...employee, id: tempId, branchId: user.branchId, kycStatus }] }));
+    
+    // 1. First, check for existing email/username in the same branch
+    const username = employee.email.split('@')[0] || `emp${Date.now()}`;
+    
+    // Check local data first for speed
+    const isDuplicate = data.employees.some(e => 
+      e.email.toLowerCase() === employee.email.toLowerCase() || 
+      (e as any).username?.toLowerCase() === username.toLowerCase()
+    );
+
+    if (isDuplicate) {
+      toast.error('Email or Username already exists in this branch.');
+      return;
+    }
+
+    const defaultPassword = '123456';
+    const regResult = await register({
+      username,
+      name: employee.name,
+      email: employee.email,
+      role: employee.role as any,
+      phone: employee.phone,
+      branchId: user.branchId,
+      requiresPasswordChange: true
+    }, defaultPassword);
+
+    if (!regResult.success && !regResult.existingUser) {
+      toast.error(`Failed to create employee login: ${regResult.message}`);
+      return;
+    }
+
+    const userId = regResult.user?.id || (regResult as any).existingUserId;
+
+    // 2. Insert into employees table
+    applyOptimistic(prev => ({ ...prev, employees: [...prev.employees, { ...employee, id: tempId, branchId: user.branchId, kycStatus, userId }] }));
+    
     const { data: createdEm, error } = await supabase.from('employees').insert({
-      user_id: employee.userId || null, name: employee.name, role: employee.role, email: employee.email, phone: employee.phone,
+      user_id: userId || null, name: employee.name, role: employee.role, email: employee.email, phone: employee.phone,
       salary: employee.salary, joining_date: employee.joiningDate, kyc_status: kycStatus, branch_id: user.branchId
     }).select().single();
-    if (error) { toast.error(error.message); return; }
+    
+    if (error) { 
+      toast.error(error.message); 
+      return; 
+    }
+
     if (createdEm && kycDoc) {
       await supabase.from('kyc_documents').insert({
         employee_id: createdEm.id, document_type: kycDoc.type, document_url: kycDoc.url, status: kycStatus, branch_id: user.branchId,
         ...(isAdmin ? { verified_by: user?.name, verified_at: new Date().toISOString().split('T')[0] } : {})
       });
     }
-    toast.success('Employee added successfully');
+    
+    toast.success('Employee added and login created (Default Pass: 123456)');
     setTimeout(() => fetchData(), 500);
   };
 
@@ -572,6 +617,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const deleteEmployee = async (id: string) => {
+    // If it's a temporary ID, just remove from local state and skip DB
+    if (id.startsWith('temp-')) {
+       applyOptimistic(prev => ({
+        ...prev,
+        employees: prev.employees.filter((e: any) => e.id !== id)
+      }));
+      return;
+    }
+
+    const targetEmployee = data.employees.find((e: any) => e.id === id);
+    
     // Optimistically remove from local state immediately
     applyOptimistic(prev => ({
       ...prev,
@@ -580,13 +636,28 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       salaryPayments: prev.salaryPayments.filter((s: any) => s.employeeId !== id),
       tasks: prev.tasks.filter((t: any) => t.employeeId !== id)
     }));
-    toast.success('Employee deleted successfully');
-    // Cascade-delete related records in background
-    await supabase.from('kyc_documents').delete().eq('employee_id', id);
-    await supabase.from('salary_payments').delete().eq('employee_id', id);
-    await supabase.from('tasks').delete().eq('employee_id', id);
-    const { error } = await supabase.from('employees').delete().eq('id', id);
-    if (error) { toast.error(`Delete failed: ${error.message}`); fetchData(); }
+
+    try {
+      // 1. Cascade-delete related records in SQL directly or here
+      await supabase.from('kyc_documents').delete().eq('employee_id', id);
+      await supabase.from('salary_payments').delete().eq('employee_id', id);
+      await supabase.from('tasks').delete().eq('employee_id', id);
+      
+      // 2. Delete the employee record
+      const { error: empError } = await supabase.from('employees').delete().eq('id', id);
+      if (empError) throw empError;
+
+      // 3. Finally delete the user account if linked
+      if (targetEmployee?.userId) {
+        await supabase.from('users').delete().eq('id', targetEmployee.userId);
+      }
+      
+      toast.success('Employee and associated data deleted securely');
+    } catch (error: any) {
+      console.error('Delete failed:', error);
+      toast.error(`Delete failed: ${error.message}`);
+      fetchData(); // Revert state
+    }
   };
 
   const updateKYC = async (id: string, updates: Partial<KYCData>) => {
@@ -667,7 +738,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updateSalaryPayment = async (id: string, updates: Partial<SalaryPayment>) => {
-    applyOptimistic(prev => ({ ...prev, salaryPayments: prev.salaryPayments.map((p: any) => p.id === id ? { ...p, ...updates } : p) }));
+    applyOptimistic(prev => ({ ...prev, salaryPayments: prev.salaryPayments.map((s: any) => s.id === id ? { ...s, ...updates } : s) }));
     const dbUpdates: any = {};
     if (updates.amount !== undefined) dbUpdates.amount = updates.amount;
     if (updates.month !== undefined) dbUpdates.month = updates.month;
@@ -675,7 +746,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.status !== undefined) dbUpdates.status = updates.status;
     if (updates.method !== undefined) dbUpdates.method = updates.method;
     if (updates.transactionId !== undefined) dbUpdates.transaction_id = updates.transactionId;
-    await refetch(supabase.from('salary_payments').update(dbUpdates).eq('id', id), 'Salary payment updated');
+    await refetch(supabase.from('salary_payments').update(dbUpdates).eq('id', id), 'Salary record updated');
+  };
+
+  const deleteSalaryPayment = async (id: string) => {
+    applyOptimistic(prev => ({ ...prev, salaryPayments: prev.salaryPayments.filter((s: any) => s.id !== id) }));
+    await refetch(supabase.from('salary_payments').delete().eq('id', id), 'Salary record deleted');
   };
 
   const addTask = async (task: Omit<Task, 'id' | 'branchId'>) => {
@@ -711,6 +787,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.rules !== undefined) dbUpdates.rules = updates.rules;
     if (updates.rolePermissions !== undefined) dbUpdates.role_permissions = updates.rolePermissions;
     if (updates.complaintCategories !== undefined) dbUpdates.complaint_categories = updates.complaintCategories;
+    if (updates.customRoles !== undefined) dbUpdates.custom_roles = updates.customRoles;
+    if (updates.logoUrl !== undefined) dbUpdates.logo_url = updates.logoUrl;
+    if (updates.pgName !== undefined) dbUpdates.pg_name = updates.pgName;
+    if (updates.primaryColor !== undefined) dbUpdates.primary_color = updates.primaryColor;
+    if (updates.theme !== undefined) dbUpdates.theme = updates.theme;
 
     // Optimistically update PG config to prevent UI lagging on changes
     applyOptimistic(prev => {
@@ -723,17 +804,37 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       } else {
         return {
           ...prev,
-          pgConfigs: [...prev.pgConfigs, { branchId: user.branchId, rules: updates.rules || [], rolePermissions: updates.rolePermissions || [], complaintCategories: updates.complaintCategories || [] }]
+          pgConfigs: [...prev.pgConfigs, { 
+            branchId: user.branchId, 
+            rules: updates.rules || [], 
+            rolePermissions: updates.rolePermissions || [], 
+            complaintCategories: updates.complaintCategories || [], 
+            customRoles: updates.customRoles || [],
+            logoUrl: updates.logoUrl,
+            pgName: updates.pgName,
+            primaryColor: updates.primaryColor,
+            theme: updates.theme as any
+          }]
         };
       }
     });
 
-    // Check if PG Config already exists
-    const existing = data.pgConfigs.find((c: any) => c.branchId === user.branchId);
-    if (existing) {
-      await refetch(supabase.from('pg_configs').update(dbUpdates).eq('branch_id', user.branchId), 'Settings updated');
-    } else {
-      await refetch(supabase.from('pg_configs').insert({ ...dbUpdates, branch_id: user.branchId }), 'Settings initialized');
+    try {
+      // Check if PG Config already exists
+      const existing = data.pgConfigs.find((c: any) => c.branchId === user.branchId);
+      if (existing) {
+        const { error } = await supabase.from('pg_configs').update(dbUpdates).eq('branch_id', user.branchId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('pg_configs').insert({ ...dbUpdates, branch_id: user.branchId });
+        if (error) throw error;
+      }
+      toast.success('Settings saved successfully');
+      setTimeout(() => fetchData(), 500);
+    } catch (error: any) {
+      console.error('Failed to update PG Config:', error);
+      toast.error(`Update failed: ${error.message}. Ensure database columns are updated.`);
+      throw error;
     }
   };
 
@@ -887,7 +988,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       addEmployee, updateEmployee, deleteEmployee,
       updateKYC, deleteKYC, uploadVerifiedKYC,
       addAnnouncement, deleteAnnouncement,
-      addSalaryPayment, updateSalaryPayment,
+      addSalaryPayment,
+      updateSalaryPayment,
+      deleteSalaryPayment,
       addTask, updateTask, deleteTask,
       updatePGConfig,
       addBranch, updateBranch, deleteBranch,

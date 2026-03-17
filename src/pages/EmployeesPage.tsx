@@ -38,15 +38,18 @@ export const EmployeesPage = () => {
     addEmployee,
     updateEmployee,
     deleteEmployee,
+    salaryPayments,
+    addSalaryPayment,
+    updateSalaryPayment,
+    deleteSalaryPayment,
     tasks,
     addTask,
     updateTask,
     deleteTask,
-    salaryPayments,
-    addSalaryPayment,
-    updateSalaryPayment,
     kycs,
-    updateKYC
+    updateKYC,
+    pgConfig,
+    updatePGConfig
   } = useApp();
 
   if (user?.role === 'tenant') {
@@ -57,12 +60,14 @@ export const EmployeesPage = () => {
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [employeeForLogin, setEmployeeForLogin] = useState<Employee | null>(null);
-  const [createUsername, setCreateUsername] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
+  const [salarySearchTerm, setSalarySearchTerm] = useState('');
   const [kycToReject, setKycToReject] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const [employeeToDelete, setEmployeeToDelete] = useState<Employee | null>(null);
+  const [salaryToDelete, setSalaryToDelete] = useState<SalaryPayment | null>(null);
+  const [isRolesModalOpen, setIsRolesModalOpen] = useState(false);
+  const [isVisibilityModalOpen, setIsVisibilityModalOpen] = useState(false);
+  const [newRoleName, setNewRoleName] = useState('');
 
   // Task Modal State
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
@@ -126,20 +131,6 @@ export const EmployeesPage = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validation: No duplicate role assignment (except for 'none')
-    if (formData.role !== 'none') {
-      const duplicateRole = employees.find(emp =>
-        emp.role === formData.role &&
-        emp.id !== editingEmployee?.id &&
-        emp.branchId === (editingEmployee?.branchId || user?.branchId)
-      );
-
-      if (duplicateRole) {
-        toast.error(`An employee with the role "${formData.role}" already exists in this branch. Each specialized role can only be assigned once.`);
-        return;
-      }
-    }
-
     const kycData = kycFile.url ? { type: kycFile.type, url: kycFile.url } : undefined;
     if (editingEmployee) {
       updateEmployee(editingEmployee.id, formData, kycData);
@@ -152,35 +143,6 @@ export const EmployeesPage = () => {
     handleCloseModal();
   };
 
-  const handleCreateLogin = async () => {
-    if (!employeeForLogin) return;
-    const finalUsername = createUsername || employeeForLogin.email;
-
-    const existingUser = users.find(u => u.username === finalUsername || u.email === employeeForLogin.email);
-    if (existingUser) {
-      toast.error('User login already exists for this email or username.');
-      setEmployeeForLogin(null);
-      setCreateUsername('');
-      return;
-    }
-
-    const result = await register({
-      username: finalUsername,
-      name: employeeForLogin.name,
-      email: employeeForLogin.email,
-      role: employeeForLogin.role,
-      phone: employeeForLogin.phone,
-      branchId: employeeForLogin.branchId
-    }, loginPassword);
-
-    if (result.success && result.user) {
-      updateEmployee(employeeForLogin.id, { userId: result.user.id });
-      toast.success('Login created successfully. The employee must be authorized by an admin before logging in.');
-      setEmployeeForLogin(null);
-      setCreateUsername('');
-      setLoginPassword('');
-    }
-  };
 
   const handleAddTask = (e: React.FormEvent) => {
     e.preventDefault();
@@ -257,6 +219,16 @@ export const EmployeesPage = () => {
     return matchesSearch && (e.userId === user?.id || e.email === user?.email);
   });
 
+  const filteredSalaries = salaryPayments
+    .filter(p => {
+      const employee = employees.find(e => e.id === p.employeeId);
+      const matchesSearch = employee?.name.toLowerCase().includes(salarySearchTerm.toLowerCase()) ||
+        p.month.toLowerCase().includes(salarySearchTerm.toLowerCase()) ||
+        p.method.toLowerCase().includes(salarySearchTerm.toLowerCase());
+      return matchesSearch;
+    })
+    .sort((a, b) => b.paymentDate.localeCompare(a.paymentDate));
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -272,6 +244,27 @@ export const EmployeesPage = () => {
             >
               {activeTab === 'list' ? <History className="w-5 h-5" /> : <Users className="w-5 h-5" />}
               {activeTab === 'list' ? 'Salary History' : 'Staff List'}
+            </button>
+            <button
+              onClick={() => setIsRolesModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all"
+            >
+              <Shield className="w-5 h-5 text-indigo-500" />
+              Manage Roles
+            </button>
+            <button
+              onClick={() => setIsVisibilityModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all"
+            >
+              <UserCog className="w-5 h-5 text-amber-500" />
+              Role Visibility
+            </button>
+            <button
+              onClick={() => setIsTaskModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all"
+            >
+              <ClipboardList className="w-5 h-5 text-indigo-500" />
+              Add Task
             </button>
             <button
               onClick={() => setIsAddModalOpen(true)}
@@ -312,7 +305,10 @@ export const EmployeesPage = () => {
                 className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden group hover:shadow-md transition-all"
               >
                 <div className="p-6">
-                  <div className="flex items-start justify-between mb-6">
+                  <div 
+                    className="flex items-start justify-between mb-6 cursor-pointer"
+                    onClick={() => setSelectedEmployee(employee)}
+                  >
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center font-bold text-xl">
                         {employee.name?.charAt(0) || '?'}
@@ -324,23 +320,7 @@ export const EmployeesPage = () => {
                         </span>
                       </div>
                     </div>
-                    <div className="flex gap-1 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() => setSelectedEmployee(employee)}
-                        className="p-2 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-lg text-indigo-600 dark:text-indigo-400 transition-colors"
-                        title="View Details"
-                      >
-                        <UserCog className="w-4 h-4" />
-                      </button>
-                      {!employee.userId && (
-                        <button
-                          onClick={() => setEmployeeForLogin(employee)}
-                          className="p-2 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-lg text-blue-600 dark:text-blue-400 transition-colors"
-                          title="Create Login"
-                        >
-                          <UserPlus className="w-4 h-4" />
-                        </button>
-                      )}
+                    <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                       <button
                         onClick={() => handleEditClick(employee)}
                         className="p-2 hover:bg-gray-50 dark:hover:bg-white/5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
@@ -404,8 +384,20 @@ export const EmployeesPage = () => {
         </>
       ) : (
         <div className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-gray-100 dark:border-white/5 flex items-center justify-between">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Salary Payment History</h3>
+          <div className="p-6 border-b border-gray-100 dark:border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex flex-col sm:flex-row items-center gap-4 flex-1">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white whitespace-nowrap">Salary Payment History</h3>
+              <div className="relative flex-1 w-full max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search by name, month, or method..."
+                  value={salarySearchTerm}
+                  onChange={(e) => setSalarySearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                />
+              </div>
+            </div>
             <div className="flex items-center gap-4">
               <div className="text-right">
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Payroll</p>
@@ -423,10 +415,11 @@ export const EmployeesPage = () => {
                   <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
                   <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Method</th>
                   <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50 dark:divide-white/5">
-                {salaryPayments.sort((a, b) => b.paymentDate.localeCompare(a.paymentDate)).map((payment) => {
+                {filteredSalaries.map((payment) => {
                   const employee = employees.find(e => e.id === payment.employeeId);
                   return (
                     <tr key={payment.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
@@ -446,6 +439,15 @@ export const EmployeesPage = () => {
                         <span className="px-2.5 py-1 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 rounded-lg text-[10px] font-bold uppercase tracking-wider">
                           {payment.status}
                         </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <button
+                          onClick={() => setSalaryToDelete(payment)}
+                          className="p-2 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg text-red-400 hover:text-red-600 transition-colors"
+                          title="Delete Record"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </td>
                     </tr>
                   );
@@ -511,6 +513,9 @@ export const EmployeesPage = () => {
                       <option value="caretaker">Caretaker</option>
                       <option value="cleaner">Cleaner</option>
                       <option value="security">Security</option>
+                      {pgConfig?.customRoles?.map(role => (
+                        <option key={role} value={role}>{role.charAt(0).toUpperCase() + role.slice(1)}</option>
+                      ))}
                     </select>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
@@ -599,6 +604,7 @@ export const EmployeesPage = () => {
                   <button
                     type="submit"
                     className="px-6 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
+                    style={{ backgroundColor: pgConfig?.primaryColor }}
                   >
                     {editingEmployee ? 'Update Employee' : 'Add Employee'}
                   </button>
@@ -813,7 +819,52 @@ export const EmployeesPage = () => {
         )}
       </AnimatePresence>
 
-      {/* Delete Confirmation Modal */}
+      {/* Salary Delete Confirmation Modal */}
+      <AnimatePresence>
+        {salaryToDelete && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => setSalaryToDelete(null)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative bg-white dark:bg-[#111111] rounded-3xl shadow-2xl w-full max-w-sm p-8 border border-gray-100 dark:border-white/10"
+            >
+              <div className="flex flex-col items-center text-center gap-4">
+                <div className="w-16 h-16 rounded-2xl bg-red-50 dark:bg-red-500/10 flex items-center justify-center">
+                  <Trash2 className="w-8 h-8 text-red-500" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">Delete Salary Record?</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                    Are you sure you want to delete this salary record for <span className="font-bold text-gray-900 dark:text-white">{employees.find(e => e.id === salaryToDelete.employeeId)?.name}</span>?
+                  </p>
+                </div>
+                <div className="flex gap-3 w-full mt-2">
+                  <button
+                    onClick={() => setSalaryToDelete(null)}
+                    className="flex-1 py-3 rounded-2xl bg-gray-100 dark:bg-white/5 text-gray-700 dark:text-gray-300 font-semibold hover:bg-gray-200 dark:hover:bg-white/10 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => { deleteSalaryPayment(salaryToDelete.id); setSalaryToDelete(null); }}
+                    className="flex-1 py-3 rounded-2xl bg-red-600 text-white font-semibold hover:bg-red-700 transition-colors"
+                  >
+                    Yes, Delete
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
       <AnimatePresence>
         {employeeToDelete && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -885,6 +936,20 @@ export const EmployeesPage = () => {
                 </button>
               </div>
               <form onSubmit={handleAddTask} className="p-6 space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Assign To</label>
+                  <select
+                    required
+                    value={taskFormData.employeeId}
+                    onChange={(e) => setTaskFormData({ ...taskFormData, employeeId: e.target.value })}
+                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                  >
+                    <option value="">Select Employee</option>
+                    {employees.map(emp => (
+                      <option key={emp.id} value={emp.id}>{emp.name} ({emp.role})</option>
+                    ))}
+                  </select>
+                </div>
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Task Title</label>
                   <input
@@ -1018,68 +1083,6 @@ export const EmployeesPage = () => {
         )}
       </AnimatePresence>
 
-      {/* Create Login Modal */}
-      <AnimatePresence>
-        {employeeForLogin && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setEmployeeForLogin(null)}
-              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-md bg-white dark:bg-[#111111] rounded-3xl shadow-2xl overflow-hidden border border-white/5"
-            >
-              <div className="p-6 sm:p-8 border-b border-gray-100 dark:border-white/5 flex items-center justify-between bg-white dark:bg-[#111111]">
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white">Create Employee Login</h3>
-                <button onClick={() => setEmployeeForLogin(null)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors">
-                  <Plus className="w-6 h-6 rotate-45 text-gray-400" />
-                </button>
-              </div>
-              <div className="p-6 sm:p-8 space-y-6">
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Username / Email</label>
-                  <input
-                    type="text"
-                    readOnly
-                    value={employeeForLogin.email}
-                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-gray-500 dark:text-gray-400"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Set Password</label>
-                  <input
-                    type="password"
-                    value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                    placeholder="Enter password"
-                  />
-                </div>
-                <div className="flex justify-end gap-3 pt-4">
-                  <button
-                    onClick={() => setEmployeeForLogin(null)}
-                    className="px-6 py-2.5 text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleCreateLogin}
-                    className="px-6 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
-                  >
-                    Create Login
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
       <AnimatePresence>
         {kycToReject && (
           <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
@@ -1127,6 +1130,211 @@ export const EmployeesPage = () => {
                     Confirm Rejection
                   </button>
                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* Manage Roles Modal */}
+      <AnimatePresence>
+        {isRolesModalOpen && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsRolesModalOpen(false)}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-md bg-white dark:bg-[#111111] rounded-3xl shadow-2xl overflow-hidden border border-white/5"
+            >
+              <div className="p-6 border-b border-gray-100 dark:border-white/5 flex items-center justify-between">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">Manage Custom Roles</h3>
+                <button onClick={() => setIsRolesModalOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors">
+                  <X className="w-6 h-6 text-gray-400" />
+                </button>
+              </div>
+              <div className="p-6 space-y-6">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="New role name..."
+                    value={newRoleName}
+                    onChange={(e) => setNewRoleName(e.target.value)}
+                    className="flex-1 px-4 py-2 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                  />
+                  <button
+                    onClick={() => {
+                      const trimmed = newRoleName.trim().toLowerCase();
+                      if (!trimmed) return;
+                      if (['admin', 'manager', 'caretaker', 'security', 'cleaner'].includes(trimmed) || pgConfig?.customRoles?.includes(trimmed)) {
+                        toast.error('Role already exists or is reserved');
+                        return;
+                      }
+                      updatePGConfig({ customRoles: [...(pgConfig?.customRoles || []), trimmed] });
+                      setNewRoleName('');
+                      toast.success('Role added');
+                    }}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all"
+                    style={{ backgroundColor: pgConfig?.primaryColor }}
+                  >
+                    Add
+                  </button>
+                </div>
+                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
+                  {(pgConfig?.customRoles || []).map(role => (
+                    <div key={role} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/5 group">
+                      <span className="text-sm font-semibold text-gray-900 dark:text-white capitalize">{role}</span>
+                      <button
+                        onClick={() => {
+                          updatePGConfig({ customRoles: pgConfig?.customRoles?.filter(r => r !== role) });
+                          toast.success('Role removed');
+                        }}
+                        className="p-1.5 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                  {(pgConfig?.customRoles || []).length === 0 && (
+                    <p className="text-center py-8 text-gray-500 text-sm italic">No custom roles created yet.</p>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* Role Visibility Modal */}
+      <AnimatePresence>
+        {isVisibilityModalOpen && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsVisibilityModalOpen(false)}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-4xl bg-white dark:bg-[#111111] rounded-3xl shadow-2xl overflow-hidden border border-white/5"
+            >
+              <div className="p-6 border-b border-gray-100 dark:border-white/5 flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">Role Visibility Settings</h3>
+                  <p className="text-sm text-gray-500">Control which tabs are visible for each employee role.</p>
+                </div>
+                <button onClick={() => setIsVisibilityModalOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors">
+                  <X className="w-6 h-6 text-gray-400" />
+                </button>
+              </div>
+              <div className="p-6 overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="p-4 text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 dark:border-white/5">Tab Name</th>
+                      {[
+                        'manager',
+                        'caretaker',
+                        'cleaner',
+                        'security',
+                        ...(pgConfig?.customRoles || [])
+                      ].map(role => (
+                        <th key={role} className="p-4 text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 dark:border-white/5 text-center truncate max-w-[120px]">
+                          {role}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50 dark:divide-white/5">
+                    {[
+                      { name: 'Dashboard', href: '/' },
+                      { name: 'Tenants', href: '/tenants' },
+                      { name: 'Rooms', href: '/rooms' },
+                      { name: 'Payments', href: '/payments' },
+                      { name: 'Complaints', href: '/complaints' },
+                      { name: 'KYC Verification', href: '/kyc' },
+                      { name: 'Employees', href: '/employees' },
+                      { name: 'Reports', href: '/reports' },
+                      { name: 'Broadcast', href: '/broadcast' },
+                      { name: 'Tasks', href: '/tasks' },
+                      { name: 'Help & Support', href: '/help' }
+                    ].map(tab => (
+                      <tr key={tab.href} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                        <td className="p-4">
+                          <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">{tab.name}</span>
+                        </td>
+                        {[
+                          'manager',
+                          'caretaker',
+                          'cleaner',
+                          'security',
+                          ...(pgConfig?.customRoles || [])
+                        ].map(role => {
+                          const rolePerm = pgConfig?.rolePermissions?.find(p => p.role === role);
+                          const isVisible = tab.href === '/' || (rolePerm ? rolePerm.visibleTabs.includes(tab.href) : true);
+                          const isDashboard = tab.href === '/';
+
+                          return (
+                            <td key={role} className="p-4 text-center">
+                              <button
+                                disabled={isDashboard}
+                                onClick={() => {
+                                  const permissions = [...(pgConfig?.rolePermissions || [])];
+                                  const index = permissions.findIndex(p => p.role === role);
+                                  
+                                  if (index >= 0) {
+                                    const hasTab = permissions[index].visibleTabs.includes(tab.href);
+                                    permissions[index] = {
+                                      ...permissions[index],
+                                      visibleTabs: hasTab 
+                                        ? permissions[index].visibleTabs.filter(t => t !== tab.href)
+                                        : [...permissions[index].visibleTabs, tab.href]
+                                    };
+                                  } else {
+                                    permissions.push({
+                                      role,
+                                      visibleTabs: ['/', tab.href]
+                                    });
+                                  }
+                                  
+                                  updatePGConfig({ rolePermissions: permissions });
+                                }}
+                                className={cn(
+                                  "w-10 h-6 rounded-full relative transition-all duration-300",
+                                  isVisible ? "bg-indigo-600" : "bg-gray-200 dark:bg-white/10",
+                                  isDashboard && "opacity-50 cursor-not-allowed"
+                                )}
+                                style={isVisible && !isDashboard ? { backgroundColor: pgConfig?.primaryColor } : {}}
+                              >
+                                <motion.div
+                                  animate={{ x: isVisible ? 18 : 4 }}
+                                  className="absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm"
+                                />
+                              </button>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="p-6 bg-gray-50 dark:bg-white/5 border-t border-gray-100 dark:border-white/5 flex justify-end">
+                <button
+                  onClick={() => setIsVisibilityModalOpen(false)}
+                  className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
+                  style={{ backgroundColor: pgConfig?.primaryColor }}
+                >
+                  Done
+                </button>
               </div>
             </motion.div>
           </div>

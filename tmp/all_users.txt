@@ -1,0 +1,20 @@
+[admin] admin | admin@gmail.com | admin | Pass: 123456
+[admin] admin1 | admin1@gmail.com | admin1 | Pass: 123456
+[admin] admin2 | admin2@gmail.com | admin2 | Pass: 123456
+[admin] admin3 | admin3@gmail.com | admin3 | Pass: 123456
+[tenant] dummy | dummy | dummy | Pass: 123456
+[tenant] koveh54390@devlug.com | koveh54390@devlug.com | sdf | Pass: Nava@123
+[manager] manager@gmail.com | manager@gmail.com | Manager | Pass: 123456
+[tenant] member1@gmail.com | member1@gmail.com | member1 | Pass: 123456
+[tenant] newpg1@gmail.com | newpg1@gmail.com | newpg1 | Pass: 123456
+[tenant] shrinivaskandkoorr | shrinivaskandkoorr@gmail.com | Shrinivas Kandkoor | Pass: null
+[tenant] shrinivaswork01 | shrinivaswork01@gmail.com | Shrinivas | Pass: null
+[super] super | super@elitepg.com | Super Admin | Pass: 123456
+[tenant] tenant1@gmail.com | tenant1@gmail.com | tenant1 | Pass: 123456
+[tenant] tenant10@gmail.com | tenant10@gmail.com | Tenant10 | Pass: 123456
+[tenant] tenant2@gmail.com | tenant2@gmail.com | tenant2 | Pass: 123456
+[tenant] tenant20@gmail.com | tenant20@gmail.com | tenant20 | Pass: 123456
+[tenant] tenant3@gmail.com | tenant3@gmail.com | tenant3 | Pass: 123456
+[tenant] tenant4@gmail.com | tenant4@gmail.com | tenant4 | Pass: 123456
+[tenant] tenant5@gmail.com | tenant5@gmail.com | tenant5 | Pass: 123456
+[tenant] tenant7@gmail.com | tenant7@gmail.com | tenant7 | Pass: 123456
