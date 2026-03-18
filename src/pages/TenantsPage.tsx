@@ -272,22 +272,24 @@ export const TenantsPage = () => {
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Tenants</h2>
           <p className="text-gray-500 dark:text-gray-400">Manage your residents and their details.</p>
         </div>
-        <button
-          onClick={() => {
-            if (isAtLimit) {
-              toast.error(`Limit reached! Your current plan (${currentPlan?.name}) allows only ${currentPlan?.maxTenants} tenants. Please upgrade your plan.`);
-              return;
-            }
-            setIsAddModalOpen(true);
-          }}
-          className={cn(
-            "flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all",
-            isAtLimit && "opacity-50 cursor-not-allowed"
-          )}
-        >
-          <Plus className="w-5 h-5" />
-          Add Tenant
-        </button>
+        {['admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '') && (
+          <button
+            onClick={() => {
+              if (isAtLimit) {
+                toast.error(`Limit reached! Your current plan (${currentPlan?.name}) allows only ${currentPlan?.maxTenants} tenants. Please upgrade your plan.`);
+                return;
+              }
+              setIsAddModalOpen(true);
+            }}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all",
+              isAtLimit && "opacity-50 cursor-not-allowed"
+            )}
+          >
+            <Plus className="w-5 h-5" />
+            Add Tenant
+          </button>
+        )}
       </div>
 
       {isNearLimit && (
@@ -453,7 +455,7 @@ export const TenantsPage = () => {
                             <FileCheck className="w-4 h-4" />
                           </button>
                         )}
-                        {!tenant.userId && (
+                        {!tenant.userId && ['admin', 'manager', 'receptionist'].includes(user?.role || '') && (
                           <button
                             onClick={() => setTenantForLogin(tenant)}
                             title="Create User Login"
@@ -462,31 +464,37 @@ export const TenantsPage = () => {
                             <UserPlus className="w-4 h-4" />
                           </button>
                         )}
-                        <button
-                          onClick={() => {
-                            setKycUploadTenant(tenant);
-                            setAdminKycFile(null);
-                            setAdminKycType('Aadhar Card');
-                          }}
-                          title="Upload Verified KYC"
-                          className="p-2 hover:bg-violet-50 dark:hover:bg-violet-500/10 rounded-lg text-violet-600 dark:text-violet-400 transition-colors"
-                        >
-                          <Shield className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleEditClick(tenant)}
-                          title="Edit Tenant"
-                          className="p-2 hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg text-gray-500 dark:text-gray-400 transition-colors"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => setTenantToDelete(tenant)}
-                          title="Delete Tenant"
-                          className="p-2 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg text-red-500 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {['admin', 'manager', 'receptionist'].includes(user?.role || '') && (
+                          <button
+                            onClick={() => {
+                              setKycUploadTenant(tenant);
+                              setAdminKycFile(null);
+                              setAdminKycType('Aadhar Card');
+                            }}
+                            title="Upload Verified KYC"
+                            className="p-2 hover:bg-violet-50 dark:hover:bg-violet-500/10 rounded-lg text-violet-600 dark:text-violet-400 transition-colors"
+                          >
+                            <Shield className="w-4 h-4" />
+                          </button>
+                        )}
+                        {['admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '') && (
+                          <button
+                            onClick={() => handleEditClick(tenant)}
+                            title="Edit Tenant"
+                            className="p-2 hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg text-gray-500 dark:text-gray-400 transition-colors"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                        )}
+                        {['admin', 'manager'].includes(user?.role || '') && (
+                          <button
+                            onClick={() => setTenantToDelete(tenant)}
+                            title="Delete Tenant"
+                            className="p-2 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg text-red-500 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

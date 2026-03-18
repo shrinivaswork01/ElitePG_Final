@@ -126,21 +126,49 @@ export const EmployeesPage = () => {
       joiningDate: new Date().toISOString().split('T')[0],
       kycStatus: 'unsubmitted'
     });
+    setKycFile({
+      type: 'Aadhar Card',
+      url: '',
+      fileName: ''
+    });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const kycData = kycFile.url ? { type: kycFile.type, url: kycFile.url } : undefined;
+    let success = false;
+
     if (editingEmployee) {
-      updateEmployee(editingEmployee.id, formData, kycData);
-      if (editingEmployee.userId) {
+      success = await updateEmployee(editingEmployee.id, formData, kycData);
+      if (success && editingEmployee.userId) {
         updateUser(editingEmployee.userId, { name: formData.name, email: formData.email, phone: formData.phone });
       }
     } else {
-      addEmployee(formData, kycData);
+      success = await addEmployee(formData, kycData);
     }
-    handleCloseModal();
+
+    if (success) {
+      handleCloseModal();
+    }
+  };
+
+  const handleDeleteEmployee = async (employeeId: string) => {
+    // Delete all references first
+    const employeeTasks = tasks.filter(t => t.employeeId === employeeId);
+    for (const task of employeeTasks) {
+      await deleteTask(task.id);
+    }
+
+    const employeeSalaries = salaryPayments.filter(s => s.employeeId === employeeId);
+    for (const salary of employeeSalaries) {
+      await deleteSalaryPayment(salary.id);
+    }
+
+    // Finally delete the employee
+    await deleteEmployee(employeeId);
+    setEmployeeToDelete(null);
+    toast.success('Employee and all related data deleted successfully');
   };
 
 
@@ -328,7 +356,7 @@ export const EmployeesPage = () => {
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => setEmployeeToDelete(employee)}
+                        onClick={() => handleDeleteEmployee(employee.id)}
                         className="p-2 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg text-red-400 hover:text-red-600 dark:hover:text-red-300 transition-colors"
                       >
                         <Trash2 className="w-4 h-4" />

@@ -36,8 +36,8 @@ interface AppContextType {
   updateComplaint: (id: string, updates: Partial<Complaint>) => Promise<void>;
   deleteComplaint: (id: string) => Promise<void>;
 
-  addEmployee: (employee: Omit<Employee, 'id' | 'kycStatus' | 'branchId'>, kycDoc?: { type: string, url: string }) => Promise<void>;
-  updateEmployee: (id: string, updates: Partial<Employee>, kycDoc?: { type: string, url: string }) => Promise<void>;
+  addEmployee: (employee: Omit<Employee, 'id' | 'kycStatus' | 'branchId'>, kycDoc?: { type: string, url: string }) => Promise<boolean>;
+  updateEmployee: (id: string, updates: Partial<Employee>, kycDoc?: { type: string, url: string }) => Promise<boolean>;
   deleteEmployee: (id: string) => Promise<void>;
 
   updateKYC: (id: string, updates: Partial<KYCData>) => Promise<void>;
@@ -66,13 +66,15 @@ interface AppContextType {
   fetchData: () => Promise<void>;
 
   // Stats
-  getStats: () => {
+    getStats: () => {
     totalTenants: number;
     verifiedTenants: number;
     pendingKYC: number;
     vacantBeds: number;
     monthlyRevenue: number;
     openComplaints: number;
+    totalTasks: number;
+    pendingTasks: number;
     revenueHistory: { name: string, revenue: number }[];
     occupancyByFloor: { name: string, occupied: number, total: number }[];
   };
@@ -179,7 +181,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           id: p.id, tenantId: p.tenant_id, amount: p.amount, lateFee: p.late_fee, totalAmount: p.total_amount, paymentDate: p.payment_date, month: p.month, status: p.status, method: p.method, transactionId: p.transaction_id, receiptUrl: p.receipt_url, branchId: p.branch_id
         })),
         complaints: (complaints || []).map(c => ({
-          id: c.id, tenantId: c.tenant_id, title: c.title, description: c.description, category: c.category, priority: c.priority, status: c.status, assignedTo: c.assigned_to, resolvedAt: c.resolved_at, branchId: c.branch_id, createdAt: c.created_at
+          id: c.id, tenantId: c.tenant_id, title: c.title, description: c.description, category: c.category, priority: c.priority, status: c.status, assignedTo: c.assigned_to, resolvedAt: c.resolved_at, branchId: c.branch_id, createdAt: c.created_at,
+          images: c.images, resolutionComment: c.resolution_comment, resolutionImages: c.resolution_images
         })),
         employees: (employees || []).map(e => ({
           id: e.id, userId: e.user_id, name: e.name, role: e.role, email: e.email, phone: e.phone, salary: e.salary, joiningDate: e.joining_date, kycStatus: e.kyc_status, branchId: e.branch_id
@@ -194,7 +197,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           id: s.id, employeeId: s.employee_id, amount: s.amount, month: s.month, paymentDate: s.payment_date, status: s.status, method: s.method, transactionId: s.transaction_id, branchId: s.branch_id
         })),
         tasks: (tasks || []).map(t => ({
-          id: t.id, employeeId: t.employee_id, title: t.title, description: t.description, status: t.status, priority: t.priority, dueDate: t.due_date, completedAt: t.completed_at, branchId: t.branch_id, createdAt: t.created_at
+          id: t.id, employeeId: t.employee_id, title: t.title, description: t.description, status: t.status, priority: t.priority, dueDate: t.due_date, completedAt: t.completed_at, branchId: t.branch_id, createdAt: t.created_at,
+          completionComment: t.completion_comment, completionImages: t.completion_images
         })),
         pgConfigs: (pgConfigs || []).map(c => ({
           branchId: c.branch_id, rules: c.rules, rolePermissions: c.role_permissions, bannerUrl: c.banner_url,
@@ -453,11 +457,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const addPayment = async (payment: Omit<Payment, 'id' | 'branchId'>) => {
     if (!user?.branchId) return;
-    applyOptimistic(prev => ({ ...prev, payments: [...prev.payments, { ...payment, id: `temp-${Date.now()}`, branchId: user.branchId }] }));
+    applyOptimistic(prev => ({ ...prev, payments: [...prev.payments, { ...payment, id: `temp-${Date.now()}`, branchId: user.branchId, createdBy: user.id }] }));
     await refetch(supabase.from('payments').insert({
       tenant_id: payment.tenantId, amount: payment.amount, late_fee: payment.lateFee, total_amount: payment.totalAmount,
       payment_date: payment.paymentDate, month: payment.month, status: payment.status, method: payment.method,
-      transaction_id: payment.transactionId || null, receipt_url: payment.receiptUrl || null, branch_id: user.branchId
+      transaction_id: payment.transactionId || null, receipt_url: payment.receiptUrl || null, branch_id: user.branchId,
+      created_by: user.id
     }), 'Payment recorded');
   };
 
@@ -487,7 +492,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     applyOptimistic(prev => ({ ...prev, complaints: [...prev.complaints, { ...complaint, id: `temp-${Date.now()}`, branchId: user.branchId, createdAt: new Date().toISOString() }] }));
     await refetch(supabase.from('complaints').insert({
       tenant_id: complaint.tenantId, title: complaint.title, description: complaint.description, category: complaint.category,
-      priority: complaint.priority, status: complaint.status, assigned_to: complaint.assignedTo || null, branch_id: user.branchId
+      priority: complaint.priority, status: complaint.status, assigned_to: complaint.assignedTo || null, branch_id: user.branchId,
+      images: complaint.images || []
     }), 'Complaint registered');
   };
 
@@ -502,6 +508,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.status !== undefined) dbUpdates.status = updates.status;
     if (updates.assignedTo !== undefined) dbUpdates.assigned_to = updates.assignedTo;
     if (updates.resolvedAt !== undefined) dbUpdates.resolved_at = updates.resolvedAt;
+    if (updates.images !== undefined) dbUpdates.images = updates.images;
+    if (updates.resolutionComment !== undefined) dbUpdates.resolution_comment = updates.resolutionComment;
+    if (updates.resolutionImages !== undefined) dbUpdates.resolution_images = updates.resolutionImages;
     await refetch(supabase.from('complaints').update(dbUpdates).eq('id', id), 'Complaint updated');
   };
 
@@ -511,7 +520,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const addEmployee = async (employee: Omit<Employee, 'id' | 'kycStatus' | 'branchId'>, kycDoc?: { type: string, url: string }) => {
-    if (!user?.branchId) return;
+    if (!user?.branchId) return false;
     
     const isAdmin = ['super', 'admin', 'manager'].includes(user?.role || '');
     const kycStatus = kycDoc ? (isAdmin ? 'verified' : 'pending') : 'unsubmitted';
@@ -528,7 +537,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     if (isDuplicate) {
       toast.error('Email or Username already exists in this branch.');
-      return;
+      return false;
     }
 
     const defaultPassword = '123456';
@@ -544,7 +553,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     if (!regResult.success && !regResult.existingUser) {
       toast.error(`Failed to create employee login: ${regResult.message}`);
-      return;
+      return false;
     }
 
     const userId = regResult.user?.id || (regResult as any).existingUserId;
@@ -559,7 +568,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     
     if (error) { 
       toast.error(error.message); 
-      return; 
+      return false; 
     }
 
     if (createdEm && kycDoc) {
@@ -571,6 +580,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     
     toast.success('Employee added and login created (Default Pass: 123456)');
     setTimeout(() => fetchData(), 500);
+    return true;
   };
 
   const updateEmployee = async (id: string, updates: Partial<Employee>, kycDoc?: { type: string, url: string }) => {
@@ -597,8 +607,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
 
     const { error } = await supabase.from('employees').update(dbUpdates).eq('id', id);
-    if (error) { toast.error(error.message); fetchData(); return; }
-    if (!kycDoc) toast.success('Employee updated successfully');
+    if (error) { toast.error(error.message); fetchData(); return false; }
 
     if (kycDoc) {
       const eObj = data.employees.find((e: any) => e.id === id);
@@ -612,8 +621,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       });
       if (kycError) { toast.error(kycError.message); }
       else { toast.success(isAdmin ? 'KYC verified and uploaded!' : 'KYC submitted for verification!'); }
-      setTimeout(() => fetchData(), 500);
+    } else {
+      toast.success('Employee updated successfully');
     }
+
+    fetchData();
+    return true;
   };
 
   const deleteEmployee = async (id: string) => {
@@ -755,11 +768,22 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const addTask = async (task: Omit<Task, 'id' | 'branchId'>) => {
-    if (!user?.branchId) return;
-    applyOptimistic(prev => ({ ...prev, tasks: [...prev.tasks, { ...task, id: `temp-${Date.now()}`, branchId: user.branchId, createdAt: new Date().toISOString() }] }));
+    const branchId = user?.branchId || data.branches[0]?.id;
+    if (!branchId) return;
+    applyOptimistic(prev => ({ 
+      ...prev, 
+      tasks: [...prev.tasks, { ...task, id: `temp-${Date.now()}`, branchId, createdAt: new Date().toISOString() }] 
+    }));
     await refetch(supabase.from('tasks').insert({
-      employee_id: task.employeeId, title: task.title, description: task.description, status: task.status,
-      priority: task.priority, due_date: task.dueDate, completed_at: task.completedAt || null, branch_id: user.branchId
+      employee_id: task.employeeId,
+      complaint_id: task.complaintId || null,
+      title: task.title,
+      description: task.description,
+      status: task.status,
+      priority: task.priority,
+      due_date: task.dueDate,
+      completed_at: task.completedAt || null,
+      branch_id: branchId
     }), 'Task assigned');
   };
 
@@ -767,13 +791,30 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     applyOptimistic(prev => ({ ...prev, tasks: prev.tasks.map((t: any) => t.id === id ? { ...t, ...updates } : t) }));
     const dbUpdates: any = {};
     if (updates.employeeId !== undefined) dbUpdates.employee_id = updates.employeeId;
+    if (updates.complaintId !== undefined) dbUpdates.complaint_id = updates.complaintId;
     if (updates.title !== undefined) dbUpdates.title = updates.title;
     if (updates.description !== undefined) dbUpdates.description = updates.description;
     if (updates.status !== undefined) dbUpdates.status = updates.status;
     if (updates.priority !== undefined) dbUpdates.priority = updates.priority;
     if (updates.dueDate !== undefined) dbUpdates.due_date = updates.dueDate;
     if (updates.completedAt !== undefined) dbUpdates.completed_at = updates.completedAt;
+    if (updates.completionComment !== undefined) dbUpdates.completion_comment = updates.completionComment;
+    if (updates.completionImages !== undefined) dbUpdates.completion_images = updates.completionImages;
+    
     await refetch(supabase.from('tasks').update(dbUpdates).eq('id', id), 'Task updated');
+
+    // Auto-resolve linked complaint when task is completed
+    if (updates.status === 'completed') {
+      const task = data.tasks.find((t: any) => t.id === id);
+      const complaintIdOfTask = updates.complaintId || task?.complaintId;
+      if (complaintIdOfTask) {
+        await updateComplaint(complaintIdOfTask, { 
+          status: 'resolved', 
+          resolvedAt: new Date().toISOString() 
+        });
+        toast.success('Linked complaint marked as resolved!');
+      }
+    }
   };
 
   const deleteTask = async (id: string) => { 
@@ -971,6 +1012,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       vacantBeds,
       monthlyRevenue,
       openComplaints: complaints.filter((c: Complaint) => c.status !== 'resolved').length,
+      totalTasks: (filteredData.tasks || []).length,
+      pendingTasks: (filteredData.tasks || []).filter((t: Task) => t.status === 'pending').length,
       revenueHistory,
       occupancyByFloor
     };

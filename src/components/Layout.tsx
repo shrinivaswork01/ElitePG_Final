@@ -28,6 +28,9 @@ import { cn } from '../utils';
 import { useTheme } from '../context/ThemeContext';
 import { useApp } from '../context/AppContext';
 import { AppFeature } from '../types';
+import { ProfilePage } from '../pages/ProfilePage';
+import { UnifiedStaffTasksPage } from '../pages/UnifiedStaffTasksPage';
+import { HelpSupportPage } from '../pages/HelpSupportPage';
 
 interface LayoutProps {
   children: ReactNode;
@@ -42,21 +45,21 @@ export const Layout = ({ children }: LayoutProps) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const navigation = [
-    { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: ['admin', 'manager', 'caretaker', 'tenant', 'cleaner', 'security', 'super'] },
-    { name: 'Tenants', href: '/tenants', icon: Users, roles: ['admin', 'manager', 'caretaker'] },
-    { name: 'Rooms', href: '/rooms', icon: DoorOpen, roles: ['admin', 'manager', 'caretaker'] },
-    { name: 'Payments', href: '/payments', icon: CreditCard, roles: ['admin', 'manager', 'caretaker', 'tenant'] },
-    { name: 'Complaints', href: '/complaints', icon: MessageSquare, roles: ['admin', 'manager', 'caretaker', 'tenant', 'cleaner', 'security'] },
-    { name: 'KYC Verification', href: '/kyc', icon: ShieldCheck, roles: ['admin', 'manager', 'caretaker'] },
-    { name: 'Employees', href: '/employees', icon: UserCog, roles: ['admin', 'manager', 'caretaker', 'cleaner', 'security'] },
+    { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant', 'super'] },
+    { name: 'Tenants', href: '/tenants', icon: Users, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'security'] },
+    { name: 'Rooms', href: '/rooms', icon: DoorOpen, roles: ['admin', 'manager', 'receptionist', 'caretaker'] },
+    { name: ['admin', 'manager', 'super'].includes(user?.role || '') ? 'Payments' : 'My Payments', href: '/payments', icon: CreditCard, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'tenant'] },
+    { name: 'Complaints', href: '/complaints', icon: MessageSquare, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant'] },
+    { name: 'KYC Verification', href: '/kyc', icon: ShieldCheck, roles: ['admin', 'manager', 'receptionist'] },
+    { name: 'Employees', href: '/employees', icon: UserCog, roles: ['admin', 'manager'] },
     { name: 'Reports', href: '/reports', icon: BarChart3, roles: ['admin', 'manager'] },
     { name: 'Broadcast', href: '/broadcast', icon: Megaphone, roles: ['admin'] },
+    { name: 'PG Branches', href: '/branches', icon: Building2, roles: ['super'] },
+    { name: 'Tasks', href: '/tasks', icon: ClipboardList, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner'] },
+    { name: 'Profile', href: '/profile', icon: User, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant', 'super'] },
     { name: 'Subscription', href: '/subscription', icon: Zap, roles: ['admin'] },
     { name: 'Settings', href: '/settings', icon: UserCog, roles: ['admin'] },
-    { name: 'PG Branches', href: '/branches', icon: Building2, roles: ['super'] },
-    { name: 'Tasks', href: '/tasks', icon: ClipboardList, roles: ['manager', 'caretaker', 'cleaner', 'security'] },
-    { name: 'Profile', href: '/profile', icon: User, roles: ['admin', 'manager', 'caretaker', 'tenant', 'cleaner', 'security', 'super'] },
-    { name: 'Help & Support', href: '/help', icon: LifeBuoy, roles: ['admin', 'manager', 'caretaker', 'tenant', 'cleaner', 'security'] },
+    { name: 'Help & Support', href: '/help', icon: LifeBuoy, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant', 'super'] },
   ];
 
   const filteredNavigation = navigation.filter(item => {
@@ -104,6 +107,7 @@ export const Layout = ({ children }: LayoutProps) => {
     }
 
     return true;
+    return item;
   });
 
   const handleLogout = async () => {

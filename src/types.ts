@@ -125,6 +125,7 @@ export interface Payment {
   transactionId?: string;
   receiptUrl?: string;
   branchId: string;
+  createdBy?: string; // User ID
 }
 
 export interface SalaryPayment {
@@ -142,6 +143,7 @@ export interface SalaryPayment {
 export interface Task {
   id: string;
   employeeId: string;
+  complaintId?: string; // Link to complaint
   title: string;
   description: string;
   status: 'pending' | 'completed';
@@ -153,6 +155,7 @@ export interface Task {
   completionImages?: string[];
   branchId: string;
 }
+
 
 export type ComplaintStatus = 'open' | 'assigned' | 'resolved';
 export type ComplaintPriority = 'low' | 'medium' | 'high';
@@ -168,7 +171,10 @@ export interface Complaint {
   createdAt: string;
   assignedTo?: string; // Employee ID
   resolvedAt?: string;
+  images?: string[];
   branchId: string;
+  resolutionComment?: string;
+  resolutionImages?: string[];
 }
 
 export interface Announcement {

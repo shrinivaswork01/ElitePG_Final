@@ -81,7 +81,7 @@ export const Dashboard = () => {
 
   const isSuper = user?.role === 'super';
   const isTenant = user?.role === 'tenant';
-  const isEmployee = ['manager', 'caretaker', 'cleaner', 'security'].includes(user?.role || '');
+  const isEmployee = ['manager', 'caretaker', 'cleaner', 'security', 'receptionist'].includes(user?.role || '');
 
   const tenantData = isTenant && user ? tenants.find(t => t.userId === user.id) : null;
   const employeeData = isEmployee ? employees.find(e => e.userId === user?.id) : null;
@@ -125,6 +125,7 @@ export const Dashboard = () => {
   } else {
     statCards = [
       { label: 'Total Tenants', value: stats.totalTenants, icon: Users, color: 'bg-blue-500', trend: tenantTrend, link: '/tenants' },
+      { label: 'Pending Tasks', value: stats.pendingTasks, icon: ClipboardList, color: 'bg-amber-500', trend: 'Action', link: '/tasks' },
       { label: 'Verified Tenants', value: stats.verifiedTenants, icon: ShieldCheck, color: 'bg-emerald-500', trend: 'KYC', link: '/tenants' },
       { label: 'Pending KYC', value: stats.pendingKYC, icon: AlertCircle, color: 'bg-amber-500', trend: 'Action', link: '/kyc' },
       { label: 'Vacant Beds', value: stats.vacantBeds, icon: DoorOpen, color: 'bg-indigo-500', trend: `${stats.vacantBeds} left`, link: '/rooms' },
@@ -134,7 +135,7 @@ export const Dashboard = () => {
   }
 
   const isAdmin = user?.role === 'admin';
-  const isManagerial = ['admin', 'manager', 'caretaker'].includes(user?.role || '');
+  const isManagerial = ['admin', 'manager', 'caretaker', 'receptionist'].includes(user?.role || '');
   const canSendWhatsApp = checkFeatureAccess('whatsapp');
   const canViewReports = checkFeatureAccess('reports');
 
@@ -356,34 +357,30 @@ export const Dashboard = () => {
             <div className="divide-y divide-gray-50 dark:divide-white/5">
               {isEmployee ? (
                 <>
-                  {[...employeeTasks.map(t => ({ ...t, type: 'task' })), ...employeeComplaints.map(c => ({ ...c, type: 'complaint' }))]
+                  {employeeTasks
                     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
                     .slice(0, 5)
                     .map((item: any) => (
                       <div key={item.id} className="p-4 sm:p-6 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                         <div className="flex items-center gap-4">
-                          <div className={cn(
-                            "w-10 h-10 rounded-xl flex items-center justify-center",
-                            item.type === 'task' ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600" : "bg-rose-50 dark:bg-rose-500/10 text-rose-600"
-                          )}>
-                            {item.type === 'task' ? <ClipboardList className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+                          <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600">
+                            <ClipboardList className="w-5 h-5" />
                           </div>
                           <div>
                             <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                              <span className="text-[10px] font-bold uppercase tracking-widest opacity-50 block mb-0.5">{item.type}</span>
                               {item.title}
                             </p>
                             <p className="text-xs text-gray-500 dark:text-gray-400">
-                              {item.status} • {item.type === 'task' ? `Due: ${item.dueDate}` : item.category}
+                              {item.status} • Due: {item.dueDate}
                             </p>
                           </div>
                         </div>
-                        <span className="text-xs font-medium text-gray-400">{item.createdAt}</span>
+                        <span className="text-xs font-medium text-gray-400">{new Date(item.createdAt).toLocaleDateString()}</span>
                       </div>
                     ))
                   }
-                  {employeeTasks.length === 0 && employeeComplaints.length === 0 && (
-                    <div className="p-12 text-center text-gray-500 dark:text-gray-400">No recent tasks or complaints</div>
+                  {employeeTasks.length === 0 && (
+                    <div className="p-12 text-center text-gray-500 dark:text-gray-400">No recent tasks</div>
                   )}
                 </>
               ) : (isTenant ? tenantComplaints : complaints).slice(0, 5).map((complaint) => (

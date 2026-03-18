@@ -284,8 +284,28 @@ This is a computer generated receipt.
     const tenant = tenants.find(t => t.id === p.tenantId);
     const matchesSearch = (tenant?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.month.includes(searchTerm);
-    const isOwner = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'caretaker' || tenant?.userId === user?.id;
-    return matchesSearch && isOwner;
+    
+    // Super roles see everything in their branch
+    if (['super', 'admin', 'manager'].includes(user?.role || '')) {
+      return matchesSearch;
+    }
+
+    // Receptionist: Can view only payments they created
+    if (user?.role === 'receptionist') {
+      return matchesSearch && p.createdBy === user?.id;
+    }
+
+    // Caretaker: View limited (assigned tenants) - For now same as branch
+    if (user?.role === 'caretaker') {
+       return matchesSearch;
+    }
+
+    // Tenant: Only see their own
+    if (user?.role === 'tenant') {
+      return matchesSearch && tenant?.userId === user?.id;
+    }
+
+    return false;
   });
 
   const handleDownload = () => {
@@ -323,7 +343,7 @@ This is a computer generated receipt.
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">Payments</h2>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">{isTenant || user?.role === 'receptionist' || user?.role === 'caretaker' ? 'My Payments' : 'Payments'}</h2>
           <p className="text-gray-500 dark:text-gray-400">
             {isTenant ? 'Manage your rent payments and view history.' : 'Track revenue, invoices, and late fees.'}
           </p>
@@ -506,7 +526,7 @@ This is a computer generated receipt.
                         >
                           <FileText className="w-4 h-4" />
                         </button>
-                        {user?.role !== 'tenant' && (
+                        {['super', 'admin', 'manager'].includes(user?.role || '') && (
                           <button
                             onClick={() => {
                               setPaymentToEdit(payment);
@@ -530,7 +550,7 @@ This is a computer generated receipt.
                             <MessageSquare className="w-4 h-4" />
                           </button>
                         )}
-                        {user?.role !== 'tenant' && (
+                        {['super', 'admin', 'manager'].includes(user?.role || '') && (
                           <button
                             onClick={() => deletePayment(payment.id)}
                             className="p-2 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg text-red-400 dark:text-red-50"

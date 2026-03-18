@@ -97,22 +97,24 @@ export const RoomsPage = () => {
               className="w-full pl-10 pr-4 py-2 bg-white dark:bg-[#111111] border border-gray-100 dark:border-white/5 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
             />
           </div>
-          <button
-            onClick={() => {
-              if (isAtLimit) {
-                toast.error(`Limit reached! Your current plan (${currentPlan?.name}) allows only ${currentPlan?.maxRooms} rooms. Please upgrade your plan.`);
-                return;
-              }
-              setIsAddModalOpen(true);
-            }}
-            className={cn(
-              "flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all",
-              isAtLimit && "opacity-50 cursor-not-allowed"
-            )}
-          >
-            <Plus className="w-5 h-5" />
-            Add Room
-          </button>
+          {['admin', 'manager'].includes(user?.role || '') && (
+            <button
+              onClick={() => {
+                if (isAtLimit) {
+                  toast.error(`Limit reached! Your current plan (${currentPlan?.name}) allows only ${currentPlan?.maxRooms} rooms. Please upgrade your plan.`);
+                  return;
+                }
+                setIsAddModalOpen(true);
+              }}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all",
+                isAtLimit && "opacity-50 cursor-not-allowed"
+              )}
+            >
+              <Plus className="w-5 h-5" />
+              Add Room
+            </button>
+          )}
         </div>
       </div>
 
@@ -206,32 +208,38 @@ export const RoomsPage = () => {
                   </div>
 
                   <div className="px-6 py-4 bg-gray-50 dark:bg-white/5 flex items-center justify-between lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => handleEditClick(room)}
-                      className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300"
-                    >
-                      Edit Details
-                    </button>
-                    <div className="flex gap-2">
+                    {['admin', 'manager', 'caretaker'].includes(user?.role || '') && (
                       <button
                         onClick={() => handleEditClick(room)}
-                        className="p-2 hover:bg-white dark:hover:bg-white/10 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                        className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300"
                       >
-                        <Edit2 className="w-4 h-4" />
+                        Edit Details
                       </button>
-                      <button
-                        onClick={() => {
-                          const activeTenants = tenants.filter(t => t.roomId === room.id && t.status === 'active');
-                          if (activeTenants.length > 0) {
-                            toast.error(`Cannot delete room. ${activeTenants.length} active tenants are assigned to it.`);
-                            return;
-                          }
-                          deleteRoom(room.id);
-                        }}
-                        className="p-2 hover:bg-white dark:hover:bg-white/10 rounded-lg text-red-400 hover:text-red-600 transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                    )}
+                    <div className="flex gap-2">
+                      {['admin', 'manager', 'caretaker'].includes(user?.role || '') && (
+                        <button
+                          onClick={() => handleEditClick(room)}
+                          className="p-2 hover:bg-white dark:hover:bg-white/10 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                      )}
+                      {['admin', 'manager'].includes(user?.role || '') && (
+                        <button
+                          onClick={() => {
+                            const activeTenants = tenants.filter(t => t.roomId === room.id && t.status === 'active');
+                            if (activeTenants.length > 0) {
+                              toast.error(`Cannot delete room. ${activeTenants.length} active tenants are assigned to it.`);
+                              return;
+                            }
+                            deleteRoom(room.id);
+                          }}
+                          className="p-2 hover:bg-white dark:hover:bg-white/10 rounded-lg text-red-400 hover:text-red-600 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </>

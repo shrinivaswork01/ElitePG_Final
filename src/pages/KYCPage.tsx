@@ -29,6 +29,7 @@ export const KYCPage = () => {
   }
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<KYCStatus | 'all'>('all');
+  const [personFilter, setPersonFilter] = useState<'all' | 'tenant' | 'employee'>('all');
   const [selectedKYC, setSelectedKYC] = useState<KYCData | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
 
@@ -40,7 +41,10 @@ export const KYCPage = () => {
     const matchesSearch = person?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       person?.email.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = filterStatus === 'all' || k.status === filterStatus;
-    return matchesSearch && matchesStatus;
+    const matchesPersonType = personFilter === 'all' || 
+      (personFilter === 'tenant' && !!k.tenantId) || 
+      (personFilter === 'employee' && !!k.employeeId);
+    return matchesSearch && matchesStatus && matchesPersonType;
   });
 
   // Add "virtual" KYC records for tenants/employees who are pending but have no record in kycs
@@ -83,7 +87,10 @@ export const KYCPage = () => {
       const matchesSearch = person?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         person?.email.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesStatus = filterStatus === 'all' || filterStatus === 'pending';
-      return matchesSearch && matchesStatus;
+      const matchesPersonType = personFilter === 'all' || 
+        (personFilter === 'tenant' && !!k.tenantId) || 
+        (personFilter === 'employee' && !!k.employeeId);
+      return matchesSearch && matchesStatus && matchesPersonType;
     }
     return true;
   });
@@ -184,6 +191,22 @@ export const KYCPage = () => {
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
           />
+        </div>
+        <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0 border-r border-gray-100 dark:border-white/5 pr-4 mr-4">
+          {(['all', 'tenant', 'employee'] as const).map((type) => (
+            <button
+              key={type}
+              onClick={() => setPersonFilter(type)}
+              className={cn(
+                "px-4 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all",
+                personFilter === type
+                  ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
+                  : "bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10"
+              )}
+            >
+              {type === 'all' ? 'All Roles' : type.charAt(0).toUpperCase() + type.slice(1) + 's'}
+            </button>
+          ))}
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0">
           {['all', 'pending', 'verified', 'rejected'].map((status) => (
