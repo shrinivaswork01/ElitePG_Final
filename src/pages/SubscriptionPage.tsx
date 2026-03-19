@@ -1,22 +1,24 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
-import { Zap, Check, Star, CreditCard, ShieldCheck, X, Loader2 } from 'lucide-react';
+import { Zap, Check, Star, CreditCard, ShieldCheck, X, Loader2, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../utils';
 import { SubscriptionPlan } from '../types';
 import { format, addMonths } from 'date-fns';
 import toast from 'react-hot-toast';
 import { loadRazorpayScript } from '../utils/razorpay';
+import { generateSubscriptionReceiptPDF } from '../utils/generateReceipt';
 
 export const SubscriptionPage = () => {
-  const { subscriptionPlans, currentBranch, currentPlan, updateBranchSubscription } = useApp();
-  const { user } = useAuth();
+   const { subscriptionPlans, currentBranch, currentPlan, updateBranchSubscription, pgConfig, tenants, branches, superSignatureUrl } = useApp();
+  const { user, users } = useAuth();
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [expandedPlanId, setExpandedPlanId] = useState<string | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
   const [activeBilling, setActiveBilling] = useState<'monthly' | 'annual'>('monthly');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
   if (user?.role !== 'admin') {
     return (
@@ -26,38 +28,32 @@ export const SubscriptionPage = () => {
     );
   }
 
-  const handleDownloadReceipt = (paymentId: string, plan: SubscriptionPlan, billing: 'monthly' | 'annual') => {
+  const handleDownloadReceipt = async (paymentId: string, plan: SubscriptionPlan, billing: 'monthly' | 'annual') => {
     const amount = billing === 'annual' ? plan.annualPrice : plan.price;
-    const receiptContent = `
-ELITE PG - Subscription Receipt
--------------------------------
-Receipt #: SUB-${paymentId.slice(-6).toUpperCase()}
-Date: ${format(new Date(), 'yyyy-MM-dd')}
-Plan: ${plan.name} (${billing.toUpperCase()})
-
-Billed To:
-Name: ${user?.name || 'Admin'}
-Email: ${user?.email || 'N/A'}
-Branch: ${currentBranch?.name || 'N/A'}
-
-Payment Details:
-Subscription Fee: ₹${amount.toLocaleString()}
-Total Paid: ₹${amount.toLocaleString()}
-Method: Razorpay Online
-
-Status: PAYMENT SUCCESSFUL
--------------------------------
-This is a computer generated receipt.
-`;
-    const blob = new Blob([receiptContent], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `Subscription_Receipt_${paymentId.slice(-6).toUpperCase()}.txt`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    setIsGeneratingPDF(true);
+    try {
+      await generateSubscriptionReceiptPDF({
+        paymentId,
+        paymentDate: format(new Date(), 'yyyy-MM-dd'),
+        planName: plan.name,
+        billing,
+        amount,
+        adminName: user?.name || 'Admin',
+        adminEmail: user?.email,
+        branchName: currentBranch?.name,
+        branchPhone: currentBranch?.phone,
+        branchAddress: currentBranch?.address,
+        pgName: pgConfig?.pgName || currentBranch?.name,
+        logoUrl: pgConfig?.logoUrl,
+        signatureUrl: superSignatureUrl || users.find(u => u.role === 'super')?.signatureUrl || user?.signatureUrl
+      });
+      toast.success('Subscription receipt downloaded!');
+    } catch (err) {
+      console.error('PDF generation failed:', err);
+      toast.error('Failed to generate receipt PDF. Please try again.');
+    } finally {
+      setIsGeneratingPDF(false);
+    }
   };
 
   const handleDirectUpgrade = async (plan: SubscriptionPlan) => {

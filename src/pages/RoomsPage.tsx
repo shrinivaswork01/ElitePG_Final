@@ -21,6 +21,8 @@ import toast from 'react-hot-toast';
 export const RoomsPage = () => {
   const { user } = useAuth();
   const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants } = useApp();
+  const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
+  const [roomToDelete, setRoomToDelete] = useState<Room | null>(null);
 
   const currentRoomsCount = rooms.length;
   const isAtLimit = currentPlan && currentRoomsCount >= currentPlan.maxRooms;
@@ -38,7 +40,9 @@ export const RoomsPage = () => {
     totalBeds: 2,
     occupiedBeds: 0,
     type: 'Non-AC',
-    price: 6000
+    price: 6000,
+    description: '',
+    amenities: []
   });
 
   const filteredRooms = rooms.filter(room => 
@@ -55,7 +59,16 @@ export const RoomsPage = () => {
   const handleCloseModal = () => {
     setIsAddModalOpen(false);
     setEditingRoom(null);
-    setFormData({ roomNumber: '', floor: 1, totalBeds: 2, occupiedBeds: 0, type: 'Non-AC', price: 6000 });
+    setFormData({ 
+      roomNumber: '', 
+      floor: 1, 
+      totalBeds: 2, 
+      occupiedBeds: 0, 
+      type: 'Non-AC', 
+      price: 6000,
+      description: '',
+      amenities: []
+    });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -207,15 +220,13 @@ export const RoomsPage = () => {
                     </div>
                   </div>
 
-                  <div className="px-6 py-4 bg-gray-50 dark:bg-white/5 flex items-center justify-between lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                    {['admin', 'manager', 'caretaker'].includes(user?.role || '') && (
-                      <button
-                        onClick={() => handleEditClick(room)}
-                        className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300"
-                      >
-                        Edit Details
-                      </button>
-                    )}
+                  <div className="px-6 py-4 bg-gray-50 dark:bg-white/5 flex items-center justify-between">
+                    <button
+                      onClick={() => setSelectedRoom(room)}
+                      className="text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300"
+                    >
+                      View Details
+                    </button>
                     <div className="flex gap-2">
                       {['admin', 'manager', 'caretaker'].includes(user?.role || '') && (
                         <button
@@ -227,15 +238,8 @@ export const RoomsPage = () => {
                       )}
                       {['admin', 'manager'].includes(user?.role || '') && (
                         <button
-                          onClick={() => {
-                            const activeTenants = tenants.filter(t => t.roomId === room.id && t.status === 'active');
-                            if (activeTenants.length > 0) {
-                              toast.error(`Cannot delete room. ${activeTenants.length} active tenants are assigned to it.`);
-                              return;
-                            }
-                            deleteRoom(room.id);
-                          }}
-                          className="p-2 hover:bg-white dark:hover:bg-white/10 rounded-lg text-red-400 hover:text-red-600 transition-colors"
+                          onClick={() => setRoomToDelete(room)}
+                          className="p-2 hover:bg-white dark:hover:bg-white/10 rounded-lg text-red-500 hover:text-red-600 transition-colors"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -338,6 +342,26 @@ export const RoomsPage = () => {
                       className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                     />
                   </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Description</label>
+                    <textarea
+                      value={formData.description}
+                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                      placeholder="Add briefly what's special about this room..."
+                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white text-sm"
+                      rows={2}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Amenities (comma separated)</label>
+                    <input
+                      type="text"
+                      value={formData.amenities?.join(', ')}
+                      onChange={(e) => setFormData({ ...formData, amenities: e.target.value.split(',').map(s => s.trim()).filter(s => s !== '') })}
+                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white text-sm"
+                      placeholder="e.g. Wi-Fi, Attached Bath, Study Table"
+                    />
+                  </div>
                 </div>
                 <div className="flex justify-end gap-3 pt-4">
                   <button
@@ -355,6 +379,170 @@ export const RoomsPage = () => {
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+
+        {selectedRoom && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedRoom(null)}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-2xl bg-white dark:bg-[#111111] rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col border border-white/5"
+            >
+              <div className="p-6 sm:p-8 border-b border-gray-100 dark:border-white/5 flex items-center justify-between sticky top-0 bg-white dark:bg-[#111111] z-10">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center">
+                    <DoorOpen className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white">Room {selectedRoom.roomNumber}</h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Floor {selectedRoom.floor} • {selectedRoom.type}</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  {['admin', 'manager'].includes(user?.role || '') && (
+                    <button
+                      onClick={() => {
+                        handleEditClick(selectedRoom);
+                        setSelectedRoom(null);
+                      }}
+                      className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors text-indigo-600"
+                    >
+                      <Edit2 className="w-5 h-5" />
+                    </button>
+                  )}
+                  <button onClick={() => setSelectedRoom(null)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors">
+                    <Plus className="w-6 h-6 rotate-45 text-gray-400" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-8">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="p-4 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/5">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Occupancy</p>
+                    <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                      {tenants.filter(t => t.roomId === selectedRoom.id && t.status === 'active').length} / {selectedRoom.totalBeds}
+                    </p>
+                  </div>
+                  <div className="p-4 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/5">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Monthly Rent</p>
+                    <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">₹{selectedRoom.price.toLocaleString()}</p>
+                  </div>
+                  <div className="p-4 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/5">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Room Type</p>
+                    <p className="text-2xl font-bold text-gray-900 dark:text-white">{selectedRoom.type}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  <div className="space-y-4">
+                    <h4 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                      <Users className="w-5 h-5 text-indigo-600" />
+                      Current Tenants
+                    </h4>
+                    <div className="space-y-3">
+                      {tenants.filter(t => t.roomId === selectedRoom.id && t.status === 'active').map(tenant => (
+                        <div key={tenant.id} className="p-4 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/5 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-indigo-600 text-white rounded-xl flex items-center justify-center font-bold">
+                              {tenant.name.charAt(0)}
+                            </div>
+                            <div>
+                              <p className="font-bold text-gray-900 dark:text-white">{tenant.name}</p>
+                              <p className="text-[10px] text-gray-500 uppercase font-bold">Joined: {tenant.joiningDate}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      {tenants.filter(t => t.roomId === selectedRoom.id && t.status === 'active').length === 0 && (
+                        <p className="text-center py-8 text-gray-500 dark:text-gray-400 text-sm italic">No active tenants in this room.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div className="space-y-3">
+                      <h4 className="text-lg font-bold text-gray-900 dark:text-white">Description</h4>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
+                        {selectedRoom.description || 'No description provided for this room.'}
+                      </p>
+                    </div>
+
+                    <div className="space-y-3">
+                      <h4 className="text-lg font-bold text-gray-900 dark:text-white">Amenities</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedRoom.amenities && selectedRoom.amenities.length > 0 ? (
+                          selectedRoom.amenities.map((amenity, idx) => (
+                            <span key={idx} className="px-3 py-1 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-full text-xs font-bold">
+                              {amenity}
+                            </span>
+                          ))
+                        ) : (
+                          <p className="text-sm text-gray-500 italic">No amenities listed.</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {roomToDelete && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setRoomToDelete(null)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-md"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-md bg-white dark:bg-[#0A0A0A] rounded-[2.5rem] shadow-2xl overflow-hidden border border-white/10"
+            >
+              <div className="p-8 text-center">
+                <div className="w-20 h-20 bg-rose-500/10 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                  <Trash2 className="w-10 h-10 text-rose-500" />
+                </div>
+                <h3 className="text-2xl font-black text-gray-900 dark:text-white mb-2 tracking-tight">Delete Room {roomToDelete.roomNumber}?</h3>
+                <p className="text-gray-500 dark:text-gray-400 leading-relaxed mb-8 px-4">
+                  {tenants.filter(t => t.roomId === roomToDelete.id && t.status === 'active').length > 0
+                    ? `This room has active tenants. They will be automatically unassigned upon deletion. This action cannot be undone.`
+                    : "Are you sure you want to delete this room? This action cannot be undone."}
+                </p>
+
+                <div className="flex gap-4">
+                  <button
+                    onClick={() => setRoomToDelete(null)}
+                    className="flex-1 py-4 bg-gray-100 dark:bg-white/5 text-gray-900 dark:text-white rounded-2xl font-bold hover:bg-gray-200 dark:hover:bg-white/10 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      deleteRoom(roomToDelete.id);
+                      setRoomToDelete(null);
+                    }}
+                    className="flex-1 py-4 bg-rose-600 text-white rounded-2xl font-bold shadow-xl shadow-rose-600/20 hover:bg-rose-700 transition-all"
+                  >
+                    Delete Room
+                  </button>
+                </div>
+              </div>
             </motion.div>
           </div>
         )}

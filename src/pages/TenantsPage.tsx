@@ -30,7 +30,7 @@ import toast from 'react-hot-toast';
 export const TenantsPage = () => {
   const { user, users, register, updateUser } = useAuth();
   const location = useLocation();
-  const { tenants, rooms, addTenant, updateTenant, deleteTenant, checkFeatureAccess, currentPlan, uploadVerifiedKYC, kycs } = useApp();
+  const { tenants, rooms, addTenant, updateTenant, deleteTenant, checkFeatureAccess, currentPlan, uploadVerifiedKYC, kycs, userInvites } = useApp();
   const canSendWhatsApp = checkFeatureAccess('whatsapp');
 
   const currentTenantsCount = tenants.length;
@@ -107,8 +107,19 @@ export const TenantsPage = () => {
     joiningDate: new Date().toISOString().split('T')[0],
     paymentDueDate: 5,
     status: 'active',
-    kycStatus: 'unsubmitted'
+    kycStatus: 'unsubmitted',
+    inviteCode: ''
   });
+
+  // Effect to set default invite code when modal opens
+  useEffect(() => {
+    if (isAddModalOpen && !editingTenant) {
+      const branchInvite = userInvites.find(i => i.branchId === user?.branchId && i.role === 'tenant' && i.status === 'pending');
+      if (branchInvite) {
+        setFormData(prev => ({ ...prev, inviteCode: branchInvite.inviteCode }));
+      }
+    }
+  }, [isAddModalOpen, editingTenant, userInvites, user?.branchId]);
 
   const [kycDoc, setKycDoc] = useState<{ type: string, url: string, fileName: string }>({
     type: 'Aadhar Card',
@@ -520,77 +531,62 @@ export const TenantsPage = () => {
                 layout
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden"
+                className="bg-white dark:bg-[#111111] rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-xl shadow-gray-200/20 dark:shadow-none overflow-hidden"
               >
-                <div className="p-5">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-black text-xl shadow-sm border border-indigo-100/50 dark:border-indigo-500/10">
+                <div className="p-6">
+                  <div className="flex items-start justify-between mb-5">
+                    <div className="flex items-center gap-4">
+                      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-black text-2xl shadow-lg shadow-indigo-500/20 uppercase">
                         {tenant.name?.charAt(0) || '?'}
                       </div>
                       <div>
-                        <h4 className="font-bold text-gray-900 dark:text-white leading-tight">{tenant.name}</h4>
-                        <p className="text-[11px] text-gray-500 dark:text-gray-400">{tenant.email}</p>
+                        <h4 className="font-bold text-gray-900 dark:text-white text-lg tracking-tight leading-tight">{tenant.name}</h4>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{tenant.phone}</p>
                       </div>
                     </div>
                     <span className={cn(
-                      "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-sm",
-                      isPaid ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600" :
-                        isOverdue ? "bg-rose-50 dark:bg-rose-500/10 text-rose-600" :
-                          "bg-amber-50 dark:bg-amber-500/10 text-amber-600"
+                      "px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm",
+                      isPaid ? "bg-emerald-500 text-white" :
+                        isOverdue ? "bg-rose-500 text-white" :
+                          "bg-amber-400 text-white"
                     )}>
-                      {isPaid ? 'Paid' : isOverdue ? 'Overdue' : 'Pending'}
+                      {isPaid ? 'Paid' : isOverdue ? 'Overdue' : 'Due Soon'}
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div className="p-2.5 rounded-2xl bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5">
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter mb-0.5">Room & Floor</p>
-                      <p className="text-sm font-bold text-gray-900 dark:text-white">
-                        {room?.roomNumber || 'N/A'} <span className="text-[10px] text-gray-500 font-medium ml-1">(Floor {room?.floor || 0})</span>
+                  <div className="grid grid-cols-2 gap-3 mb-5">
+                    <div className="p-4 rounded-[1.5rem] bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/5">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Stay Info</p>
+                      <p className="text-sm font-black text-gray-900 dark:text-white">
+                        Room {room?.roomNumber || 'N/A'}
                       </p>
+                      <p className="text-[10px] text-gray-500 font-medium">Bed {tenant.bedNumber}</p>
                     </div>
-                    <div className="p-2.5 rounded-2xl bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5">
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter mb-0.5">Monthly Rent</p>
-                      <p className="text-sm font-bold text-gray-900 dark:text-white">₹{tenant.rentAmount.toLocaleString()}</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 mb-4">
-                    <div className="flex items-center justify-between text-[10px]">
-                      <span className="text-gray-500 font-bold uppercase tracking-tighter">Rent Payment Status</span>
-                      <span className="font-black text-gray-900 dark:text-white">Due: {tenant.paymentDueDate}th</span>
-                    </div>
-                    <div className="w-full bg-gray-100 dark:bg-white/5 h-2 rounded-full overflow-hidden">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        animate={{ width: isPaid ? '100%' : '0%' }}
-                        className={cn(
-                          "h-full transition-all duration-700",
-                          isPaid ? "bg-emerald-500" : isOverdue ? "bg-rose-500" : "bg-amber-400"
-                        )}
-                      />
+                    <div className="p-4 rounded-[1.5rem] bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/5">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Monthly</p>
+                      <p className="text-sm font-black text-gray-900 dark:text-white">₹{tenant.rentAmount.toLocaleString()}</p>
+                      <p className="text-[10px] text-gray-500 font-medium">Due: {tenant.paymentDueDate}th</p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleSendWhatsAppReminder(tenant)}
-                      className="flex-1 flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white py-2.5 rounded-xl text-xs font-black shadow-lg shadow-emerald-500/20 active:scale-95 transition-all"
+                      className="flex-[2] flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white py-3.5 rounded-2xl text-[11px] font-black shadow-lg shadow-emerald-500/20 active:scale-95 transition-all"
                     >
                       <MessageCircle className="w-4 h-4" />
-                      CHAT
+                      WHATSAPP
                     </button>
                     <button
                       onClick={() => setViewingPayments(tenant)}
-                      className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl text-xs font-black shadow-lg shadow-indigo-600/20 active:scale-95 transition-all"
+                      className="flex-[2] flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white py-3.5 rounded-2xl text-[11px] font-black shadow-lg shadow-indigo-600/20 active:scale-95 transition-all"
                     >
                       <History className="w-4 h-4" />
                       HISTORY
                     </button>
                     <button
                       onClick={() => setMenuTenant(tenant)}
-                      className="w-11 h-10 flex items-center justify-center bg-gray-50 dark:bg-white/5 text-gray-400 dark:text-gray-500 rounded-xl border border-gray-100 dark:border-white/5 active:scale-95 transition-all"
+                      className="flex-1 h-[46px] flex items-center justify-center bg-gray-50 dark:bg-white/5 text-gray-900 dark:text-white rounded-2xl border border-gray-200/50 dark:border-white/5 active:scale-95 transition-all"
                     >
                       <MoreVertical className="w-5 h-5" />
                     </button>
@@ -655,19 +651,25 @@ export const TenantsPage = () => {
                   </button>
 
                   <button
+                    disabled={!menuTenant.rentAgreementUrl}
+                    onClick={() => { if (menuTenant.rentAgreementUrl) { setViewingAgreement(menuTenant); setMenuTenant(null); } }}
+                    className={cn(
+                      "flex flex-col items-center justify-center gap-2 p-4 rounded-3xl transition-all active:scale-95 border",
+                      menuTenant.rentAgreementUrl 
+                        ? "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-500/10" 
+                        : "bg-gray-50 dark:bg-white/5 text-gray-300 dark:text-gray-600 border-gray-100 dark:border-white/5 opacity-50 cursor-not-allowed"
+                    )}
+                  >
+                    <FileCheck className="w-6 h-6" />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-center">Agreement</span>
+                  </button>
+
+                  <button
                     onClick={() => { handleEditClick(menuTenant); setMenuTenant(null); }}
                     className="flex flex-col items-center justify-center gap-2 p-4 rounded-3xl bg-gray-50 dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-100 dark:border-white/5 transition-all active:scale-95"
                   >
                     <Edit2 className="w-6 h-6" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-center">Edit</span>
-                  </button>
-
-                  <button
-                    onClick={() => { setTenantToDelete(menuTenant); setMenuTenant(null); }}
-                    className="flex flex-col items-center justify-center gap-2 p-4 rounded-3xl bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-500/10 transition-all active:scale-95"
-                  >
-                    <Trash2 className="w-6 h-6" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-center">Delete</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-center">Edit Info</span>
                   </button>
 
                   <button
@@ -684,17 +686,11 @@ export const TenantsPage = () => {
                   </button>
 
                   <button
-                    disabled={!menuTenant.rentAgreementUrl}
-                    onClick={() => { if (menuTenant.rentAgreementUrl) { setViewingAgreement(menuTenant); setMenuTenant(null); } }}
-                    className={cn(
-                      "flex flex-col items-center justify-center gap-2 p-4 rounded-3xl transition-all active:scale-95 border",
-                      menuTenant.rentAgreementUrl 
-                        ? "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-500/10" 
-                        : "bg-gray-50 dark:bg-white/5 text-gray-300 dark:text-gray-600 border-gray-100 dark:border-white/5 opacity-50 cursor-not-allowed"
-                    )}
+                    onClick={() => { setTenantToDelete(menuTenant); setMenuTenant(null); }}
+                    className="flex flex-col items-center justify-center gap-2 p-4 rounded-3xl bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-500/10 transition-all active:scale-95 shadow-lg shadow-rose-500/5"
                   >
-                    <FileCheck className="w-6 h-6" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-center">Agreement</span>
+                    <Trash2 className="w-6 h-6" />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-center">Delete</span>
                   </button>
                 </div>
 
@@ -903,6 +899,17 @@ export const TenantsPage = () => {
                       className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                       placeholder="9876543210"
                     />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Branch Invite Code</label>
+                    <input
+                      readOnly
+                      type="text"
+                      value={(formData as any).inviteCode || ''}
+                      className="w-full px-4 py-2.5 bg-gray-100 dark:bg-white/10 border-none rounded-xl text-gray-500 dark:text-gray-400 cursor-not-allowed font-medium"
+                      placeholder="No active invite code"
+                    />
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500 italic">This code is autofilled based on your branch settings.</p>
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Select Room</label>

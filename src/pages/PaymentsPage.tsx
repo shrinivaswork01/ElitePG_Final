@@ -18,17 +18,20 @@ import {
   Printer,
   X,
   MessageSquare,
-  Send
+  Send,
+  Share2,
+  Loader2
 } from 'lucide-react';
 import { format, parseISO, differenceInDays, getDate, isAfter } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../utils';
 import { loadRazorpayScript } from '../utils/razorpay';
+import { generateTenantReceiptPDF } from '../utils/generateReceipt';
 import toast from 'react-hot-toast';
 
 export const PaymentsPage = () => {
-  const { user } = useAuth();
-  const { payments, tenants, rooms, addPayment, updatePayment, deletePayment } = useApp();
+  const { user, users } = useAuth();
+  const { payments, tenants, rooms, addPayment, updatePayment, deletePayment, currentBranch, pgConfig } = useApp();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
@@ -36,6 +39,7 @@ export const PaymentsPage = () => {
   const [paymentToEdit, setPaymentToEdit] = useState<Payment | null>(null);
   const [receiptNotes, setReceiptNotes] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
   const sendWhatsAppReceipt = (payment: Payment, tenant: any) => {
     if (!tenant.phone) {
@@ -91,7 +95,7 @@ export const PaymentsPage = () => {
   const [paymentMethod, setPaymentMethod] = useState<'Online' | 'Offline'>('Online');
 
   const currentMonth = format(new Date(), 'yyyy-MM');
-  const hasPaidCurrentMonth = payments.some(p => p.tenantId === tenantData?.id && p.month === currentMonth);
+  const hasPaidCurrentMonth = payments.some(p => p.tenantId === tenantData?.id && p.month === currentMonth && p.status === 'paid');
 
   const upcomingDues = isTenant && tenantData && !hasPaidCurrentMonth ? [{
     month: currentMonth,
@@ -239,45 +243,94 @@ export const PaymentsPage = () => {
     setIsReceiptModalOpen(true);
   };
 
-  const handleDownloadReceipt = (payment: Payment | null = selectedPayment) => {
+  const handleDownloadReceipt = async (payment: Payment | null = selectedPayment) => {
     if (!payment) return;
-    const tenant = tenants.find(t => t.id === payment.tenantId);
-    
-    const room = rooms.find(r => r.id === tenant?.roomId);
-    
-    const receiptContent = `
-ELITE PG - Payment Receipt
---------------------------
-Receipt #: REC-${(payment.id || 'NEW').slice(-6).toUpperCase()}
-Date: ${payment.paymentDate}
-Month: ${format(parseISO(`${payment.month}-01`), 'MMMM yyyy')}
+    setIsGeneratingPDF(true);
+    try {
+      const tenant = tenants.find(t => t.id === payment.tenantId);
+      
+      // Fetch branch-level official signature (bypasses RLS issues for individual admin records)
+      const authorizedSignature = currentBranch?.officialSignatureUrl || user?.signatureUrl;
 
-Billed To:
-Name: ${tenant?.name || 'N/A'}
-Email: ${tenant?.email || 'N/A'}
-Room: ${room?.roomNumber || 'N/A'}
+      await generateTenantReceiptPDF({
+        paymentId: payment.id,
+        paymentDate: payment.paymentDate,
+        month: payment.month,
+        amount: payment.amount,
+        lateFee: payment.lateFee,
+        totalAmount: payment.totalAmount,
+        method: payment.method,
+        transactionId: payment.transactionId,
+        status: payment.status,
+        tenantName: tenant?.name || 'Unknown Tenant',
+        tenantPhone: tenant?.phone,
+        tenantEmail: tenant?.email,
+        roomNumber: rooms.find(r => r.id === tenant?.roomId)?.roomNumber,
+        branchName: currentBranch?.name,
+        branchPhone: currentBranch?.phone,
+        branchAddress: currentBranch?.address,
+        pgName: pgConfig?.pgName || currentBranch?.name,
+        logoUrl: pgConfig?.logoUrl,
+        signatureUrl: authorizedSignature
+      });
+      toast.success('Receipt downloaded!');
+    } catch (err) {
+      console.error('PDF generation failed:', err);
+      toast.error('Failed to generate PDF. Please try again.');
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
 
-Payment Details:
-Monthly Rent: ₹${payment.amount.toLocaleString()}
-Late Fee: ₹${payment.lateFee.toLocaleString()}
-Total Paid: ₹${payment.totalAmount.toLocaleString()}
-Method: ${payment.method}
+  const handleShareReceipt = async (payment: Payment | null = selectedPayment) => {
+    if (!payment) return;
+    setIsGeneratingPDF(true);
+    try {
+      const tenant = tenants.find(t => t.id === payment.tenantId);
+      const authorizedSignature = currentBranch?.officialSignatureUrl || user?.signatureUrl;
+      
+      const blob = await generateTenantReceiptPDF({
+        paymentId: payment.id,
+        paymentDate: payment.paymentDate,
+        month: payment.month,
+        amount: payment.amount,
+        lateFee: payment.lateFee,
+        totalAmount: payment.totalAmount,
+        method: payment.method,
+        transactionId: payment.transactionId,
+        status: payment.status,
+        tenantName: tenant?.name || 'N/A',
+        tenantPhone: tenant?.phone,
+        tenantEmail: tenant?.email,
+        roomNumber: tenant?.roomId,
+        branchName: currentBranch?.branchName,
+        branchPhone: currentBranch?.phone,
+        branchAddress: currentBranch?.address,
+        pgName: pgConfig?.pgName || currentBranch?.name,
+        logoUrl: pgConfig?.logoUrl,
+        signatureUrl: authorizedSignature
+      }, true) as Blob;
 
-Note: ${receiptNotes || 'N/A'}
+      const fileName = `receipt_${(payment.id || 'NEW').slice(-10)}.pdf`;
+      const file = new File([blob], fileName, { type: 'application/pdf' });
 
-Status: PAYMENT SUCCESSFUL
---------------------------
-This is a computer generated receipt.
-`;
-    const blob = new Blob([receiptContent], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `Receipt_${(payment.id || 'NEW').slice(-6).toUpperCase()}.txt`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          title: 'ElitePG Payment Receipt',
+          text: `Payment Receipt for ${tenant?.name || 'N/A'} - ₹${payment.totalAmount.toLocaleString()}`,
+          files: [file]
+        });
+      } else {
+        // Fallback to text + download link or just copy text
+        const shareText = `Payment Receipt — ElitePG\nTenant: ${tenant?.name || 'N/A'}\nAmount: Rs.${payment.totalAmount.toLocaleString('en-IN')}\nDate: ${payment.paymentDate}\nTransaction ID: ${payment.transactionId || 'N/A'}`;
+        navigator.clipboard.writeText(shareText).then(() => toast.success('Receipt details copied! (File sharing not supported on this browser)'));
+      }
+    } catch (err) {
+      console.error('Sharing failed:', err);
+      toast.error('Failed to share receipt.');
+    } finally {
+      setIsGeneratingPDF(false);
+    }
   };
 
   const filteredPayments = payments.filter(p => {
@@ -669,18 +722,9 @@ This is a computer generated receipt.
             >
               <div className="p-6 sm:p-8 border-b border-gray-100 dark:border-white/5 flex items-center justify-between print:hidden sticky top-0 bg-white dark:bg-[#111111] z-10">
                 <h3 className="text-xl font-bold text-gray-900 dark:text-white">Payment Receipt</h3>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleDownloadReceipt()}
-                    className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl font-bold text-sm hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-all"
-                  >
-                    <Download className="w-4 h-4" />
-                    <span className="hidden sm:inline">Download</span>
-                  </button>
-                  <button onClick={() => setIsReceiptModalOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors">
-                    <X className="w-6 h-6 text-gray-400" />
-                  </button>
-                </div>
+                <button onClick={() => setIsReceiptModalOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors">
+                  <X className="w-6 h-6 text-gray-400" />
+                </button>
               </div>
 
               <div className="p-6 sm:p-12 space-y-6 sm:space-y-8 print:p-0">
@@ -740,10 +784,18 @@ This is a computer generated receipt.
                 <div className="flex gap-3 pt-4 no-print">
                   <button
                     onClick={() => handleDownloadReceipt()}
-                    className="flex-1 flex items-center justify-center gap-2 py-3 bg-gray-100 dark:bg-white/5 text-gray-700 dark:text-gray-300 rounded-xl font-bold hover:bg-gray-200 dark:hover:bg-white/10 transition-all"
+                    disabled={isGeneratingPDF}
+                    className="flex-1 flex items-center justify-center gap-2 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20 disabled:opacity-60"
                   >
-                    <Download className="w-5 h-5" />
-                    Download
+                    {isGeneratingPDF ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+                    {isGeneratingPDF ? 'Generating PDF...' : 'Download PDF'}
+                  </button>
+                  <button
+                    onClick={() => handleShareReceipt()}
+                    className="flex items-center justify-center gap-2 px-4 py-3 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl font-bold hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-all"
+                  >
+                    <Share2 className="w-5 h-5" />
+                    Share
                   </button>
                   {user?.role !== 'tenant' && (
                     <button
@@ -751,7 +803,7 @@ This is a computer generated receipt.
                         const tenant = tenants.find(t => t.id === selectedPayment.tenantId);
                         if (tenant) sendWhatsAppReceipt(selectedPayment, tenant);
                       }}
-                      className="flex-1 flex items-center justify-center gap-2 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20"
+                      className="flex items-center justify-center gap-2 px-4 py-3 bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400 rounded-xl font-bold hover:bg-green-100 dark:hover:bg-green-500/20 transition-all"
                     >
                       <Send className="w-5 h-5" />
                       WhatsApp
@@ -764,7 +816,7 @@ This is a computer generated receipt.
                     <CheckCircle2 className="w-4 h-4" />
                     Payment Successful
                   </div>
-                  <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-6 italic">This is a computer generated receipt and does not require a physical signature.</p>
+                  <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-6 italic">This receipt includes an authorized digital signature valid for official use.</p>
                 </div>
               </div>
             </motion.div>

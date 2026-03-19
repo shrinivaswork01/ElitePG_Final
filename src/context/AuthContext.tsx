@@ -54,7 +54,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       branchId: u.branch_id,
       provider: u.provider || 'local',
       google_id: u.google_id,
-      seenAnnouncements: u.seen_announcements || []
+      seenAnnouncements: u.seen_announcements || [],
+      signatureUrl: u.signature_url
     }));
     setUsers(mappedUsers);
 
@@ -556,6 +557,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (updates.password !== undefined) dbUpdates.password = updates.password;
     if (updates.branchId !== undefined) dbUpdates.branch_id = updates.branchId;
     if (updates.seenAnnouncements !== undefined) dbUpdates.seen_announcements = updates.seenAnnouncements;
+    if (updates.signatureUrl !== undefined) dbUpdates.signature_url = updates.signatureUrl;
 
     const { error } = await supabase.from('users').update(dbUpdates).eq('id', userId);
     if (error) {

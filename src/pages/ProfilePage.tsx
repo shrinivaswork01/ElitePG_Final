@@ -10,7 +10,7 @@ import toast from 'react-hot-toast';
 
 export const ProfilePage = () => {
   const { user, updateProfile, logout } = useAuth();
-  const { tenants, updateTenant, kycs, employees, updateEmployee, currentPlan, currentBranch } = useApp();
+  const { tenants, updateTenant, kycs, employees, updateEmployee, currentPlan, currentBranch, updateBranch } = useApp();
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
     username: user?.username || '',
@@ -19,6 +19,7 @@ export const ProfilePage = () => {
     phone: user?.phone || '',
     avatar: user?.avatar || '',
     password: user?.password || '',
+    signatureUrl: user?.signatureUrl || '',
   });
   const [isSaving, setIsSaving] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -44,6 +45,22 @@ export const ProfilePage = () => {
       const reader = new FileReader();
       reader.onloadend = () => {
         setFormData(prev => ({ ...prev, avatar: reader.result as string }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSignatureUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        toast.error('Signature file size exceeds 2MB limit');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData(prev => ({ ...prev, signatureUrl: reader.result as string }));
+        toast.success('Signature uploaded! Save changes to apply.');
       };
       reader.readAsDataURL(file);
     }
@@ -80,6 +97,21 @@ export const ProfilePage = () => {
       }
       toast.success('KYC document submitted for verification!');
       setKycFile(null);
+    }
+  };
+
+  const handleSetOfficialSignature = async () => {
+    if (!formData.signatureUrl) {
+      toast.error('Please upload a signature first');
+      return;
+    }
+    if (currentBranch) {
+      try {
+        await updateBranch(currentBranch.id, { officialSignatureUrl: formData.signatureUrl });
+        toast.success('Official branch signature updated!');
+      } catch (err) {
+        toast.error('Failed to update official signature');
+      }
     }
   };
 
@@ -230,6 +262,46 @@ export const ProfilePage = () => {
                 </button>
               </div>
             </div>
+
+            {!isTenant && (
+              <div className="space-y-4 pt-4 border-t border-gray-100 dark:border-white/5">
+                <label className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-indigo-500" />
+                  Official Signature (For Receipts)
+                </label>
+                <div className="flex flex-col sm:flex-row items-center gap-6 p-4 bg-gray-50/50 dark:bg-white/[0.02] rounded-2xl border border-dashed border-gray-200 dark:border-white/10">
+                  <div className="w-40 h-20 bg-white dark:bg-black/20 rounded-xl flex items-center justify-center border border-gray-100 dark:border-white/5 overflow-hidden">
+                    {formData.signatureUrl ? (
+                      <img src={formData.signatureUrl} alt="Signature" className="max-w-full max-h-full object-contain p-2" />
+                    ) : (
+                      <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest text-center px-4">No Signature Added</span>
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-2 text-center sm:text-left">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                      Upload a transparent PNG signature. This will appear on all generated payment receipts.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <label className="inline-flex items-center gap-2 px-4 py-2 bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold text-gray-700 dark:text-gray-200 cursor-pointer hover:bg-gray-50 dark:hover:bg-white/10 transition-colors">
+                        <Upload className="w-3 h-3" />
+                        {formData.signatureUrl ? 'Change Signature' : 'Upload Signature'}
+                        <input type="file" accept="image/*" className="hidden" onChange={handleSignatureUpload} />
+                      </label>
+                      {formData.signatureUrl && (user?.role === 'admin' || user?.role === 'super') && (
+                        <button
+                          type="button"
+                          onClick={handleSetOfficialSignature}
+                          className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 rounded-xl text-xs font-bold text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors"
+                        >
+                          <CheckCircle className="w-3 h-3" />
+                          Set as Official
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="pt-4 flex flex-col sm:flex-row gap-4">

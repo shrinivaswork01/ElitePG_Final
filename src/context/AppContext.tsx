@@ -18,6 +18,7 @@ interface AppContextType {
   branches: PGBranch[];
   subscriptionPlans: SubscriptionPlan[];
   userInvites: UserInvite[];
+  superSignatureUrl: string | null;
 
   // Actions
   addTenant: (tenant: Omit<Tenant, 'id' | 'branchId'>, kycDoc?: { type: string, url: string }, rentAgreementDoc?: { url: string }) => Promise<void>;
@@ -43,6 +44,9 @@ interface AppContextType {
   updateKYC: (id: string, updates: Partial<KYCData>) => Promise<void>;
   deleteKYC: (id: string) => Promise<void>;
   uploadVerifiedKYC: (tenantId: string, docType: string, docUrl: string) => Promise<void>;
+
+  addAnnouncement: (announcement: Omit<Announcement, 'id' | 'branchId'>) => Promise<void>;
+  deleteAnnouncement: (id: string) => Promise<void>;
 
   addSalaryPayment: (payment: Omit<SalaryPayment, 'id' | 'branchId'>) => Promise<void>;
   updateSalaryPayment: (id: string, updates: Partial<SalaryPayment>) => Promise<void>;
@@ -109,7 +113,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       pgConfigs: [],
       branches: [],
       subscriptionPlans: [],
-      userInvites: []
+      userInvites: [],
+      superSignatureUrl: null
     };
   });
 
@@ -120,7 +125,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const fetchData = useCallback(async () => {
     // We only fetch data if user is logged in
     if (!userId) {
-      setData({ tenants: [], rooms: [], payments: [], complaints: [], employees: [], kycs: [], announcements: [], salaryPayments: [], tasks: [], pgConfigs: [], branches: [], subscriptionPlans: [] });
+      setData({ tenants: [], rooms: [], payments: [], complaints: [], employees: [], kycs: [], announcements: [], salaryPayments: [], tasks: [], pgConfigs: [], branches: [], subscriptionPlans: [], userInvites: [], superSignatureUrl: null });
       localStorage.removeItem('elite_pg_cached_data');
       return;
     }
@@ -143,7 +148,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         { data: salaryPayments },
         { data: tasks },
         { data: pgConfigs },
-        { data: userInvites }
+        { data: userInvites },
+        { data: superUserSignature }
       ] = await Promise.all([
         supabase.from('pg_branches').select('*').match(isSuper ? {} : { id: branchId }),
         supabase.from('subscription_plans').select('*'),
@@ -157,14 +163,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         supabase.from('salary_payments').select('*').match(branchFilter),
         supabase.from('tasks').select('*').match(branchFilter),
         supabase.from('pg_configs').select('*').match(branchFilter),
-        supabase.from('user_invites').select('*').match(branchFilter)
+        supabase.from('user_invites').select('*').match(branchFilter),
+        supabase.from('users').select('signature_url').eq('role', 'super').maybeSingle()
       ]);
 
       const newData = {
         branches: (branches || []).map(b => ({
           id: b.id, name: b.name, branchName: b.branch_name, address: b.address, phone: b.phone,
           planId: b.plan_id, subscriptionStatus: b.subscription_status, subscriptionEndDate: b.subscription_end_date, createdAt: b.created_at,
-          razorpayCustomerId: b.razorpay_customer_id, razorpaySubscriptionId: b.razorpay_subscription_id
+          razorpayCustomerId: b.razorpay_customer_id,
+          razorpaySubscriptionId: b.razorpay_subscription_id,
+          officialSignatureUrl: b.official_signature_url
         })),
         subscriptionPlans: (plans || []).map(p => ({
           id: p.id, name: p.name, price: p.price, annualPrice: p.annual_price || 0, features: p.features,
@@ -172,7 +181,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           razorpayMonthlyPlanId: p.razorpay_plan_id, razorpayAnnualPlanId: p.razorpay_annual_plan_id
         })),
         tenants: (tenants || []).map(t => ({
-          id: t.id, userId: t.user_id, name: t.name, email: t.email, phone: t.phone, roomId: t.room_id, bedNumber: t.bed_number, rentAmount: t.rent_amount, depositAmount: t.deposit_amount, joiningDate: t.joining_date, paymentDueDate: t.payment_due_date, status: t.status, kycStatus: t.kyc_status, rentAgreementUrl: t.rent_agreement_url, branchId: t.branch_id
+          id: t.id, userId: t.user_id, name: t.name, email: t.email, phone: t.phone, roomId: t.room_id, bedNumber: t.bed_number, rentAmount: t.rent_amount, depositAmount: t.deposit_amount, joiningDate: t.joining_date, paymentDueDate: t.payment_due_date, status: t.status, kycStatus: t.kyc_status, rentAgreementUrl: t.rent_agreement_url, inviteCode: t.invite_code, branchId: t.branch_id
         })),
         rooms: (rooms || []).map(r => ({
           id: r.id, roomNumber: r.room_number, floor: r.floor, totalBeds: r.total_beds, occupiedBeds: r.occupied_beds, type: r.type, price: r.price, branchId: r.branch_id
@@ -211,7 +220,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         })),
         userInvites: (userInvites || []).map(i => ({
           id: i.id, inviteCode: i.invite_code, email: i.email, branchId: i.branch_id, role: i.role as any, status: i.status as any, createdAt: i.created_at
-        }))
+        })),
+        superSignatureUrl: superUserSignature?.signature_url || null
       };
       
       setData(newData);
@@ -326,14 +336,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const isAdmin = ['super', 'admin', 'manager'].includes(user?.role || '');
     const kycStatus: KYCStatus = kycDoc ? (isAdmin ? 'verified' : 'pending') : 'unsubmitted';
 
-    const dbPayload = {
+    const { data: createdTenant, error } = await supabase.from('tenants').insert({
       name: tenant.name, email: tenant.email, phone: tenant.phone, room_id: tenant.roomId, bed_number: tenant.bedNumber,
       rent_amount: tenant.rentAmount, deposit_amount: tenant.depositAmount, joining_date: tenant.joiningDate,
       payment_due_date: tenant.paymentDueDate, status: tenant.status, kyc_status: kycStatus,
-      rent_agreement_url: rentAgreementDoc?.url || null, branch_id: branchId, user_id: tenant.userId || null
-    };
-
-    const { data: createdTenant, error } = await supabase.from('tenants').insert(dbPayload).select().single();
+      rent_agreement_url: rentAgreementDoc?.url || null, branch_id: branchId, user_id: tenant.userId || null,
+      invite_code: (tenant as any).inviteCode || null
+    }).select().single();
     if (error) { toast.error(error.message); return; }
 
     // Optimistically add new tenant to local state immediately
@@ -345,7 +354,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (createdTenant && kycDoc) {
       if (isAdmin) {
         await supabase.from('kyc_documents').insert({
-          tenant_id: createdTenant.id, document_type: kycDoc.type, document_url: kycDoc.url, status: 'verified', branch_id: branchId, verified_by: user?.name, verified_at: new Date().toISOString().split('T')[0]
+          tenant_id: createdTenant.id, document_type: kycDoc.type, document_url: kycDoc.url, status: 'verified', branch_id: branchId, verified_by: user?.id, verified_at: new Date().toISOString().split('T')[0]
         });
       } else {
         await supabase.from('kyc_documents').insert({
@@ -374,6 +383,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.status !== undefined) dbUpdates.status = updates.status;
     if (updates.kycStatus !== undefined) dbUpdates.kyc_status = updates.kycStatus;
     if (updates.userId !== undefined) dbUpdates.user_id = updates.userId;
+    if ((updates as any).inviteCode !== undefined) dbUpdates.invite_code = (updates as any).inviteCode;
     if (rentAgreementDoc) dbUpdates.rent_agreement_url = rentAgreementDoc.url;
     if (kycDoc) dbUpdates.kyc_status = newKycStatus;
 
@@ -399,7 +409,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       }
       const { error: kycError } = await supabase.from('kyc_documents').insert({
         tenant_id: id, document_type: kycDoc.type, document_url: kycDoc.url, status: newKycStatus, branch_id: tenant?.branchId,
-        ...(isAdmin ? { verified_by: user?.name, verified_at: new Date().toISOString().split('T')[0] } : {})
+        ...(isAdmin ? { verified_by: user?.id, verified_at: new Date().toISOString().split('T')[0] } : {})
       });
       if (kycError) { toast.error(kycError.message); }
       else { toast.success(isAdmin ? 'KYC verified and uploaded!' : 'KYC submitted for verification!'); }
@@ -451,6 +461,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const deleteRoom = async (id: string) => { 
+    // Unassign tenants from this room first
+    const tenantsInRoom = data.tenants.filter((t: any) => t.roomId === id);
+    if (tenantsInRoom.length > 0) {
+      applyOptimistic(prev => ({
+        ...prev,
+        tenants: prev.tenants.map((t: any) => t.roomId === id ? { ...t, roomId: null } : t)
+      }));
+      await supabase.from('tenants').update({ room_id: null }).eq('room_id', id);
+    }
+
     applyOptimistic(prev => ({ ...prev, rooms: prev.rooms.filter((r: any) => r.id !== id) }));
     await refetch(supabase.from('rooms').delete().eq('id', id), 'Room deleted'); 
   };
@@ -462,7 +482,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       tenant_id: payment.tenantId, amount: payment.amount, late_fee: payment.lateFee, total_amount: payment.totalAmount,
       payment_date: payment.paymentDate, month: payment.month, status: payment.status, method: payment.method,
       transaction_id: payment.transactionId || null, receipt_url: payment.receiptUrl || null, branch_id: user.branchId,
-      created_by: user.id
+      // created_by: user.id // Removed to fix schema mismatch error
     }), 'Payment recorded');
   };
 
@@ -712,15 +732,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       await supabase.from('kyc_documents').delete().eq('id', existingKYC.id);
     }
     // Insert a new, pre-verified KYC document
-    await supabase.from('kyc_documents').insert({
-      tenant_id: tenantId,
-      document_type: docType,
-      document_url: docUrl,
-      status: 'verified',
-      verified_by: user?.id,
-      verified_at: new Date().toISOString().split('T')[0],
-      branch_id: tenant.branchId
-    });
+    await refetch(supabase.from('kyc_documents').insert({ tenant_id: tenantId, document_type: docType, document_url: docUrl, status: 'verified', branch_id: user?.branchId, verified_by: user?.id, verified_at: new Date().toISOString() }), 'KYC document uploaded');
     // Update tenant's kyc_status to verified
     await supabase.from('tenants').update({ kyc_status: 'verified' }).eq('id', tenantId);
     toast.success('KYC document uploaded and verified successfully!');
@@ -909,6 +921,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.branchName !== undefined) dbUpdates.branch_name = updates.branchName;
     if (updates.address !== undefined) dbUpdates.address = updates.address;
     if (updates.phone !== undefined) dbUpdates.phone = updates.phone;
+    if (updates.officialSignatureUrl !== undefined) dbUpdates.official_signature_url = updates.officialSignatureUrl;
     await refetch(supabase.from('pg_branches').update(dbUpdates).eq('id', id), 'Branch updated');
   };
 

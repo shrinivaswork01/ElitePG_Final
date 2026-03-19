@@ -31,6 +31,7 @@ export interface PGBranch {
   subscriptionEndDate: string;
   razorpayCustomerId?: string;
   razorpaySubscriptionId?: string;
+  officialSignatureUrl?: string; // New: Official signature for all receipts
 }
 
 export interface RolePermissions {
@@ -53,6 +54,7 @@ export interface User {
   branchId?: string; // Optional for super admin, required for others
   provider?: 'local' | 'google';
   google_id?: string;
+  signatureUrl?: string;
 }
 
 export interface UserInvite {
@@ -98,6 +100,7 @@ export interface Tenant {
   status: TenantStatus;
   kycStatus: KYCStatus;
   rentAgreementUrl?: string;
+  inviteCode?: string;
   branchId: string;
 }
 
@@ -110,6 +113,8 @@ export interface Room {
   type: 'AC' | 'Non-AC';
   price: number;
   branchId: string;
+  description?: string;
+  amenities?: string[];
 }
 
 export interface Payment {
@@ -198,6 +203,7 @@ export interface Employee {
   userId?: string;
   kycStatus: KYCStatus;
   branchId: string;
+  signatureUrl?: string;
 }
 
 export interface PGConfig {
