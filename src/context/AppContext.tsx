@@ -153,7 +153,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       ] = await Promise.all([
         supabase.from('pg_branches').select('*').match(isSuper ? {} : { id: branchId }),
         supabase.from('subscription_plans').select('*'),
-        supabase.from('tenants').select('*').match(branchFilter),
+        supabase.from('tenants').select('*, users(is_authorized)').match(branchFilter),
         supabase.from('rooms').select('*').match(branchFilter),
         supabase.from('payments').select('*').match(branchFilter),
         supabase.from('complaints').select('*').match(branchFilter),
@@ -181,7 +181,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           razorpayMonthlyPlanId: p.razorpay_plan_id, razorpayAnnualPlanId: p.razorpay_annual_plan_id
         })),
         tenants: (tenants || []).map(t => ({
-          id: t.id, userId: t.user_id, name: t.name, email: t.email, phone: t.phone, roomId: t.room_id, bedNumber: t.bed_number, rentAmount: t.rent_amount, depositAmount: t.deposit_amount, joiningDate: t.joining_date, paymentDueDate: t.payment_due_date, status: t.status, kycStatus: t.kyc_status, rentAgreementUrl: t.rent_agreement_url, inviteCode: t.invite_code, branchId: t.branch_id
+          id: t.id, userId: t.user_id, name: t.name, email: t.email, phone: t.phone, roomId: t.room_id, bedNumber: t.bed_number, rentAmount: t.rent_amount, depositAmount: t.deposit_amount, joiningDate: t.joining_date, paymentDueDate: t.payment_due_date, status: t.status, kycStatus: t.kyc_status, rentAgreementUrl: t.rent_agreement_url, inviteCode: t.invite_code, branchId: t.branch_id,
+          isAuthorized: t.users?.is_authorized ?? true // default to true if user account doesn't exist yet (standard for manually added)
         })),
         rooms: (rooms || []).map(r => ({
           id: r.id, roomNumber: r.room_number, floor: r.floor, totalBeds: r.total_beds, occupiedBeds: r.occupied_beds, type: r.type, price: r.price, branchId: r.branch_id
@@ -216,7 +217,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           logoUrl: c.logo_url,
           pgName: c.pg_name,
           primaryColor: c.primary_color,
-          theme: c.theme
+          theme: c.theme,
+          defaultPaymentDueDate: c.default_payment_due_date || 1,
+          defaultLateFeeDay: c.default_late_fee_day || 5,
+          lateFeeAmount: c.late_fee_amount || 50
         })),
         userInvites: (userInvites || []).map(i => ({
           id: i.id, inviteCode: i.invite_code, email: i.email, branchId: i.branch_id, role: i.role as any, status: i.status as any, createdAt: i.created_at
@@ -845,6 +849,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.pgName !== undefined) dbUpdates.pg_name = updates.pgName;
     if (updates.primaryColor !== undefined) dbUpdates.primary_color = updates.primaryColor;
     if (updates.theme !== undefined) dbUpdates.theme = updates.theme;
+    if (updates.defaultPaymentDueDate !== undefined) dbUpdates.default_payment_due_date = updates.defaultPaymentDueDate;
+    if (updates.defaultLateFeeDay !== undefined) dbUpdates.default_late_fee_day = updates.defaultLateFeeDay;
+    if (updates.lateFeeAmount !== undefined) dbUpdates.late_fee_amount = updates.lateFeeAmount;
 
     // Optimistically update PG config to prevent UI lagging on changes
     applyOptimistic(prev => {
@@ -866,7 +873,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             logoUrl: updates.logoUrl,
             pgName: updates.pgName,
             primaryColor: updates.primaryColor,
-            theme: updates.theme as any
+            theme: updates.theme as any,
+            defaultPaymentDueDate: updates.defaultPaymentDueDate,
+            defaultLateFeeDay: updates.defaultLateFeeDay,
+            lateFeeAmount: updates.lateFeeAmount
           }]
         };
       }

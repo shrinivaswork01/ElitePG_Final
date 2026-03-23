@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { motion } from 'motion/react';
-import { User, Mail, Phone, Shield, Save, LogOut, Camera, FileText, Upload, CheckCircle, Clock, AlertCircle, X, Zap, Star, Eye, EyeOff } from 'lucide-react';
+import { User, Mail, Phone, Shield, Save, LogOut, Camera, FileText, Upload, CheckCircle, Clock, AlertCircle, X, Zap, Star, Eye, EyeOff, Copy, Share2, MessageSquare, Check } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { cn } from '../utils';
@@ -10,7 +10,7 @@ import toast from 'react-hot-toast';
 
 export const ProfilePage = () => {
   const { user, updateProfile, logout } = useAuth();
-  const { tenants, updateTenant, kycs, employees, updateEmployee, currentPlan, currentBranch, updateBranch } = useApp();
+  const { tenants, updateTenant, kycs, employees, updateEmployee, currentPlan, currentBranch, updateBranch, userInvites } = useApp();
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
     username: user?.username || '',
@@ -23,6 +23,10 @@ export const ProfilePage = () => {
   });
   const [isSaving, setIsSaving] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [copiedInvite, setCopiedInvite] = useState(false);
+
+  // Branch invite code for tenant onboarding
+  const branchInvite = userInvites?.find(i => i.branchId === user?.branchId && i.role === 'tenant' && i.status === 'pending');
 
   const isTenant = user?.role === 'tenant';
   const tenantData = isTenant ? tenants.find(t => t.userId === user.id) : null;
@@ -364,6 +368,70 @@ export const ProfilePage = () => {
                 <p className="text-lg font-bold">{currentBranch?.subscriptionEndDate}</p>
               </div>
             </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Invite Code Card — for admins/managers to share with new tenants */}
+      {['super', 'admin', 'manager', 'receptionist'].includes(user?.role || '') && branchInvite && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.08 }}
+          className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm p-6 space-y-4"
+        >
+          <div className="flex items-center gap-3 mb-1">
+            <div className="p-2.5 bg-indigo-50 dark:bg-indigo-500/10 rounded-xl">
+              <Share2 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-gray-900 dark:text-white">Tenant Invite Code</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Share this with new tenants to let them sign up.</p>
+            </div>
+          </div>
+
+          {/* Code display */}
+          <div className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-white/5 rounded-2xl">
+            <code className="flex-1 text-2xl font-black tracking-widest text-indigo-600 dark:text-indigo-400 font-mono">
+              {branchInvite.inviteCode}
+            </code>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(branchInvite.inviteCode);
+                setCopiedInvite(true);
+                setTimeout(() => setCopiedInvite(false), 2000);
+              }}
+              className="p-2.5 rounded-xl bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-200 dark:hover:bg-indigo-500/30 transition-all"
+              title="Copy invite code"
+            >
+              {copiedInvite ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+            </button>
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              onClick={() => {
+                const url = `${window.location.origin}/signup?code=${branchInvite.inviteCode}`;
+                navigator.clipboard.writeText(url);
+                toast.success('Signup link copied to clipboard!');
+              }}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-gray-100 dark:bg-white/5 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-bold hover:bg-gray-200 dark:hover:bg-white/10 transition-colors"
+            >
+              <Copy className="w-4 h-4" />
+              Copy Signup Link
+            </button>
+            <button
+              onClick={() => {
+                const url = `${window.location.origin}/signup?code=${branchInvite.inviteCode}`;
+                const msg = `Hi! Please use this link to sign up for our PG:\n${url}\n\nOr use invite code: *${branchInvite.inviteCode}*`;
+                window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+              }}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded-xl text-sm font-bold hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition-colors"
+            >
+              <MessageSquare className="w-4 h-4" />
+              Share via WhatsApp
+            </button>
           </div>
         </motion.div>
       )}

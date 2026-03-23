@@ -105,7 +105,25 @@ export const LoginPage = ({ isSignUp = false }: LoginPageProps) => {
       setError('An account with this Google email already exists. Please sign in.');
       clearGoogleAuthStatus();
     }
-  }, [googleAuthStatus]);
+
+    // Check for error fragments from Supabase (e.g. #error=unsupported_provider)
+    const hash = window.location.hash;
+    if (hash && hash.includes('error=')) {
+      const params = new URLSearchParams(hash.substring(1));
+      const errorMsg = params.get('error_description') || params.get('error') || 'Authentication failed';
+      
+      if (errorMsg.includes('not enabled')) {
+        toast.error('Google Sign-in is not enabled in the Supabase dashboard. Please contact admin.');
+        setError('Google Sign-in is not enabled. Please use your username and password.');
+      } else {
+        toast.error(errorMsg.replace(/\+/g, ' '));
+        setError(errorMsg.replace(/\+/g, ' '));
+      }
+      
+      // Clear hash to prevent repeated toasts
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+  }, [googleAuthStatus, clearGoogleAuthStatus]);
 
   React.useEffect(() => {
     if (isAuthenticated && user) {

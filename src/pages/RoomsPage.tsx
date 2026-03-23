@@ -15,6 +15,11 @@ import {
   Search
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { usePaginatedData } from '../hooks/usePaginatedData';
+import { DataGrid, ColumnDef } from '../components/DataGrid';
+import { DropdownMenu, DropdownItem } from '../components/DropdownMenu';
+import { RoomDetailPanel } from '../components/RoomDetailPanel';
+import { RoomMobileList } from '../components/RoomMobileList';
 import { cn } from '../utils';
 import toast from 'react-hot-toast';
 
@@ -33,6 +38,7 @@ export const RoomsPage = () => {
   }
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
+  const [detailRoom, setDetailRoom] = useState<Room | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [formData, setFormData] = useState<Omit<Room, 'id' | 'branchId'>>({
     roomNumber: '',
@@ -45,15 +51,113 @@ export const RoomsPage = () => {
     amenities: []
   });
 
-  const filteredRooms = rooms.filter(room => 
-    room.roomNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    room.floor.toString().includes(searchTerm)
-  );
+  const filterType = searchTerm ? 'all' : 'all'; // placeholder so we can add type filter later
 
-  const handleEditClick = (room: Room) => {
-    setEditingRoom(room);
-    setFormData(room);
+  // Server-side paginated hook — fetches ONLY 10 records at a time
+  const { data: paginatedRooms, totalCount, isLoading, page, setPage, limit, refetch } = usePaginatedData<any>({
+    table: 'rooms',
+    ilikeFilters: searchTerm ? { room_number: searchTerm } : undefined,
+    orderBy: { column: 'room_number', ascending: true }
+  });
+
+  const roomColumns: ColumnDef<any>[] = [
+    {
+      header: 'Room',
+      accessorKey: 'room_number',
+      cell: (r) => (
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500 dark:text-indigo-400 flex items-center justify-center shrink-0">
+            <DoorOpen className="w-5 h-5" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-gray-900 dark:text-white">Room {r.room_number}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Floor {r.floor} • {r.type}</p>
+          </div>
+        </div>
+      )
+    },
+    {
+      header: 'Occupancy',
+      accessorKey: 'occupied_beds',
+      cell: (r) => {
+        const isFull = r.occupied_beds >= r.total_beds;
+        const pct = r.total_beds > 0 ? Math.round((r.occupied_beds / r.total_beds) * 100) : 0;
+        return (
+          <div className="min-w-[130px]">
+            <div className="flex justify-between text-xs mb-1">
+              <span className="font-semibold text-gray-900 dark:text-gray-200">{r.occupied_beds} / {r.total_beds} beds</span>
+              <span className={cn('font-bold', isFull ? 'text-rose-500' : 'text-emerald-500')}>{isFull ? 'Full' : 'Available'}</span>
+            </div>
+            <div className="h-1.5 w-full bg-gray-100 dark:bg-white/5 rounded-full overflow-hidden">
+              <div className={cn('h-full rounded-full transition-all', isFull ? 'bg-rose-500' : 'bg-emerald-500')} style={{ width: `${pct}%` }} />
+            </div>
+          </div>
+        );
+      }
+    },
+    {
+      header: 'Type',
+      accessorKey: 'type',
+      cell: (r) => (
+        <span className={cn(
+          'px-2.5 py-1 rounded-full text-xs font-bold uppercase',
+          r.type === 'AC' ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400' : 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400'
+        )}>
+          {r.type}
+        </span>
+      )
+    },
+    {
+      header: 'Price',
+      accessorKey: 'price',
+      cell: (r) => (
+        <span className="text-sm font-bold text-gray-900 dark:text-white">₹{Number(r.price).toLocaleString()}<span className="text-xs text-gray-500 font-normal">/mo</span></span>
+      )
+    },
+    {
+      header: '',
+      accessorKey: 'id',
+      className: 'w-[60px]',
+      cell: (r) => (
+        <div className="flex justify-end">
+          <DropdownMenu>
+            {['admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '') && (
+              <DropdownItem icon={<Edit2 className="w-4 h-4" />} label="Edit Room" onClick={() => { setEditingRoom(r); setFormData(r); setIsAddModalOpen(true); }} />
+            )}
+            {['admin', 'manager'].includes(user?.role || '') && (
+              <DropdownItem icon={<Trash2 className="w-4 h-4" />} label="Delete Room" onClick={() => setRoomToDelete(r)} danger />
+            )}
+          </DropdownMenu>
+        </div>
+      )
+    }
+  ];
+
+
+  const handleEditClick = (room: any) => {
+    setDetailRoom(null);
+    // Normalize from DB snake_case or already-mapped camelCase
+    const normalized: Omit<Room, 'id' | 'branchId'> = {
+      roomNumber: room.roomNumber || room.room_number || '',
+      floor: room.floor ?? 1,
+      totalBeds: room.totalBeds ?? room.total_beds ?? 2,
+      occupiedBeds: room.occupiedBeds ?? room.occupied_beds ?? 0,
+      type: room.type || 'Non-AC',
+      price: room.price ?? 6000,
+      description: room.description || '',
+      amenities: room.amenities || []
+    };
+    setEditingRoom({ id: room.id, branchId: room.branchId || room.branch_id, ...normalized });
+    setFormData(normalized);
     setIsAddModalOpen(true);
+  };
+
+  const handleBulkDelete = async (ids: string[]) => {
+    for (const id of ids) {
+      await deleteRoom(id);
+    }
+    toast.success(`${ids.length} rooms deleted`);
+    refetch();
   };
 
   const handleCloseModal = () => {
@@ -90,45 +194,57 @@ export const RoomsPage = () => {
       addRoom(formData);
     }
     handleCloseModal();
+    refetch();
   };
+
+  const roomsData: Room[] = (paginatedRooms || []).map((r: any) => ({
+    id: r.id,
+    roomNumber: r.room_number,
+    floor: r.floor,
+    totalBeds: r.total_beds,
+    occupiedBeds: r.occupied_beds,
+    type: r.type,
+    price: r.price,
+    description: r.description,
+    amenities: r.amenities || [],
+    branchId: r.branch_id
+  }));
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Rooms</h2>
-          <p className="text-gray-500 dark:text-gray-400">Manage property inventory and occupancy.</p>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">Rooms</h2>
+          <p className="text-gray-500 dark:text-gray-400">Manage rooms and occupancy.</p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative flex-1 md:w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search room no. or floor..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-white dark:bg-[#111111] border border-gray-100 dark:border-white/5 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-            />
+        {!isAtLimit && (
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all hidden sm:flex"
+          >
+            <Plus className="w-5 h-5" />
+            Add Room
+          </button>
+        )}
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
+        <div className="relative w-full sm:w-96">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search room number..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-[#111111] border border-gray-100 dark:border-white/5 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
+          />
+        </div>
+        
+        {isNearLimit && !isAtLimit && (
+          <div className="px-4 py-2 bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-xl text-xs font-bold border border-amber-100 dark:border-amber-500/20">
+            {currentPlan?.maxRooms! - currentRoomsCount} rooms left on your plan
           </div>
-          {['admin', 'manager'].includes(user?.role || '') && (
-            <button
-              onClick={() => {
-                if (isAtLimit) {
-                  toast.error(`Limit reached! Your current plan (${currentPlan?.name}) allows only ${currentPlan?.maxRooms} rooms. Please upgrade your plan.`);
-                  return;
-                }
-                setIsAddModalOpen(true);
-              }}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all",
-                isAtLimit && "opacity-50 cursor-not-allowed"
-              )}
-            >
-              <Plus className="w-5 h-5" />
-              Add Room
-            </button>
-          )}
-        </div>
+        )}
       </div>
 
       {isNearLimit && (
@@ -164,96 +280,49 @@ export const RoomsPage = () => {
         </motion.div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        {filteredRooms.map((room) => (
-          <motion.div
-            key={room.id}
-            layout
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden group hover:shadow-md transition-all"
-          >
-            {(() => {
-              const activeOccupancy = tenants.filter(t => t.roomId === room.id && t.status === 'active').length;
-              return (
-                <>
-                  <div className="p-6">
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center">
-                        <DoorOpen className="w-6 h-6" />
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={cn(
-                          "px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider",
-                          room.type === 'AC' ? "bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400" : "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                        )}>
-                          {room.type === 'AC' ? <Wind className="w-3 h-3 inline mr-1" /> : <Sun className="w-3 h-3 inline mr-1" />}
-                          {room.type}
-                        </span>
-                      </div>
-                    </div>
-
-                    <h3 className="text-xl font-bold text-gray-900 dark:text-white">Room {room.roomNumber}</h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Floor {room.floor}</p>
-
-                    <div className="mt-6 space-y-4">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-500 dark:text-gray-400 flex items-center gap-2">
-                          <Users className="w-4 h-4" />
-                          Occupancy
-                        </span>
-                        <span className="font-bold text-gray-900 dark:text-white">{activeOccupancy} / {room.totalBeds} Beds</span>
-                      </div>
-                      <div className="w-full bg-gray-100 dark:bg-white/5 h-2 rounded-full overflow-hidden">
-                        <div
-                          className={cn(
-                            "h-full transition-all duration-500",
-                            activeOccupancy >= room.totalBeds ? "bg-rose-500" : "bg-indigo-600"
-                          )}
-                          style={{ width: `${Math.min((activeOccupancy / room.totalBeds) * 100, 100)}%` }}
-                        />
-                      </div>
-                      <div className="flex items-center justify-between pt-2 border-t border-gray-50 dark:border-white/5">
-                        <span className="text-lg font-bold text-gray-900 dark:text-white">₹{room.price.toLocaleString()}</span>
-                        <span className="text-xs text-gray-400 dark:text-gray-500">per month</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="px-6 py-4 bg-gray-50 dark:bg-white/5 flex items-center justify-between">
-                    <button
-                      onClick={() => setSelectedRoom(room)}
-                      className="text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300"
-                    >
-                      View Details
-                    </button>
-                    <div className="flex gap-2">
-                      {['admin', 'manager', 'caretaker'].includes(user?.role || '') && (
-                        <button
-                          onClick={() => handleEditClick(room)}
-                          className="p-2 hover:bg-white dark:hover:bg-white/10 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                      )}
-                      {['admin', 'manager'].includes(user?.role || '') && (
-                        <button
-                          onClick={() => setRoomToDelete(room)}
-                          className="p-2 hover:bg-white dark:hover:bg-white/10 rounded-lg text-red-500 hover:text-red-600 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </>
-              );
-            })()}
-          </motion.div>
-        ))}
+      {/* Desktop View */}
+      <div className="hidden sm:block">
+        <DataGrid
+          columns={roomColumns}
+          data={paginatedRooms || []}
+          isLoading={isLoading}
+          keyExtractor={(r: any) => r.id}
+          page={page}
+          limit={limit}
+          totalCount={totalCount}
+          onPageChange={setPage}
+          onRowClick={(r: any) => setDetailRoom(rooms.find(room => room.id === r.id) || null)}
+        />
       </div>
 
+      {/* Mobile View */}
+      <div className="sm:hidden -mx-4 -mt-2">
+        <RoomMobileList 
+          rooms={roomsData}
+          onAdd={() => {
+            if (isAtLimit) {
+              toast.error(`Limit reached! Your current plan allows only ${currentPlan?.maxRooms} rooms.`);
+              return;
+            }
+            setIsAddModalOpen(true);
+          }}
+          onEdit={handleEditClick}
+          onDelete={(r) => { deleteRoom(r.id); refetch(); }}
+          onBulkDelete={handleBulkDelete}
+        />
+      </div>
+
+      {/* Room Detail Panel */}
+      <RoomDetailPanel
+        room={detailRoom}
+        onClose={() => setDetailRoom(null)}
+        onEdit={handleEditClick}
+        onDelete={(r) => { setRoomToDelete(r); }}
+        canEdit={['admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '')}
+      />
+
       <AnimatePresence>
+
         {isAddModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div

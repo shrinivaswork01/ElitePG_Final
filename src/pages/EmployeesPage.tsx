@@ -28,6 +28,7 @@ import {
   FileText
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { EmployeeMobileList } from '../components/EmployeeMobileList';
 import { cn } from '../utils';
 import toast from 'react-hot-toast';
 
@@ -169,6 +170,17 @@ export const EmployeesPage = () => {
     await deleteEmployee(employeeId);
     setEmployeeToDelete(null);
     toast.success('Employee and all related data deleted successfully');
+  };
+
+  const handleBulkDeleteEmployees = async (ids: string[]) => {
+    if (!window.confirm(`Are you sure you want to delete ${ids.length} employees and all their related data?`)) return;
+    
+    let count = 0;
+    for (const id of ids) {
+      await handleDeleteEmployee(id);
+      count++;
+    }
+    toast.success(`${count} employees deleted successfully`);
   };
 
 
@@ -323,7 +335,7 @@ export const EmployeesPage = () => {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="hidden md:grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredEmployees.map((employee) => (
               <motion.div
                 key={employee.id}
@@ -409,6 +421,25 @@ export const EmployeesPage = () => {
               </motion.div>
             ))}
           </div>
+
+          <div className="block md:hidden">
+            <EmployeeMobileList
+              employees={filteredEmployees}
+              onTap={(e) => setSelectedEmployee(e)}
+              onEdit={handleEditClick}
+              onSalary={(e) => {
+                setSalaryFormData({ ...salaryFormData, employeeId: e.id, amount: e.salary });
+                setIsSalaryModalOpen(true);
+              }}
+              onDelete={(e) => {
+                if(window.confirm(`Are you sure you want to delete ${e.name}?`)) {
+                   handleDeleteEmployee(e.id);
+                }
+              }}
+              onBulkDelete={handleBulkDeleteEmployees}
+            />
+          </div>
+
         </>
       ) : (
         <div className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden">

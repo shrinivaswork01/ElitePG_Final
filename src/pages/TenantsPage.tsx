@@ -7,13 +7,8 @@ import { format, parseISO } from 'date-fns';
 import {
   Search,
   Plus,
-  MoreVertical,
   Filter,
   Download,
-  UserPlus,
-  Mail,
-  Phone,
-  Calendar,
   Shield,
   Trash2,
   Edit2,
@@ -21,14 +16,20 @@ import {
   FileText,
   History,
   FileCheck,
-  MessageCircle
+  MessageCircle,
+  Calendar
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { usePaginatedData } from '../hooks/usePaginatedData';
+import { DataGrid, ColumnDef } from '../components/DataGrid';
+import { DropdownMenu, DropdownItem } from '../components/DropdownMenu';
+import { TenantDetailPanel } from '../components/TenantDetailPanel';
+import { TenantMobileList } from '../components/TenantMobileList';
 import { cn } from '../utils';
 import toast from 'react-hot-toast';
 
 export const TenantsPage = () => {
-  const { user, users, register, updateUser } = useAuth();
+  const { user, users, register, updateUser, authorizeUser } = useAuth();
   const location = useLocation();
   const { tenants, rooms, addTenant, updateTenant, deleteTenant, checkFeatureAccess, currentPlan, uploadVerifiedKYC, kycs, userInvites } = useApp();
   const canSendWhatsApp = checkFeatureAccess('whatsapp');
@@ -62,31 +63,138 @@ export const TenantsPage = () => {
   const [menuTenant, setMenuTenant] = useState<Tenant | null>(null);
   const [adminKycFile, setAdminKycFile] = useState<{ type: string; url: string; fileName: string } | null>(null);
   const [adminKycType, setAdminKycType] = useState('Aadhar Card');
+  const [detailTenant, setDetailTenant] = useState<any | null>(null);
   const { payments } = useApp();
 
-  const filteredTenants = tenants.filter(t => {
-    const matchesSearch = t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = filterStatus === 'all' || t.status === filterStatus;
-    return matchesSearch && matchesStatus;
+  // Server-side paginated hook — fetches ONLY 10 records at a time
+  const { data: paginatedTenants, totalCount, isLoading, page, setPage, limit, refetch } = usePaginatedData<any>({
+    table: 'tenants',
+    select: '*, rooms!tenants_room_id_fkey(room_number)',
+    ilikeFilters: searchTerm ? { name: searchTerm, email: searchTerm } : undefined,
+    filters: filterStatus !== 'all' ? { status: filterStatus } : undefined
   });
 
+  const columns: ColumnDef<any>[] = [
+    {
+      header: 'Tenant',
+      accessorKey: 'name',
+      cell: (t) => (
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-black text-base shadow-lg shadow-indigo-500/20 uppercase shrink-0">
+            {t.name?.charAt(0) || '?'}
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{t.name}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{t.email}</p>
+          </div>
+        </div>
+      )
+    },
+    {
+      header: 'Room',
+      accessorKey: 'room_id',
+      cell: (t) => {
+        const roomNumber = t.rooms?.room_number;
+        return (
+          <div className="flex flex-col">
+            <span className="text-sm font-semibold text-gray-900 dark:text-white">Room {roomNumber || 'N/A'}</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">Bed {t.bed_number}</span>
+          </div>
+        );
+      }
+    },
+    {
+      header: 'KYC',
+      accessorKey: 'kyc_status',
+      className: 'hidden sm:table-cell',
+      cell: (t) => {
+        const s = t.kyc_status;
+        const map: Record<string, string> = {
+          verified: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+          pending: 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400',
+          unsubmitted: 'bg-gray-100 dark:bg-white/5 text-gray-400',
+          rejected: 'bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400'
+        };
+        return (
+          <span className={cn('inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold', map[s] || map.unsubmitted)}>
+            <Shield className="w-3 h-3" />
+            {s?.charAt(0).toUpperCase() + s?.slice(1)}
+          </span>
+        );
+      }
+    },
+    {
+      header: 'Rent',
+      accessorKey: 'rent_amount',
+      className: 'hidden md:table-cell',
+      cell: (t) => (
+        <div>
+          <p className="text-sm font-bold text-gray-900 dark:text-white">₹{Number(t.rent_amount).toLocaleString()}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Due {t.payment_due_date}th</p>
+        </div>
+      )
+    },
+    {
+      header: 'Status',
+      accessorKey: 'status',
+      cell: (t) => {
+        const map: Record<string, string> = {
+          active: 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400',
+          vacating: 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400',
+          vacated: 'bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-gray-400',
+          blacklisted: 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400'
+        };
+        return (
+          <span className={cn('px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider', map[t.status] || map.vacated)}>
+            {t.status}
+          </span>
+        );
+      }
+    },
+    {
+      header: '',
+      accessorKey: 'id',
+      className: 'w-[60px]',
+      cell: (t) => (
+        <div className="flex justify-end">
+          <DropdownMenu>
+            {/* Edit first */}
+            {['admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '') && (
+              <DropdownItem icon={<Edit2 className="w-4 h-4" />} label="Edit Tenant" onClick={() => handleEditClick(t)} />
+            )}
+            <DropdownItem icon={<History className="w-4 h-4" />} label="Payment History" onClick={() => setViewingPayments(t)} />
+            {(t.rent_agreement_url || t.rentAgreementUrl) && (
+              <DropdownItem icon={<FileCheck className="w-4 h-4" />} label="View Agreement" onClick={() => setViewingAgreement(t)} />
+            )}
+            {canSendWhatsApp && (
+              <DropdownItem icon={<MessageCircle className="w-4 h-4" />} label="WhatsApp Reminder" onClick={() => handleSendWhatsAppReminder(t)} />
+            )}
+            {['admin', 'manager', 'receptionist'].includes(user?.role || '') && (
+              <DropdownItem icon={<Shield className="w-4 h-4" />} label="Upload KYC" onClick={() => { setKycUploadTenant(t); setAdminKycFile(null); setAdminKycType('Aadhar Card'); }} />
+            )}
+            {['admin', 'manager'].includes(user?.role || '') && (
+              <DropdownItem icon={<Trash2 className="w-4 h-4" />} label="Delete Tenant" onClick={() => setTenantToDelete(t)} danger />
+            )}
+          </DropdownMenu>
+        </div>
+      )
+    }
+  ];
+
+
   const handleDownload = () => {
-    const data = filteredTenants.map(t => {
-      const room = rooms.find(r => r.id === t.roomId);
-      return {
-        Name: t.name,
-        Email: t.email,
-        Phone: t.phone,
-        Room: room?.roomNumber || 'N/A',
-        Bed: t.bedNumber,
-        Rent: t.rentAmount,
-        KYC: t.kycStatus,
-        Status: t.status
-      };
-    });
+    const csvRows = paginatedTenants.map((t: any) => ({
+      Name: t.name,
+      Email: t.email,
+      Phone: t.phone,
+      Room: t.rooms?.room_number || 'N/A',
+      Bed: t.bed_number,
+      Rent: t.rent_amount,
+      KYC: t.kyc_status,
+      Status: t.status
+    }));
     const csvContent = "data:text/csv;charset=utf-8,"
-      + ["Name,Email,Phone,Room,Bed,Rent,KYC,Status", ...data.map(r => Object.values(r).join(","))].join("\n");
+      + ["Name,Email,Phone,Room,Bed,Rent,KYC,Status", ...csvRows.map((r: any) => Object.values(r).join(","))].join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -139,9 +247,27 @@ export const TenantsPage = () => {
     window.open(whatsappUrl, '_blank');
   };
 
-  const handleEditClick = (tenant: Tenant) => {
-    setEditingTenant(tenant);
-    setFormData(tenant);
+  const handleEditClick = (tenant: any) => {
+    // Normalize data from DB (snake_case) or context (camelCase) to the form's camelCase shape
+    const normalized = {
+      name: tenant.name || '',
+      email: tenant.email || '',
+      phone: tenant.phone || '',
+      roomId: tenant.roomId || tenant.room_id || '',
+      bedNumber: tenant.bedNumber ?? tenant.bed_number ?? 1,
+      rentAmount: tenant.rentAmount ?? tenant.rent_amount ?? 0,
+      depositAmount: tenant.depositAmount ?? tenant.deposit_amount ?? 0,
+      joiningDate: tenant.joiningDate || tenant.joining_date || new Date().toISOString().split('T')[0],
+      paymentDueDate: tenant.paymentDueDate ?? tenant.payment_due_date ?? 5,
+      status: tenant.status || 'active',
+      kycStatus: tenant.kycStatus || tenant.kyc_status || 'unsubmitted',
+      userId: tenant.userId || tenant.user_id || undefined,
+      rentAgreementUrl: tenant.rentAgreementUrl || tenant.rent_agreement_url || undefined,
+    };
+    // Auto-fill branch invite code
+    const branchInvite = userInvites.find(i => i.branchId === user?.branchId && i.role === 'tenant' && i.status === 'pending');
+    setEditingTenant({ ...tenant, id: tenant.id, branchId: tenant.branchId || tenant.branch_id });
+    setFormData({ ...normalized, inviteCode: branchInvite?.inviteCode || tenant.invite_code || tenant.inviteCode || '' });
     setIsAddModalOpen(true);
   };
 
@@ -226,7 +352,7 @@ export const TenantsPage = () => {
     if (result.success && result.user) {
       await updateTenant(tenantForLogin.id, { userId: result.user.id });
       if (!loginPassword) {
-        toast.success('Login account created. Tenant will be prompted to set their password on first login.');
+        toast.success('Login account created with default password "123456". Tenant will be prompted to set their own password on first login.');
       } else {
         toast.success('Login created successfully. The tenant must be authorized by an admin before logging in.');
       }
@@ -273,6 +399,36 @@ export const TenantsPage = () => {
         );
       }
       handleCloseModal();
+    }
+  };
+
+  const handleBulkDelete = (ids: string[]) => {
+    if (window.confirm(`Are you sure you want to delete ${ids.length} selected tenants?`)) {
+      ids.forEach(id => deleteTenant(id));
+      refetch();
+      toast.success(`${ids.length} tenants deleted.`);
+    }
+  };
+
+  const handleBulkWhatsApp = (ids: string[]) => {
+    const selectedTenants = paginatedTenants.filter((t: any) => ids.includes(t.id));
+    if (selectedTenants.length > 0) {
+      toast('Bulk WhatsApp info: Currently Web only supports opening one chat. Opening first.', { icon: 'ℹ️' });
+      handleSendWhatsAppReminder(selectedTenants[0]);
+    }
+  };
+
+  const handleShareDetails = (ids: string[]) => {
+    const selectedTenants = paginatedTenants.filter((t: any) => ids.includes(t.id));
+    const details = selectedTenants.map((t: any) => `${t.name} (Room ${t.rooms?.room_number || 'N/A'})\nPhone: ${t.phone}\nRent: ₹${t.rent_amount || t.rentAmount}\nStatus: ${t.status}`).join('\n\n');
+    if (navigator.share) {
+      navigator.share({
+        title: 'Tenant Details',
+        text: details
+      }).catch(console.error);
+    } else {
+      navigator.clipboard.writeText(details);
+      toast.success('Details copied to clipboard');
     }
   };
 
@@ -371,475 +527,55 @@ export const TenantsPage = () => {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden">
-        {/* Desktop View Table */}
-        <div className="hidden sm:block overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-100 dark:border-white/5">
-                <th className="px-4 sm:px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tenant</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Room</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">KYC Status</th>
-                <th className="px-4 sm:px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Rent</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
-                <th className="px-4 sm:px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50 dark:divide-white/5">
-              {filteredTenants.map((tenant) => {
-                const room = rooms.find(r => r.id === tenant.roomId);
-                return (
-                  <tr key={tenant.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors group">
-                    <td className="px-4 sm:px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-sm">
-                          {tenant.name?.charAt(0) || '?'}
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-gray-900 dark:text-white">{tenant.name}</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">{tenant.email}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col">
-                        <span className="text-sm font-medium text-gray-900 dark:text-white">Room {room?.roomNumber || 'N/A'}</span>
-                        <span className="text-xs text-gray-500 dark:text-gray-400">Bed {tenant.bedNumber}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      {checkFeatureAccess('kyc') ? (
-                        <span className={cn(
-                          "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold",
-                          tenant.kycStatus === 'verified' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" :
-                            tenant.kycStatus === 'pending' ? "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400" :
-                              tenant.kycStatus === 'unsubmitted' ? "bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-gray-400" : "bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400"
-                        )}>
-                          <Shield className="w-3 h-3" />
-                          {tenant.kycStatus?.charAt(0).toUpperCase() + tenant.kycStatus?.slice(1)}
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-gray-100 dark:bg-white/5 text-gray-400">
-                          <Shield className="w-3 h-3" />
-                          Not Required
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 sm:px-6 py-4">
-                      <p className="text-sm font-bold text-gray-900 dark:text-white">₹{tenant.rentAmount.toLocaleString()}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Due: {tenant.paymentDueDate}th</p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={cn(
-                        "px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider",
-                        tenant.status === 'active' ? "bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400" :
-                          tenant.status === 'vacating' ? "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400" :
-                            tenant.status === 'vacated' ? "bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-gray-400" : "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400"
-                      )}>
-                        {tenant.status}
-                      </span>
-                    </td>
-                    <td className="px-4 sm:px-6 py-4">
-                      <div className="flex flex-wrap items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={() => setViewingPayments(tenant)}
-                          title="Payment History"
-                          className="p-2 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-lg text-indigo-600 dark:text-indigo-400 transition-colors"
-                        >
-                          <History className="w-4 h-4" />
-                        </button>
-                        {canSendWhatsApp && (
-                          <button
-                            onClick={() => handleSendWhatsAppReminder(tenant)}
-                            title="Send WhatsApp Reminder"
-                            className="p-2 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-lg text-emerald-600 dark:text-emerald-400 transition-colors"
-                          >
-                            <MessageCircle className="w-4 h-4" />
-                          </button>
-                        )}
-                        {tenant.rentAgreementUrl && (
-                          <button
-                            onClick={() => setViewingAgreement(tenant)}
-                            title="View Rent Agreement"
-                            className="p-2 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-lg text-emerald-600 dark:text-emerald-400 transition-colors"
-                          >
-                            <FileCheck className="w-4 h-4" />
-                          </button>
-                        )}
-                        {!tenant.userId && ['admin', 'manager', 'receptionist'].includes(user?.role || '') && (
-                          <button
-                            onClick={() => setTenantForLogin(tenant)}
-                            title="Create User Login"
-                            className="p-2 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-lg text-blue-600 dark:text-blue-400 transition-colors"
-                          >
-                            <UserPlus className="w-4 h-4" />
-                          </button>
-                        )}
-                        {['admin', 'manager', 'receptionist'].includes(user?.role || '') && (
-                          <button
-                            onClick={() => {
-                              setKycUploadTenant(tenant);
-                              setAdminKycFile(null);
-                              setAdminKycType('Aadhar Card');
-                            }}
-                            title="Upload Verified KYC"
-                            className="p-2 hover:bg-violet-50 dark:hover:bg-violet-500/10 rounded-lg text-violet-600 dark:text-violet-400 transition-colors"
-                          >
-                            <Shield className="w-4 h-4" />
-                          </button>
-                        )}
-                        {['admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '') && (
-                          <button
-                            onClick={() => handleEditClick(tenant)}
-                            title="Edit Tenant"
-                            className="p-2 hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg text-gray-500 dark:text-gray-400 transition-colors"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                        )}
-                        {['admin', 'manager'].includes(user?.role || '') && (
-                          <button
-                            onClick={() => setTenantToDelete(tenant)}
-                            title="Delete Tenant"
-                            className="p-2 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg text-red-500 transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Mobile Grid View */}
-        <div className="block sm:hidden space-y-4 p-4">
-          {filteredTenants.map((tenant) => {
-            const room = rooms.find(r => r.id === tenant.roomId);
-            const currentMonth = format(new Date(), 'yyyy-MM');
-            const payment = payments.find(p => p.tenantId === tenant.id && p.month === currentMonth);
-            const isPaid = payment?.status === 'paid';
-            const today = new Date().getDate();
-            const isOverdue = !isPaid && today > tenant.paymentDueDate;
-            
-            return (
-              <motion.div
-                key={tenant.id}
-                layout
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="bg-white dark:bg-[#111111] rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-xl shadow-gray-200/20 dark:shadow-none overflow-hidden"
-              >
-                <div className="p-6">
-                  <div className="flex items-start justify-between mb-5">
-                    <div className="flex items-center gap-4">
-                      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-black text-2xl shadow-lg shadow-indigo-500/20 uppercase">
-                        {tenant.name?.charAt(0) || '?'}
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-gray-900 dark:text-white text-lg tracking-tight leading-tight">{tenant.name}</h4>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{tenant.phone}</p>
-                      </div>
-                    </div>
-                    <span className={cn(
-                      "px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm",
-                      isPaid ? "bg-emerald-500 text-white" :
-                        isOverdue ? "bg-rose-500 text-white" :
-                          "bg-amber-400 text-white"
-                    )}>
-                      {isPaid ? 'Paid' : isOverdue ? 'Overdue' : 'Due Soon'}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3 mb-5">
-                    <div className="p-4 rounded-[1.5rem] bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/5">
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Stay Info</p>
-                      <p className="text-sm font-black text-gray-900 dark:text-white">
-                        Room {room?.roomNumber || 'N/A'}
-                      </p>
-                      <p className="text-[10px] text-gray-500 font-medium">Bed {tenant.bedNumber}</p>
-                    </div>
-                    <div className="p-4 rounded-[1.5rem] bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/5">
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Monthly</p>
-                      <p className="text-sm font-black text-gray-900 dark:text-white">₹{tenant.rentAmount.toLocaleString()}</p>
-                      <p className="text-[10px] text-gray-500 font-medium">Due: {tenant.paymentDueDate}th</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleSendWhatsAppReminder(tenant)}
-                      className="flex-[2] flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white py-3.5 rounded-2xl text-[11px] font-black shadow-lg shadow-emerald-500/20 active:scale-95 transition-all"
-                    >
-                      <MessageCircle className="w-4 h-4" />
-                      WHATSAPP
-                    </button>
-                    <button
-                      onClick={() => setViewingPayments(tenant)}
-                      className="flex-[2] flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white py-3.5 rounded-2xl text-[11px] font-black shadow-lg shadow-indigo-600/20 active:scale-95 transition-all"
-                    >
-                      <History className="w-4 h-4" />
-                      HISTORY
-                    </button>
-                    <button
-                      onClick={() => setMenuTenant(tenant)}
-                      className="flex-1 h-[46px] flex items-center justify-center bg-gray-50 dark:bg-white/5 text-gray-900 dark:text-white rounded-2xl border border-gray-200/50 dark:border-white/5 active:scale-95 transition-all"
-                    >
-                      <MoreVertical className="w-5 h-5" />
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            );
-          })}
-        </div>
-
-        {filteredTenants.length === 0 && (
-          <div className="p-12 text-center text-gray-500 dark:text-gray-400">No tenants found</div>
-        )}
+      <div className="hidden md:block">
+        <DataGrid 
+          columns={columns}
+          data={paginatedTenants}
+          isLoading={isLoading}
+          keyExtractor={(t: any) => t.id}
+          totalCount={totalCount}
+          page={page}
+          onPageChange={setPage}
+          limit={limit}
+          emptyStateMessage="No tenants found matching your criteria"
+          onRowClick={(t) => setDetailTenant(t)}
+        />
       </div>
 
-      {/* Mobile Action Bottom Sheet */}
+      <div className="block md:hidden">
+        <TenantMobileList
+          tenants={paginatedTenants}
+          onManage={(t) => setDetailTenant(t)}
+          onEdit={handleEditClick}
+          onPaymentHistory={(t) => setViewingPayments(t)}
+          onViewAgreement={(t) => setViewingAgreement(t)}
+          onWhatsAppReminder={handleSendWhatsAppReminder}
+          onDelete={(t) => setTenantToDelete(t)}
+          onBulkDelete={handleBulkDelete}
+          onBulkWhatsApp={handleBulkWhatsApp}
+          onShareDetails={handleShareDetails}
+        />
+      </div>
+
+      {/* Tenant Detail Panel */}
+      <TenantDetailPanel
+        tenant={detailTenant}
+        onClose={() => setDetailTenant(null)}
+        onEdit={handleEditClick}
+        onDelete={(t) => setTenantToDelete(t)}
+        onViewAgreement={(t) => setViewingAgreement(t)}
+        onViewPayments={(t) => setViewingPayments(t)}
+        onAuthorize={async (uid) => {
+          await authorizeUser(uid);
+          toast.success('Tenant login authorized successfully!');
+          setDetailTenant(null);
+        }}
+        canEdit={['admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '')}
+        canDelete={['admin', 'manager'].includes(user?.role || '')}
+      />
+
       <AnimatePresence>
-        {menuTenant && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setMenuTenant(null)}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] sm:hidden"
-            />
-            <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="fixed bottom-0 left-0 right-0 bg-white dark:bg-[#111111] rounded-t-[32px] z-[101] sm:hidden border-t border-white/5"
-            >
-              <div className="p-4 sm:p-6 pb-10">
-                <div className="w-12 h-1.5 bg-gray-200 dark:bg-white/10 rounded-full mx-auto mb-6" />
-
-                <div className="flex items-center gap-4 mb-6 px-2">
-                  <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-black text-xl">
-                    {menuTenant.name.charAt(0)}
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-black text-gray-900 dark:text-white leading-tight">{menuTenant.name}</h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">{menuTenant.phone}</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 mb-4">
-                  <button
-                    onClick={() => { handleSendWhatsAppReminder(menuTenant); setMenuTenant(null); }}
-                    className="flex flex-col items-center justify-center gap-2 p-4 rounded-3xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-500/10 transition-all active:scale-95"
-                  >
-                    <MessageCircle className="w-6 h-6" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-center">Chat Tenant</span>
-                  </button>
-
-                  <button
-                    onClick={() => { setViewingPayments(menuTenant); setMenuTenant(null); }}
-                    className="flex flex-col items-center justify-center gap-2 p-4 rounded-3xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-500/10 transition-all active:scale-95"
-                  >
-                    <History className="w-6 h-6" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-center">History</span>
-                  </button>
-
-                  <button
-                    disabled={!menuTenant.rentAgreementUrl}
-                    onClick={() => { if (menuTenant.rentAgreementUrl) { setViewingAgreement(menuTenant); setMenuTenant(null); } }}
-                    className={cn(
-                      "flex flex-col items-center justify-center gap-2 p-4 rounded-3xl transition-all active:scale-95 border",
-                      menuTenant.rentAgreementUrl 
-                        ? "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-500/10" 
-                        : "bg-gray-50 dark:bg-white/5 text-gray-300 dark:text-gray-600 border-gray-100 dark:border-white/5 opacity-50 cursor-not-allowed"
-                    )}
-                  >
-                    <FileCheck className="w-6 h-6" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-center">Agreement</span>
-                  </button>
-
-                  <button
-                    onClick={() => { handleEditClick(menuTenant); setMenuTenant(null); }}
-                    className="flex flex-col items-center justify-center gap-2 p-4 rounded-3xl bg-gray-50 dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-100 dark:border-white/5 transition-all active:scale-95"
-                  >
-                    <Edit2 className="w-6 h-6" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-center">Edit Info</span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setKycUploadTenant(menuTenant);
-                      setAdminKycFile(null);
-                      setAdminKycType('Aadhar Card');
-                      setMenuTenant(null);
-                    }}
-                    className="flex flex-col items-center justify-center gap-2 p-4 rounded-3xl bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-100 dark:border-violet-500/10 transition-all active:scale-95"
-                  >
-                    <Shield className="w-6 h-6" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-center">Verify KYC</span>
-                  </button>
-
-                  <button
-                    onClick={() => { setTenantToDelete(menuTenant); setMenuTenant(null); }}
-                    className="flex flex-col items-center justify-center gap-2 p-4 rounded-3xl bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-500/10 transition-all active:scale-95 shadow-lg shadow-rose-500/5"
-                  >
-                    <Trash2 className="w-6 h-6" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-center">Delete</span>
-                  </button>
-                </div>
-
-                <button
-                  onClick={() => setMenuTenant(null)}
-                  className="w-full py-4 rounded-2xl bg-gray-100 dark:bg-white/5 text-gray-900 dark:text-white font-black uppercase tracking-widest text-xs mt-4"
-                >
-                  Close
-                </button>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-
-      {/* Delete Confirmation Modal */}
-      <AnimatePresence>
-        {tenantToDelete && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-              onClick={() => setTenantToDelete(null)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="relative bg-white dark:bg-[#111111] rounded-3xl shadow-2xl w-full max-w-md p-8 border border-gray-100 dark:border-white/10"
-            >
-              <div className="flex flex-col items-center text-center gap-4">
-                <div className="w-16 h-16 rounded-2xl bg-red-50 dark:bg-red-500/10 flex items-center justify-center">
-                  <Trash2 className="w-8 h-8 text-red-500" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">Delete Tenant?</h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                    Are you sure you want to delete <span className="font-bold text-gray-900 dark:text-white">{tenantToDelete.name}</span>?<br />
-                    This will permanently remove their payments, complaints, and KYC documents.
-                  </p>
-                </div>
-                <div className="flex gap-3 w-full mt-2">
-                  <button
-                    onClick={() => setTenantToDelete(null)}
-                    className="flex-1 py-3 rounded-2xl bg-gray-100 dark:bg-white/5 text-gray-700 dark:text-gray-300 font-semibold hover:bg-gray-200 dark:hover:bg-white/10 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => { deleteTenant(tenantToDelete.id); setTenantToDelete(null); }}
-                    className="flex-1 py-3 rounded-2xl bg-red-600 text-white font-semibold hover:bg-red-700 transition-colors"
-                  >
-                    Yes, Delete
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Admin KYC Upload Modal */}
-      <AnimatePresence>
-        {kycUploadTenant && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setKycUploadTenant(null)}
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="relative bg-white dark:bg-[#111111] rounded-3xl shadow-2xl w-full max-w-md p-8 border border-gray-100 dark:border-white/10"
-            >
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-1">Upload Verified KYC</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">For <span className="font-bold text-gray-900 dark:text-white">{kycUploadTenant.name}</span> — Document will be marked as <span className="text-emerald-600 font-bold">Verified</span> immediately.</p>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Document Type</label>
-                  <select
-                    value={adminKycType}
-                    onChange={(e) => setAdminKycType(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                  >
-                    <option value="Aadhar Card">Aadhar Card</option>
-                    <option value="PAN Card">PAN Card</option>
-                    <option value="Voter ID">Voter ID</option>
-                    <option value="Passport">Passport</option>
-                    <option value="Driving License">Driving License</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Upload Document</label>
-                  <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-200 dark:border-white/10 rounded-2xl hover:border-indigo-500/50 transition-colors cursor-pointer bg-gray-50/50 dark:bg-white/[0.02]">
-                    <Upload className="w-8 h-8 text-gray-400 mb-2" />
-                    <span className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                      {adminKycFile ? adminKycFile.fileName : 'Click to upload'}
-                    </span>
-                    <input
-                      type="file"
-                      className="hidden"
-                      accept="image/*,.pdf"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        if (file.size > 5 * 1024 * 1024) { toast.error('File must be under 5MB'); return; }
-                        const reader = new FileReader();
-                        reader.onloadend = () => setAdminKycFile({ type: adminKycType, url: reader.result as string, fileName: file.name });
-                        reader.readAsDataURL(file);
-                        e.target.value = '';
-                      }}
-                    />
-                  </label>
-                </div>
-                <div className="flex gap-3 pt-2">
-                  <button
-                    onClick={() => setKycUploadTenant(null)}
-                    className="flex-1 py-3 rounded-2xl bg-gray-100 dark:bg-white/5 text-gray-700 dark:text-gray-300 font-semibold hover:bg-gray-200 dark:hover:bg-white/10 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    disabled={!adminKycFile}
-                    onClick={async () => {
-                      if (!adminKycFile) return;
-                      await uploadVerifiedKYC(kycUploadTenant.id, adminKycType, adminKycFile.url);
-                      setKycUploadTenant(null);
-                      setAdminKycFile(null);
-                    }}
-                    className="flex-1 py-3 rounded-2xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Upload & Verify
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Add Tenant Modal */}
-      <AnimatePresence>
-        {isAddModalOpen && (
+      {isAddModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0 }}

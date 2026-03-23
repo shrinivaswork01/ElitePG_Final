@@ -97,7 +97,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       phone: null,
       avatar: session.user.user_metadata?.avatar_url || null,
       is_authorized: isAuthorizedOverride !== undefined ? isAuthorizedOverride : false,
-      password: null,
+      password: provider === 'local' ? '123456' : null,
+      requires_password_change: provider === 'local' ? true : false,
       provider: provider,
       google_id: provider === 'google' ? session.user.id : null,
       branch_id: finalBranchId,
@@ -423,7 +424,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       return { success: false, message: 'An invite code is required to create an account.' };
     }
 
-    const newPassword = password || null;
+    const newPassword = password || '123456';
+    const isFirstLogin = !password; // If admin didn't provide one, it's a first login setup
 
     const dbData = {
       id: newId,
@@ -439,7 +441,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       provider: 'local',
       google_id: null,
       seen_announcements: userData.seenAnnouncements || [],
-      requires_password_change: userData.requiresPasswordChange || false
+      requires_password_change: userData.requiresPasswordChange || isFirstLogin
     };
 
     const { error } = await supabase.from('users').insert(dbData);
@@ -493,7 +495,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     });
     if (error) {
       sessionStorage.removeItem('google_auth_intent');
-      toast.error(error.message);
+      if (error.message.includes('not enabled')) {
+        toast.error('Google Sign-in is not enabled in the Supabase dashboard. Please contact admin.');
+      } else {
+        toast.error(error.message);
+      }
     }
   };
 

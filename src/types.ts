@@ -216,4 +216,7 @@ export interface PGConfig {
   pgName?: string;
   primaryColor?: string;
   theme?: 'light' | 'dark' | 'system';
+  defaultPaymentDueDate?: number;
+  defaultLateFeeDay?: number;
+  lateFeeAmount?: number;
 }

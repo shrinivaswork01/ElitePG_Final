@@ -20,10 +20,17 @@ import {
   MessageSquare,
   Send,
   Share2,
-  Loader2
+  Loader2,
+  Edit2,
+  MoreVertical,
+  MessageCircle
 } from 'lucide-react';
 import { format, parseISO, differenceInDays, getDate, isAfter } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
+import { usePaginatedData } from '../hooks/usePaginatedData';
+import { DataGrid, ColumnDef } from '../components/DataGrid';
+import { DropdownMenu, DropdownItem } from '../components/DropdownMenu';
+import { PaymentDetailPanel } from '../components/PaymentDetailPanel';
 import { cn } from '../utils';
 import { loadRazorpayScript } from '../utils/razorpay';
 import { generateTenantReceiptPDF } from '../utils/generateReceipt';
@@ -39,7 +46,122 @@ export const PaymentsPage = () => {
   const [paymentToEdit, setPaymentToEdit] = useState<Payment | null>(null);
   const [receiptNotes, setReceiptNotes] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'paid' | 'pending'>('all');
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [detailPayment, setDetailPayment] = useState<any | null>(null);
+
+  // Server-side paginated hook — fetches ONLY 10 records at a time
+  const { data: paginatedPayments, totalCount, isLoading: isPaymentsLoading, page, setPage, limit, refetch: refetchPayments } = usePaginatedData<any>({
+    table: 'payments',
+    select: '*, tenants!payments_tenant_id_fkey(name, phone, rooms!tenants_room_id_fkey(room_number))',
+    ilikeFilters: searchTerm ? { transaction_id: searchTerm } : undefined,
+    filters: filterStatus !== 'all' ? { status: filterStatus } : undefined,
+    orderBy: { column: 'payment_date', ascending: false }
+  });
+
+  const isAdmin = ['super', 'admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '');
+
+  const paymentColumns: ColumnDef<any>[] = [
+    {
+      header: 'Tenant',
+      accessorKey: 'tenant_id',
+      cell: (p) => (
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500 font-bold flex items-center justify-center shrink-0">
+            {p.tenants?.name?.charAt(0) || '?'}
+          </div>
+          <div>
+            <p className="text-sm font-bold text-gray-900 dark:text-white">{p.tenants?.name || 'Unknown'}</p>
+            <p className="text-xs text-gray-500">Room {p.tenants?.rooms?.room_number || 'N/A'}</p>
+          </div>
+        </div>
+      )
+    },
+    {
+      header: 'Month',
+      accessorKey: 'month',
+      cell: (p) => (
+        <span className="text-sm font-semibold text-gray-900 dark:text-white">
+          {format(parseISO(p.month + '-01'), 'MMM yyyy')}
+        </span>
+      )
+    },
+    {
+      header: 'Amount',
+      accessorKey: 'total_amount',
+      cell: (p) => (
+        <div>
+          <p className="text-sm font-bold text-gray-900 dark:text-white">₹{Number(p.total_amount).toLocaleString()}</p>
+          {p.late_fee > 0 && <p className="text-[10px] text-rose-500">+₹{p.late_fee} late fee</p>}
+        </div>
+      )
+    },
+    {
+      header: 'Date',
+      accessorKey: 'payment_date',
+      cell: (p) => (
+        <div>
+          <p className="text-sm text-gray-900 dark:text-white">{p.payment_date ? format(parseISO(p.payment_date), 'dd MMM yy') : '—'}</p>
+          <p className="text-xs text-gray-500">{p.method}</p>
+        </div>
+      )
+    },
+    {
+      header: 'Status',
+      accessorKey: 'status',
+      cell: (p) => (
+        <span className={cn(
+          'px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider',
+          p.status === 'paid' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400'
+        )}>
+          {p.status}
+        </span>
+      )
+    },
+    {
+      header: '',
+      accessorKey: 'id',
+      className: 'w-[60px]',
+      cell: (p) => (
+        <div className="flex justify-end">
+          <DropdownMenu>
+            {p.status === 'paid' && (
+              <DropdownItem icon={<Download className="w-4 h-4" />} label="Download Receipt" onClick={() => {
+                // Normalize DB row (snake_case) to camelCase Payment
+                const normalized: Payment = {
+                  id: p.id,
+                  tenantId: p.tenant_id || p.tenantId,
+                  amount: p.amount,
+                  lateFee: p.late_fee ?? p.lateFee ?? 0,
+                  totalAmount: p.total_amount ?? p.totalAmount ?? p.amount,
+                  paymentDate: p.payment_date || p.paymentDate,
+                  month: p.month,
+                  status: p.status,
+                  method: p.method,
+                  transactionId: p.transaction_id || p.transactionId,
+                  receiptUrl: p.receipt_url || p.receiptUrl,
+                  branchId: p.branch_id || p.branchId
+                };
+                handleGenerateReceipt(normalized);
+              }} />
+            )}
+            {isAdmin && (
+              <DropdownItem icon={<Edit2 className="w-4 h-4" />} label="Edit Payment" onClick={() => {
+                setPaymentToEdit(p);
+                setIsEditModalOpen(true);
+              }} />
+            )}
+            {['admin', 'manager'].includes(user?.role || '') && (
+              <DropdownItem icon={<Trash2 className="w-4 h-4" />} label="Delete Payment" onClick={() => {
+                if (window.confirm('Delete this payment?')) { deletePayment(p.id); refetchPayments(); }
+              }} danger />
+            )}
+          </DropdownMenu>
+        </div>
+      )
+    }
+  ];
+
 
   const sendWhatsAppReceipt = (payment: Payment, tenant: any) => {
     if (!tenant.phone) {
@@ -78,12 +200,19 @@ export const PaymentsPage = () => {
     const tenant = tenants.find(t => t.id === tenantId);
     if (!tenant) return 0;
 
-    const dueDate = new Date(`${month}-${tenant.paymentDueDate.toString().padStart(2, '0')}`);
+    const dueDateDay = tenant.paymentDueDate || pgConfig?.defaultPaymentDueDate || 1;
+    const gracePeriod = pgConfig?.defaultLateFeeDay || 5;
+    const lateFeePerDay = pgConfig?.lateFeeAmount || 50;
+    
+    const dueDate = new Date(`${month}-${dueDateDay.toString().padStart(2, '0')}`);
+    const graceDate = new Date(dueDate);
+    graceDate.setDate(graceDate.getDate() + gracePeriod);
+    
     const today = new Date();
 
-    if (isAfter(today, dueDate)) {
-      const daysLate = Math.max(0, differenceInDays(today, dueDate));
-      return daysLate * 50; // ₹50 per day late fee
+    if (isAfter(today, graceDate)) {
+      const daysLate = Math.max(0, differenceInDays(today, graceDate));
+      return (daysLate + 1) * lateFeePerDay; 
     }
     return 0;
   };
@@ -100,7 +229,7 @@ export const PaymentsPage = () => {
   const upcomingDues = isTenant && tenantData && !hasPaidCurrentMonth ? [{
     month: currentMonth,
     amount: tenantData.rentAmount,
-    dueDate: `${currentMonth}-${tenantData.paymentDueDate.toString().padStart(2, '0')}`,
+    dueDate: `${currentMonth}-${(tenantData.paymentDueDate || pgConfig?.defaultPaymentDueDate || 1).toString().padStart(2, '0')}`,
     lateFee: calculateLateFee(tenantData.id, currentMonth)
   }] : [];
 
@@ -515,115 +644,40 @@ export const PaymentsPage = () => {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-100 dark:border-white/5">
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tenant</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Month</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Amount</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Late Fee</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Total</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Method</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50 dark:divide-white/5">
-              {filteredPayments.map((payment) => {
-                const tenant = tenants.find(t => t.id === payment.tenantId);
-                return (
-                  <tr key={payment.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors group">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-white/5 flex items-center justify-center font-bold text-xs text-gray-900 dark:text-white">
-                          {tenant?.name?.charAt(0) || '?'}
-                        </div>
-                        <span className="text-sm font-bold text-gray-900 dark:text-white">{tenant?.name || 'Unknown Tenant'}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">{format(parseISO(`${payment.month}-01`), 'MMMM yyyy')}</td>
-                    <td className="px-6 py-4 text-sm font-medium text-gray-900 dark:text-white">₹{payment.amount.toLocaleString()}</td>
-                    <td className="px-6 py-4 text-sm font-medium text-rose-600 dark:text-rose-400">₹{payment.lateFee.toLocaleString()}</td>
-                    <td className="px-6 py-4 text-sm font-bold text-gray-900 dark:text-white">₹{payment.totalAmount.toLocaleString()}</td>
-                    <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{payment.paymentDate}</td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col gap-1">
-                        <span className={cn(
-                          "px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider w-fit",
-                          payment.status === 'paid' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                        )}>
-                          {payment.status}
-                        </span>
-                        <span className="px-2.5 py-1 bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 rounded-lg text-[10px] font-bold uppercase tracking-wider w-fit">
-                          {payment.method}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-all">
-                        {payment.status === 'pending' && user?.role !== 'tenant' && (
-                          <button
-                            onClick={() => updatePayment(payment.id, { status: 'paid', transactionId: `OFF${Date.now()}` })}
-                            className="p-2 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-lg text-emerald-600 dark:text-emerald-400"
-                            title="Mark as Paid"
-                          >
-                            <CheckCircle2 className="w-4 h-4" />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleGenerateReceipt(payment)}
-                          className="p-2 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-lg text-indigo-600 dark:text-indigo-400"
-                          title="Generate Receipt"
-                        >
-                          <FileText className="w-4 h-4" />
-                        </button>
-                        {['super', 'admin', 'manager'].includes(user?.role || '') && (
-                          <button
-                            onClick={() => {
-                              setPaymentToEdit(payment);
-                              setIsEditModalOpen(true);
-                            }}
-                            className="p-2 hover:bg-amber-50 dark:hover:bg-amber-500/10 rounded-lg text-amber-600 dark:text-amber-400"
-                            title="Edit Record"
-                          >
-                            <ArrowUpRight className="w-4 h-4" />
-                          </button>
-                        )}
-                        {user?.role !== 'tenant' && (
-                          <button
-                            onClick={() => {
-                              const tenant = tenants.find(t => t.id === payment.tenantId);
-                              if (tenant) sendWhatsAppReceipt(payment, tenant);
-                            }}
-                            className="p-2 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-lg text-emerald-600 dark:text-emerald-400"
-                            title="Send WhatsApp Receipt"
-                          >
-                            <MessageSquare className="w-4 h-4" />
-                          </button>
-                        )}
-                        {['super', 'admin', 'manager'].includes(user?.role || '') && (
-                          <button
-                            onClick={() => deletePayment(payment.id)}
-                            className="p-2 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg text-red-400 dark:text-red-50"
-                            title="Delete Record"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          {payments.length === 0 && (
-            <div className="p-12 text-center text-gray-500 dark:text-gray-400">No payment records found</div>
-          )}
-        </div>
-      </div>
+
+      <DataGrid
+        columns={paymentColumns}
+        data={paginatedPayments}
+        isLoading={isPaymentsLoading}
+        keyExtractor={(p) => p.id}
+        totalCount={totalCount}
+        page={page}
+        limit={limit}
+        onPageChange={setPage}
+        emptyStateMessage="No payment records found"
+        onRowClick={(p) => setDetailPayment(p)}
+      />
+
+      {/* Payment Detail Panel */}
+      <PaymentDetailPanel
+        payment={detailPayment}
+        tenantName={detailPayment?.tenants?.name}
+        onClose={() => setDetailPayment(null)}
+        onViewReceipt={(p) => {
+          setDetailPayment(null);
+          setSelectedPayment(p);
+          setIsReceiptModalOpen(true);
+        }}
+        onDelete={(p) => {
+          if (window.confirm('Delete this payment?')) {
+            setDetailPayment(null);
+            deletePayment(p.id);
+            refetchPayments();
+          }
+        }}
+        canEdit={isAdmin}
+      />
+
 
       <AnimatePresence>
         {isPayModalOpen && upcomingDues.length > 0 && (

@@ -16,7 +16,10 @@ export const SettingsPage = () => {
     logoUrl: '',
     primaryColor: '#4f46e5',
     customRoles: [],
-    rolePermissions: []
+    rolePermissions: [],
+    defaultPaymentDueDate: 1,
+    defaultLateFeeDay: 5,
+    lateFeeAmount: 50
   });
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -28,7 +31,10 @@ export const SettingsPage = () => {
         logoUrl: pgConfig.logoUrl || '',
         primaryColor: pgConfig.primaryColor || '#4f46e5',
         customRoles: pgConfig.customRoles || [],
-        rolePermissions: pgConfig.rolePermissions || []
+        rolePermissions: pgConfig.rolePermissions || [],
+        defaultPaymentDueDate: pgConfig.defaultPaymentDueDate || 1,
+        defaultLateFeeDay: pgConfig.defaultLateFeeDay || 5,
+        lateFeeAmount: pgConfig.lateFeeAmount || 50
       });
     }
   }, [pgConfig]);
@@ -36,7 +42,10 @@ export const SettingsPage = () => {
   const hasChanges = pgConfig && (
     settingsForm.pgName !== (pgConfig.pgName || '') ||
     settingsForm.logoUrl !== (pgConfig.logoUrl || '') ||
-    settingsForm.primaryColor !== (pgConfig.primaryColor || '#4f46e5')
+    settingsForm.primaryColor !== (pgConfig.primaryColor || '#4f46e5') ||
+    settingsForm.defaultPaymentDueDate !== (pgConfig.defaultPaymentDueDate || 1) ||
+    settingsForm.defaultLateFeeDay !== (pgConfig.defaultLateFeeDay || 5) ||
+    settingsForm.lateFeeAmount !== (pgConfig.lateFeeAmount || 50)
   );
 
   const handleSaveAll = async () => {
@@ -172,6 +181,52 @@ export const SettingsPage = () => {
                   {settingsForm.primaryColor}
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Payment Policies Section */}
+      <div className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-200 dark:border-white/5 overflow-hidden shadow-sm">
+        <div className="p-6 border-b border-gray-100 dark:border-white/5">
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white">Payment Policies</h3>
+          <p className="text-sm text-gray-500">Configure global due dates and late fee calculations</p>
+        </div>
+        <div className="p-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Default Due Date (Day of Month)</label>
+              <input
+                type="number"
+                min="1"
+                max="31"
+                value={settingsForm.defaultPaymentDueDate}
+                onChange={(e) => setSettingsForm({ ...settingsForm, defaultPaymentDueDate: parseInt(e.target.value) })}
+                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+              />
+              <p className="text-[10px] text-gray-400">The day rent is officially due each month.</p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Late Fee Grace Period (Days)</label>
+              <input
+                type="number"
+                min="0"
+                value={settingsForm.defaultLateFeeDay}
+                onChange={(e) => setSettingsForm({ ...settingsForm, defaultLateFeeDay: parseInt(e.target.value) })}
+                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+              />
+              <p className="text-[10px] text-gray-400">Number of days after due date before late fees start.</p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Late Fee Amount (₹ per day)</label>
+              <input
+                type="number"
+                min="0"
+                value={settingsForm.lateFeeAmount}
+                onChange={(e) => setSettingsForm({ ...settingsForm, lateFeeAmount: parseInt(e.target.value) })}
+                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+              />
+              <p className="text-[10px] text-gray-400">Amount charged for each day past the grace period.</p>
             </div>
           </div>
         </div>
