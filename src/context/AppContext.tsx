@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useMemo, useCallback } from 'react';
 import { Tenant, Room, Payment, Complaint, Employee, KYCData, Announcement, SalaryPayment, Task, PGConfig, PGBranch, RolePermissions, SubscriptionPlan, AppFeature, KYCStatus, UserInvite } from '../types';
+import { uploadToSupabase, deleteFromSupabase } from '../utils/storage';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import toast from 'react-hot-toast';
@@ -21,8 +22,8 @@ interface AppContextType {
   superSignatureUrl: string | null;
 
   // Actions
-  addTenant: (tenant: Omit<Tenant, 'id' | 'branchId'>, kycDoc?: { type: string, url: string }, rentAgreementDoc?: { url: string }) => Promise<void>;
-  updateTenant: (id: string, updates: Partial<Tenant>, kycDoc?: { type: string, url: string }, rentAgreementDoc?: { url: string }) => Promise<void>;
+  addTenant: (tenant: Omit<Tenant, 'id' | 'branchId'>, kycDoc?: { type: string, file?: File, url?: string }, rentAgreementDoc?: { file?: File, url?: string }) => Promise<void>;
+  updateTenant: (id: string, updates: Partial<Tenant>, kycDoc?: { type: string, file?: File, url?: string }, rentAgreementDoc?: { file?: File, url?: string }) => Promise<void>;
   deleteTenant: (id: string) => Promise<void>;
 
   addRoom: (room: Omit<Room, 'id' | 'branchId'>) => Promise<void>;
@@ -37,13 +38,13 @@ interface AppContextType {
   updateComplaint: (id: string, updates: Partial<Complaint>) => Promise<void>;
   deleteComplaint: (id: string) => Promise<void>;
 
-  addEmployee: (employee: Omit<Employee, 'id' | 'kycStatus' | 'branchId'>, kycDoc?: { type: string, url: string }) => Promise<boolean>;
-  updateEmployee: (id: string, updates: Partial<Employee>, kycDoc?: { type: string, url: string }) => Promise<boolean>;
+  addEmployee: (employee: Omit<Employee, 'id' | 'kycStatus' | 'branchId'>, kycDoc?: { type: string, file?: File, url?: string }) => Promise<boolean>;
+  updateEmployee: (id: string, updates: Partial<Employee>, kycDoc?: { type: string, file?: File, url?: string }) => Promise<boolean>;
   deleteEmployee: (id: string) => Promise<void>;
 
   updateKYC: (id: string, updates: Partial<KYCData>) => Promise<void>;
   deleteKYC: (id: string) => Promise<void>;
-  uploadVerifiedKYC: (tenantId: string, docType: string, docUrl: string) => Promise<void>;
+  uploadVerifiedKYC: (tenantId: string, docType: string, fileOrUrl: File | string) => Promise<void>;
 
   addAnnouncement: (announcement: Omit<Announcement, 'id' | 'branchId'>) => Promise<void>;
   deleteAnnouncement: (id: string) => Promise<void>;
@@ -334,8 +335,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return true;
   };
 
-  const addTenant = async (tenant: Omit<Tenant, 'id' | 'branchId'>, kycDoc?: { type: string, url: string }, rentAgreementDoc?: { url: string }) => {
-    const branchId = user?.branchId || data.branches[0]?.id;
+  const addTenant = async (tenant: Omit<Tenant, 'id' | 'branchId'> & { branchId?: string }, kycDoc?: { type: string, file?: File, url?: string }, rentAgreementDoc?: { file?: File, url?: string }) => {
+    const branchId = tenant.branchId || filteredData.currentBranch?.id || user?.branchId || data.branches[0]?.id;
     if (!branchId) return;
     const isAdmin = ['super', 'admin', 'manager'].includes(user?.role || '');
     const kycStatus: KYCStatus = kycDoc ? (isAdmin ? 'verified' : 'pending') : 'unsubmitted';
@@ -344,25 +345,52 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       name: tenant.name, email: tenant.email, phone: tenant.phone, room_id: tenant.roomId, bed_number: tenant.bedNumber,
       rent_amount: tenant.rentAmount, deposit_amount: tenant.depositAmount, joining_date: tenant.joiningDate,
       payment_due_date: tenant.paymentDueDate, status: tenant.status, kyc_status: kycStatus,
-      rent_agreement_url: rentAgreementDoc?.url || null, branch_id: branchId, user_id: tenant.userId || null,
-      invite_code: (tenant as any).inviteCode || null
+      branch_id: branchId, user_id: tenant.userId || null, invite_code: (tenant as any).inviteCode || null
     }).select().single();
     if (error) { toast.error(error.message); return; }
 
+    let finalRentAgreementUrl = null;
+    let finalKycUrl = null;
+
+    if (createdTenant) {
+      if (rentAgreementDoc?.file) {
+        try {
+          finalRentAgreementUrl = await uploadToSupabase('agreements', `tenant_${createdTenant.id}/${Date.now()}_${rentAgreementDoc.file.name}`, rentAgreementDoc.file);
+          await supabase.from('tenants').update({ rent_agreement_url: finalRentAgreementUrl }).eq('id', createdTenant.id);
+        } catch (err) {
+          toast.error('Failed to upload Rent Agreement. Please ensure the "agreements" bucket exists open to public.');
+        }
+      } else if (rentAgreementDoc?.url) {
+        finalRentAgreementUrl = rentAgreementDoc.url;
+        await supabase.from('tenants').update({ rent_agreement_url: finalRentAgreementUrl }).eq('id', createdTenant.id);
+      }
+
+      if (kycDoc?.file) {
+        try {
+          finalKycUrl = await uploadToSupabase('kyc-docs', `tenant_${createdTenant.id}/${Date.now()}_${kycDoc.file.name}`, kycDoc.file);
+        } catch (err) {
+          toast.error('Failed to upload KYC Document. Please ensure the "kyc-docs" bucket exists open to public.');
+        }
+      } else if (kycDoc?.url) {
+         finalKycUrl = kycDoc.url;
+      }
+    }
+
     // Optimistically add new tenant to local state immediately
     const newTenant: Tenant = {
-      ...tenant, id: createdTenant.id, branchId, kycStatus, userId: tenant.userId || undefined
+      ...tenant, id: createdTenant.id, branchId, kycStatus, userId: tenant.userId || undefined,
+      rentAgreementUrl: finalRentAgreementUrl || undefined
     };
     applyOptimistic(prev => ({ ...prev, tenants: [...prev.tenants, newTenant] }));
 
-    if (createdTenant && kycDoc) {
+    if (createdTenant && kycDoc && finalKycUrl) {
       if (isAdmin) {
         await supabase.from('kyc_documents').insert({
-          tenant_id: createdTenant.id, document_type: kycDoc.type, document_url: kycDoc.url, status: 'verified', branch_id: branchId, verified_by: user?.id, verified_at: new Date().toISOString().split('T')[0]
+          tenant_id: createdTenant.id, document_type: kycDoc.type, document_url: finalKycUrl, status: 'verified', branch_id: branchId, verified_by: user?.id, verified_at: new Date().toISOString().split('T')[0]
         });
       } else {
         await supabase.from('kyc_documents').insert({
-          tenant_id: createdTenant.id, document_type: kycDoc.type, document_url: kycDoc.url, status: 'pending', branch_id: branchId
+          tenant_id: createdTenant.id, document_type: kycDoc.type, document_url: finalKycUrl, status: 'pending', branch_id: branchId
         });
       }
     }
@@ -370,9 +398,27 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setTimeout(() => fetchData(), 1000);
   };
 
-  const updateTenant = async (id: string, updates: Partial<Tenant>, kycDoc?: { type: string, url: string }, rentAgreementDoc?: { url: string }) => {
+  const updateTenant = async (id: string, updates: Partial<Tenant>, kycDoc?: { type: string, file?: File, url?: string }, rentAgreementDoc?: { file?: File, url?: string }) => {
     const isAdmin = ['super', 'admin', 'manager'].includes(user?.role || '');
     const newKycStatus = kycDoc ? (isAdmin ? 'verified' : 'pending') : undefined;
+
+    let finalRentAgreementUrl = rentAgreementDoc?.url;
+    let finalKycUrl = kycDoc?.url;
+
+    if (rentAgreementDoc?.file) {
+      try {
+        finalRentAgreementUrl = await uploadToSupabase('agreements', `tenant_${id}/${Date.now()}_${rentAgreementDoc.file.name}`, rentAgreementDoc.file);
+      } catch (err) {
+        toast.error('Failed to upload Rent Agreement.');
+      }
+    }
+    if (kycDoc?.file) {
+      try {
+        finalKycUrl = await uploadToSupabase('kyc-docs', `tenant_${id}/${Date.now()}_${kycDoc.file.name}`, kycDoc.file);
+      } catch (err) {
+        toast.error('Failed to upload KYC Document.');
+      }
+    }
 
     const dbUpdates: any = {};
     if (updates.name !== undefined) dbUpdates.name = updates.name;
@@ -388,15 +434,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.kycStatus !== undefined) dbUpdates.kyc_status = updates.kycStatus;
     if (updates.userId !== undefined) dbUpdates.user_id = updates.userId;
     if ((updates as any).inviteCode !== undefined) dbUpdates.invite_code = (updates as any).inviteCode;
-    if (rentAgreementDoc) dbUpdates.rent_agreement_url = rentAgreementDoc.url;
+    if (finalRentAgreementUrl !== undefined) dbUpdates.rent_agreement_url = finalRentAgreementUrl;
     if (kycDoc) dbUpdates.kyc_status = newKycStatus;
 
     // Optimistically update local state immediately so rent/fields reflect instantly
-    if (Object.keys(updates).length > 0 || rentAgreementDoc || kycDoc) {
+    if (Object.keys(updates).length > 0 || finalRentAgreementUrl || kycDoc) {
       applyOptimistic(prev => ({
         ...prev,
         tenants: prev.tenants.map((t: any) =>
-          t.id === id ? { ...t, ...updates, ...(rentAgreementDoc ? { rentAgreementUrl: rentAgreementDoc.url } : {}), ...(kycDoc ? { kycStatus: newKycStatus } : {}) } : t
+          t.id === id ? { ...t, ...updates, ...(finalRentAgreementUrl ? { rentAgreementUrl: finalRentAgreementUrl } : {}), ...(kycDoc ? { kycStatus: newKycStatus } : {}) } : t
         )
       }));
     }
@@ -405,14 +451,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (error) { toast.error(error.message); fetchData(); return; }
     if (!kycDoc) toast.success('Tenant updated successfully');
 
-    if (kycDoc) {
+    if (kycDoc && finalKycUrl) {
       const tenant = data.tenants.find((t: any) => t.id === id);
       const existingKYC = data.kycs.find((k: any) => k.tenantId === id);
       if (existingKYC) {
         await supabase.from('kyc_documents').delete().eq('id', existingKYC.id);
+        if (existingKYC.documentUrl && existingKYC.documentUrl.includes('kyc-docs')) {
+           await deleteFromSupabase('kyc-docs', existingKYC.documentUrl);
+        }
       }
       const { error: kycError } = await supabase.from('kyc_documents').insert({
-        tenant_id: id, document_type: kycDoc.type, document_url: kycDoc.url, status: newKycStatus, branch_id: tenant?.branchId,
+        tenant_id: id, document_type: kycDoc.type, document_url: finalKycUrl, status: newKycStatus, branch_id: tenant?.branchId,
         ...(isAdmin ? { verified_by: user?.id, verified_at: new Date().toISOString().split('T')[0] } : {})
       });
       if (kycError) { toast.error(kycError.message); }
@@ -423,6 +472,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const deleteTenant = async (id: string) => {
     const targetTenant = data.tenants.find((t: any) => t.id === id);
+    const existingKYC = data.kycs.find((k: any) => k.tenantId === id);
+
     // Optimistically remove from local state immediately for instant UI feedback
     applyOptimistic(prev => ({
       ...prev,
@@ -432,6 +483,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       kycs: prev.kycs.filter((k: any) => k.tenantId !== id)
     }));
     toast.success('Tenant deleted successfully');
+    
+    // Cleanup Supabase Storage files
+    try {
+      if (targetTenant?.rentAgreementUrl?.includes('agreements')) {
+        await deleteFromSupabase('agreements', targetTenant.rentAgreementUrl);
+      }
+      if (existingKYC?.documentUrl?.includes('kyc-docs')) {
+        await deleteFromSupabase('kyc-docs', existingKYC.documentUrl);
+      }
+    } catch(e) { console.error('Error cleaning up storage files', e); }
+
     // Cascade-delete related records in background
     if (targetTenant?.userId) {
       await supabase.from('users').delete().eq('id', targetTenant.userId);
@@ -443,12 +505,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (error) { toast.error(`Delete failed: ${error.message}`); fetchData(); }
   };
 
-  const addRoom = async (room: Omit<Room, 'id' | 'branchId'>) => {
-    if (!user?.branchId) return;
-    applyOptimistic(prev => ({ ...prev, rooms: [...prev.rooms, { ...room, id: `temp-${Date.now()}`, branchId: user.branchId }] }));
+  const addRoom = async (room: Omit<Room, 'id' | 'branchId'> & { branchId?: string }) => {
+    const targetBranch = room.branchId || filteredData.currentBranch?.id || user?.branchId;
+    if (!targetBranch) { toast.error("No active branch selected."); return; }
+    applyOptimistic(prev => ({ ...prev, rooms: [...prev.rooms, { ...room, id: `temp-${Date.now()}`, branchId: targetBranch }] }));
     await refetch(supabase.from('rooms').insert({
       room_number: room.roomNumber, floor: room.floor, total_beds: room.totalBeds, occupied_beds: room.occupiedBeds,
-      type: room.type, price: room.price, branch_id: user.branchId
+      type: room.type, price: room.price, branch_id: targetBranch
     }), 'Room added successfully');
   };
 
@@ -479,14 +542,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await refetch(supabase.from('rooms').delete().eq('id', id), 'Room deleted'); 
   };
 
-  const addPayment = async (payment: Omit<Payment, 'id' | 'branchId'>) => {
-    if (!user?.branchId) return;
-    applyOptimistic(prev => ({ ...prev, payments: [...prev.payments, { ...payment, id: `temp-${Date.now()}`, branchId: user.branchId, createdBy: user.id }] }));
+  const addPayment = async (payment: Omit<Payment, 'id' | 'branchId'> & { branchId?: string }) => {
+    const targetBranch = payment.branchId || filteredData.currentBranch?.id || user?.branchId;
+    if (!targetBranch) { toast.error("No active branch selected."); return; }
+    applyOptimistic(prev => ({ ...prev, payments: [...prev.payments, { ...payment, id: `temp-${Date.now()}`, branchId: targetBranch, createdBy: user?.id || '' }] }));
     await refetch(supabase.from('payments').insert({
       tenant_id: payment.tenantId, amount: payment.amount, late_fee: payment.lateFee, total_amount: payment.totalAmount,
       payment_date: payment.paymentDate, month: payment.month, status: payment.status, method: payment.method,
-      transaction_id: payment.transactionId || null, receipt_url: payment.receiptUrl || null, branch_id: user.branchId,
-      // created_by: user.id // Removed to fix schema mismatch error
+      transaction_id: payment.transactionId || null, receipt_url: payment.receiptUrl || null, branch_id: targetBranch,
     }), 'Payment recorded');
   };
 
@@ -511,12 +574,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await refetch(supabase.from('payments').delete().eq('id', id), 'Payment deleted'); 
   };
 
-  const addComplaint = async (complaint: Omit<Complaint, 'id' | 'branchId'>) => {
-    if (!user?.branchId) return;
-    applyOptimistic(prev => ({ ...prev, complaints: [...prev.complaints, { ...complaint, id: `temp-${Date.now()}`, branchId: user.branchId, createdAt: new Date().toISOString() }] }));
+  const addComplaint = async (complaint: Omit<Complaint, 'id' | 'branchId'> & { branchId?: string }) => {
+    const targetBranch = complaint.branchId || filteredData.currentBranch?.id || user?.branchId;
+    if (!targetBranch) { toast.error("No active branch selected."); return; }
+    applyOptimistic(prev => ({ ...prev, complaints: [...prev.complaints, { ...complaint, id: `temp-${Date.now()}`, branchId: targetBranch, createdAt: new Date().toISOString() }] }));
     await refetch(supabase.from('complaints').insert({
       tenant_id: complaint.tenantId, title: complaint.title, description: complaint.description, category: complaint.category,
-      priority: complaint.priority, status: complaint.status, assigned_to: complaint.assignedTo || null, branch_id: user.branchId,
+      priority: complaint.priority, status: complaint.status, assigned_to: complaint.assignedTo || null, branch_id: targetBranch,
       images: complaint.images || []
     }), 'Complaint registered');
   };
@@ -543,8 +607,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await refetch(supabase.from('complaints').delete().eq('id', id), 'Complaint deleted'); 
   };
 
-  const addEmployee = async (employee: Omit<Employee, 'id' | 'kycStatus' | 'branchId'>, kycDoc?: { type: string, url: string }) => {
-    if (!user?.branchId) return false;
+  const addEmployee = async (employee: Omit<Employee, 'id' | 'kycStatus' | 'branchId'>, kycDoc?: { type: string, file?: File, url?: string }) => {
+    const targetBranch = filteredData.currentBranch?.id || user?.branchId;
+    if (!targetBranch) { toast.error("No active branch selected."); return false; }
     
     const isAdmin = ['super', 'admin', 'manager'].includes(user?.role || '');
     const kycStatus = kycDoc ? (isAdmin ? 'verified' : 'pending') : 'unsubmitted';
@@ -571,7 +636,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       email: employee.email,
       role: employee.role as any,
       phone: employee.phone,
-      branchId: user.branchId,
+      branchId: targetBranch,
       requiresPasswordChange: true
     }, defaultPassword);
 
@@ -583,11 +648,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const userId = regResult.user?.id || (regResult as any).existingUserId;
 
     // 2. Insert into employees table
-    applyOptimistic(prev => ({ ...prev, employees: [...prev.employees, { ...employee, id: tempId, branchId: user.branchId, kycStatus, userId }] }));
+    applyOptimistic(prev => ({ ...prev, employees: [...prev.employees, { ...employee, id: tempId, branchId: targetBranch, kycStatus, userId }] }));
     
     const { data: createdEm, error } = await supabase.from('employees').insert({
       user_id: userId || null, name: employee.name, role: employee.role, email: employee.email, phone: employee.phone,
-      salary: employee.salary, joining_date: employee.joiningDate, kyc_status: kycStatus, branch_id: user.branchId
+      salary: employee.salary, joining_date: employee.joiningDate, kyc_status: kycStatus, branch_id: targetBranch
     }).select().single();
     
     if (error) { 
@@ -596,10 +661,20 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
 
     if (createdEm && kycDoc) {
-      await supabase.from('kyc_documents').insert({
-        employee_id: createdEm.id, document_type: kycDoc.type, document_url: kycDoc.url, status: kycStatus, branch_id: user.branchId,
-        ...(isAdmin ? { verified_by: user?.name, verified_at: new Date().toISOString().split('T')[0] } : {})
-      });
+      let finalKycUrl = kycDoc.url || '';
+      if (kycDoc.file) {
+        try {
+          finalKycUrl = await uploadToSupabase('kyc-docs', `employee_${createdEm.id}/${Date.now()}_${kycDoc.file.name}`, kycDoc.file);
+        } catch (err) {
+          toast.error('Failed to upload Employee KYC Document. Please assure buckets exist.');
+        }
+      }
+      if (finalKycUrl) {
+        await supabase.from('kyc_documents').insert({
+          employee_id: createdEm.id, document_type: kycDoc.type, document_url: finalKycUrl, status: kycStatus, branch_id: targetBranch,
+          ...(isAdmin ? { verified_by: user?.name, verified_at: new Date().toISOString().split('T')[0] } : {})
+        });
+      }
     }
     
     toast.success('Employee added and login created (Default Pass: 123456)');
@@ -607,9 +682,18 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return true;
   };
 
-  const updateEmployee = async (id: string, updates: Partial<Employee>, kycDoc?: { type: string, url: string }) => {
+  const updateEmployee = async (id: string, updates: Partial<Employee>, kycDoc?: { type: string, file?: File, url?: string }) => {
     const isAdmin = ['super', 'admin', 'manager'].includes(user?.role || '');
     const newKycStatus = kycDoc ? (isAdmin ? 'verified' : 'pending') : undefined;
+
+    let finalKycUrl = kycDoc?.url;
+    if (kycDoc?.file) {
+      try {
+        finalKycUrl = await uploadToSupabase('kyc-docs', `employee_${id}/${Date.now()}_${kycDoc.file.name}`, kycDoc.file);
+      } catch (err) {
+        toast.error('Failed to update Employee KYC Document.');
+      }
+    }
 
     const dbUpdates: any = {};
     if (updates.name !== undefined) dbUpdates.name = updates.name;
@@ -633,14 +717,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const { error } = await supabase.from('employees').update(dbUpdates).eq('id', id);
     if (error) { toast.error(error.message); fetchData(); return false; }
 
-    if (kycDoc) {
+    if (kycDoc && finalKycUrl) {
       const eObj = data.employees.find((e: any) => e.id === id);
       const existingKYC = data.kycs.find((k: any) => k.employeeId === id);
       if (existingKYC) {
         await supabase.from('kyc_documents').delete().eq('id', existingKYC.id);
+        if (existingKYC.documentUrl?.includes('kyc-docs')) {
+          await deleteFromSupabase('kyc-docs', existingKYC.documentUrl);
+        }
       }
       const { error: kycError } = await supabase.from('kyc_documents').insert({
-        employee_id: id, document_type: kycDoc.type, document_url: kycDoc.url, status: newKycStatus, branch_id: eObj?.branchId || user?.branchId,
+        employee_id: id, document_type: kycDoc.type, document_url: finalKycUrl, status: newKycStatus, branch_id: eObj?.branchId || user?.branchId,
         ...(isAdmin ? { verified_by: user?.name, verified_at: new Date().toISOString().split('T')[0] } : {})
       });
       if (kycError) { toast.error(kycError.message); }
@@ -664,6 +751,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
 
     const targetEmployee = data.employees.find((e: any) => e.id === id);
+    const existingKYC = data.kycs.find((k: any) => k.employeeId === id);
     
     // Optimistically remove from local state immediately
     applyOptimistic(prev => ({
@@ -679,6 +767,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       await supabase.from('kyc_documents').delete().eq('employee_id', id);
       await supabase.from('salary_payments').delete().eq('employee_id', id);
       await supabase.from('tasks').delete().eq('employee_id', id);
+
+      if (existingKYC?.documentUrl?.includes('kyc-docs')) {
+        await deleteFromSupabase('kyc-docs', existingKYC.documentUrl);
+      }
       
       // 2. Delete the employee record
       const { error: empError } = await supabase.from('employees').delete().eq('id', id);
@@ -727,13 +819,22 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const uploadVerifiedKYC = async (tenantId: string, docType: string, docUrl: string) => {
+  const uploadVerifiedKYC = async (tenantId: string, docType: string, fileOrUrl: File | string) => {
     const tenant = data.tenants.find((t: any) => t.id === tenantId);
     if (!tenant) return;
+    
+    let docUrl = typeof fileOrUrl === 'string' ? fileOrUrl : '';
+    if (typeof fileOrUrl !== 'string') {
+      docUrl = await uploadToSupabase('kyc-docs', `tenant_${tenantId}/${Date.now()}_${fileOrUrl.name}`, fileOrUrl);
+    }
+
     // Remove existing KYC for this tenant if any
     const existingKYC = data.kycs.find((k: any) => k.tenantId === tenantId);
     if (existingKYC) {
       await supabase.from('kyc_documents').delete().eq('id', existingKYC.id);
+      if (existingKYC.documentUrl?.includes('kyc-docs')) {
+        await deleteFromSupabase('kyc-docs', existingKYC.documentUrl);
+      }
     }
     // Insert a new, pre-verified KYC document
     await refetch(supabase.from('kyc_documents').insert({ tenant_id: tenantId, document_type: docType, document_url: docUrl, status: 'verified', branch_id: user?.branchId, verified_by: user?.id, verified_at: new Date().toISOString() }), 'KYC document uploaded');
@@ -743,12 +844,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await fetchData();
   };
 
-  const addAnnouncement = async (announcement: Omit<Announcement, 'id' | 'branchId'>) => {
-    if (!user?.branchId) return;
-    applyOptimistic(prev => ({ ...prev, announcements: [...prev.announcements, { ...announcement, id: `temp-${Date.now()}`, branchId: user.branchId, createdAt: new Date().toISOString() }] }));
+  const addAnnouncement = async (announcement: Omit<Announcement, 'id' | 'branchId'> & { branchId?: string }) => {
+    const targetBranch = announcement.branchId || filteredData.currentBranch?.id || user?.branchId;
+    if (!targetBranch) { toast.error("No active branch selected."); return; }
+    applyOptimistic(prev => ({ ...prev, announcements: [...prev.announcements, { ...announcement, id: `temp-${Date.now()}`, branchId: targetBranch, createdAt: new Date().toISOString() }] }));
     await refetch(supabase.from('announcements').insert({
       title: announcement.title, content: announcement.content, target: announcement.target,
-      created_by: announcement.createdBy, branch_id: user.branchId
+      created_by: announcement.createdBy, branch_id: targetBranch
     }), 'Announcement published');
   };
 
@@ -757,12 +859,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await refetch(supabase.from('announcements').delete().eq('id', id), 'Announcement deleted'); 
   };
 
-  const addSalaryPayment = async (payment: Omit<SalaryPayment, 'id' | 'branchId'>) => {
-    if (!user?.branchId) return;
-    applyOptimistic(prev => ({ ...prev, salaryPayments: [...prev.salaryPayments, { ...payment, id: `temp-${Date.now()}`, branchId: user.branchId }] }));
+  const addSalaryPayment = async (payment: Omit<SalaryPayment, 'id' | 'branchId'> & { branchId?: string }) => {
+    const targetBranch = payment.branchId || filteredData.currentBranch?.id || user?.branchId;
+    if (!targetBranch) { toast.error("No active branch selected."); return; }
+    applyOptimistic(prev => ({ ...prev, salaryPayments: [...prev.salaryPayments, { ...payment, id: `temp-${Date.now()}`, branchId: targetBranch }] }));
     await refetch(supabase.from('salary_payments').insert({
       employee_id: payment.employeeId, amount: payment.amount, month: payment.month, payment_date: payment.paymentDate,
-      status: payment.status, method: payment.method, transaction_id: payment.transactionId || null, branch_id: user.branchId
+      status: payment.status, method: payment.method, transaction_id: payment.transactionId || null, branch_id: targetBranch
     }), 'Salary payment recorded');
   };
 
@@ -839,7 +942,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updatePGConfig = async (updates: Partial<PGConfig>) => {
-    if (!user?.branchId) return;
+    const targetBranch = filteredData.currentBranch?.id || user?.branchId;
+    if (!targetBranch) { toast.error("No active branch selected."); return; }
     const dbUpdates: any = {};
     if (updates.rules !== undefined) dbUpdates.rules = updates.rules;
     if (updates.rolePermissions !== undefined) dbUpdates.role_permissions = updates.rolePermissions;
@@ -855,17 +959,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     // Optimistically update PG config to prevent UI lagging on changes
     applyOptimistic(prev => {
-      const existing = prev.pgConfigs.find((c: any) => c.branchId === user.branchId);
+      const existing = prev.pgConfigs.find((c: any) => c.branchId === targetBranch);
       if (existing) {
         return {
           ...prev,
-          pgConfigs: prev.pgConfigs.map((c: any) => c.branchId === user.branchId ? { ...c, ...updates } : c)
+          pgConfigs: prev.pgConfigs.map((c: any) => c.branchId === targetBranch ? { ...c, ...updates } : c)
         };
       } else {
         return {
           ...prev,
           pgConfigs: [...prev.pgConfigs, { 
-            branchId: user.branchId, 
+            branchId: targetBranch, 
             rules: updates.rules || [], 
             rolePermissions: updates.rolePermissions || [], 
             complaintCategories: updates.complaintCategories || [], 
@@ -884,12 +988,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     try {
       // Check if PG Config already exists
-      const existing = data.pgConfigs.find((c: any) => c.branchId === user.branchId);
+      const existing = data.pgConfigs.find((c: any) => c.branchId === targetBranch);
       if (existing) {
-        const { error } = await supabase.from('pg_configs').update(dbUpdates).eq('branch_id', user.branchId);
+        const { error } = await supabase.from('pg_configs').update(dbUpdates).eq('branch_id', targetBranch);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('pg_configs').insert({ ...dbUpdates, branch_id: user.branchId });
+        const { error } = await supabase.from('pg_configs').insert({ ...dbUpdates, branch_id: targetBranch });
         if (error) throw error;
       }
       toast.success('Settings saved successfully');

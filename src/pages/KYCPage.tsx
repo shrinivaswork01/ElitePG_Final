@@ -263,7 +263,7 @@ export const KYCPage = () => {
 
                 <div className="relative aspect-video bg-gray-100 dark:bg-white/5 rounded-2xl overflow-hidden mb-4 group-hover:ring-2 ring-indigo-500/20 transition-all">
                   {kyc.documentUrl ? (
-                    kyc.documentUrl.startsWith('data:application/pdf') ? (
+                    kyc.documentUrl.startsWith('data:application/pdf') || kyc.documentUrl.toLowerCase().endsWith('.pdf') ? (
                       <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50 dark:bg-white/5 text-gray-400 dark:text-gray-500">
                         <FileText className="w-12 h-12 mb-2" />
                         <span className="text-xs font-bold uppercase tracking-widest">PDF Document</span>
@@ -361,7 +361,7 @@ export const KYCPage = () => {
               <div className="flex flex-col lg:flex-row min-h-[50vh] lg:h-[80vh]">
                 <div className="flex-1 bg-gray-100 dark:bg-white/5 p-4 flex flex-col items-center justify-center overflow-hidden min-h-[400px] lg:min-h-0">
                   <div className="w-full h-full flex items-center justify-center relative group/doc">
-                    {selectedKYC.documentUrl.startsWith('data:application/pdf') ? (
+                    {selectedKYC.documentUrl.startsWith('data:application/pdf') || selectedKYC.documentUrl.toLowerCase().endsWith('.pdf') ? (
                       <div className="w-full h-full flex flex-col items-center justify-center">
                         <object
                           data={selectedKYC.documentUrl}

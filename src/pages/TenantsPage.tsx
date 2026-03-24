@@ -61,7 +61,7 @@ export const TenantsPage = () => {
   const [tenantToDelete, setTenantToDelete] = useState<Tenant | null>(null);
   const [kycUploadTenant, setKycUploadTenant] = useState<Tenant | null>(null);
   const [menuTenant, setMenuTenant] = useState<Tenant | null>(null);
-  const [adminKycFile, setAdminKycFile] = useState<{ type: string; url: string; fileName: string } | null>(null);
+  const [adminKycFile, setAdminKycFile] = useState<{ type: string; file?: File; url?: string; fileName: string } | null>(null);
   const [adminKycType, setAdminKycType] = useState('Aadhar Card');
   const [detailTenant, setDetailTenant] = useState<any | null>(null);
   const { payments } = useApp();
@@ -69,7 +69,7 @@ export const TenantsPage = () => {
   // Server-side paginated hook — fetches ONLY 10 records at a time
   const { data: paginatedTenants, totalCount, isLoading, page, setPage, limit, refetch } = usePaginatedData<any>({
     table: 'tenants',
-    select: '*, rooms!tenants_room_id_fkey(room_number)',
+    select: '*, rooms!tenants_room_id_fkey(room_number), kyc_documents!kyc_documents_tenant_id_fkey(document_url, status)',
     ilikeFilters: searchTerm ? { name: searchTerm, email: searchTerm } : undefined,
     filters: filterStatus !== 'all' ? { status: filterStatus } : undefined
   });
@@ -166,6 +166,9 @@ export const TenantsPage = () => {
             {(t.rent_agreement_url || t.rentAgreementUrl) && (
               <DropdownItem icon={<FileCheck className="w-4 h-4" />} label="View Agreement" onClick={() => setViewingAgreement(t)} />
             )}
+            {t.kyc_documents && t.kyc_documents.length > 0 && t.kyc_status === 'verified' && (
+              <DropdownItem icon={<FileText className="w-4 h-4" />} label="View KYC" onClick={() => setViewingKyc(t)} />
+            )}
             {canSendWhatsApp && (
               <DropdownItem icon={<MessageCircle className="w-4 h-4" />} label="WhatsApp Reminder" onClick={() => handleSendWhatsAppReminder(t)} />
             )}
@@ -229,19 +232,19 @@ export const TenantsPage = () => {
     }
   }, [isAddModalOpen, editingTenant, userInvites, user?.branchId]);
 
-  const [kycDoc, setKycDoc] = useState<{ type: string, url: string, fileName: string }>({
+  const [kycDoc, setKycDoc] = useState<{ type: string, file?: File, url?: string, fileName: string }>({
     type: 'Aadhar Card',
-    url: '',
     fileName: ''
   });
 
-  const [rentAgreement, setRentAgreement] = useState<{ url: string, fileName: string }>({
-    url: '',
+  const [rentAgreement, setRentAgreement] = useState<{ file?: File, url?: string, fileName: string }>({
     fileName: ''
   });
+  const [viewingKyc, setViewingKyc] = useState<any | null>(null);
 
-  const handleSendWhatsAppReminder = (tenant: Tenant) => {
-    const message = `*Rent Reminder*\n\nHi ${tenant.name}, this is a friendly reminder that your rent of ₹${tenant.rentAmount} is due. Please ignore if already paid.`;
+  const handleSendWhatsAppReminder = (tenant: any) => {
+    const rentAmount = tenant.rent_amount ?? tenant.rentAmount;
+    const message = `*Rent Reminder*\n\nHi ${tenant.name}, this is a friendly reminder that your rent of ₹${rentAmount} is due. Please ignore if already paid.`;
     const encodedMessage = encodeURIComponent(message);
     const whatsappUrl = `https://wa.me/${tenant.phone}?text=${encodedMessage}`;
     window.open(whatsappUrl, '_blank');
@@ -287,8 +290,8 @@ export const TenantsPage = () => {
       status: 'active',
       kycStatus: 'unsubmitted'
     });
-    setKycDoc({ type: 'Aadhar Card', url: '', fileName: '' });
-    setRentAgreement({ url: '', fileName: '' });
+    setKycDoc({ type: 'Aadhar Card', fileName: '' });
+    setRentAgreement({ fileName: '' });
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -298,15 +301,12 @@ export const TenantsPage = () => {
         toast.error('File size too large! Please upload a file smaller than 1.5MB.');
         return;
       }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setKycDoc({
-          ...kycDoc,
-          url: reader.result as string,
-          fileName: file.name
-        });
-      };
-      reader.readAsDataURL(file);
+      setKycDoc({
+        ...kycDoc,
+        file,
+        fileName: file.name,
+        url: URL.createObjectURL(file)
+      });
     }
   };
 
@@ -317,14 +317,11 @@ export const TenantsPage = () => {
         toast.error('File size too large! Please upload a file smaller than 1.5MB.');
         return;
       }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setRentAgreement({
-          url: reader.result as string,
-          fileName: file.name
-        });
-      };
-      reader.readAsDataURL(file);
+      setRentAgreement({
+        file,
+        fileName: file.name,
+        url: URL.createObjectURL(file)
+      });
     }
   };
 
@@ -364,7 +361,7 @@ export const TenantsPage = () => {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.roomId) {
       toast.error('Please select a room for the tenant.');
@@ -382,29 +379,32 @@ export const TenantsPage = () => {
 
     if (formData.name && formData.roomId) {
       if (editingTenant) {
-        updateTenant(
+        await updateTenant(
           editingTenant.id,
           formData,
-          kycDoc.url ? { type: kycDoc.type, url: kycDoc.url } : undefined,
-          rentAgreement.url ? { url: rentAgreement.url } : undefined
+          kycDoc.file || kycDoc.url ? { type: kycDoc.type, file: kycDoc.file, url: kycDoc.url } : undefined,
+          rentAgreement.file || rentAgreement.url ? { file: rentAgreement.file, url: rentAgreement.url } : undefined
         );
         if (editingTenant.userId) {
           updateUser(editingTenant.userId, { name: formData.name, email: formData.email, phone: formData.phone });
         }
       } else {
-        addTenant(
+        await addTenant(
           formData as Omit<Tenant, 'id'>,
-          kycDoc.url ? { type: kycDoc.type, url: kycDoc.url } : undefined,
-          rentAgreement.url ? { url: rentAgreement.url } : undefined
+          kycDoc.file || kycDoc.url ? { type: kycDoc.type, file: kycDoc.file, url: kycDoc.url } : undefined,
+          rentAgreement.file || rentAgreement.url ? { file: rentAgreement.file, url: rentAgreement.url } : undefined
         );
       }
       handleCloseModal();
+      refetch();
     }
   };
 
-  const handleBulkDelete = (ids: string[]) => {
+  const handleBulkDelete = async (ids: string[]) => {
     if (window.confirm(`Are you sure you want to delete ${ids.length} selected tenants?`)) {
-      ids.forEach(id => deleteTenant(id));
+      for (const id of ids) {
+        await deleteTenant(id);
+      }
       refetch();
       toast.success(`${ids.length} tenants deleted.`);
     }
@@ -980,8 +980,10 @@ export const TenantsPage = () => {
                 </div>
                 <div className="flex gap-2">
                   <a
-                    href={viewingAgreement.rentAgreementUrl}
+                    href={viewingAgreement.rentAgreementUrl || (viewingAgreement as any).rent_agreement_url}
                     download={`Agreement_${viewingAgreement.name}.pdf`}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors text-gray-400"
                   >
                     <Download className="w-6 h-6" />
@@ -992,22 +994,171 @@ export const TenantsPage = () => {
                 </div>
               </div>
               <div className="flex-1 overflow-hidden p-4 sm:p-8 bg-gray-100 dark:bg-black/20">
-                {viewingAgreement.rentAgreementUrl?.startsWith('data:application/pdf') ? (
+                {String(viewingAgreement.rentAgreementUrl || (viewingAgreement as any).rent_agreement_url)?.startsWith('data:application/pdf') || String(viewingAgreement.rentAgreementUrl || (viewingAgreement as any).rent_agreement_url)?.toLowerCase().endsWith('.pdf') ? (
                   <iframe
-                    src={viewingAgreement.rentAgreementUrl}
+                    src={viewingAgreement.rentAgreementUrl || (viewingAgreement as any).rent_agreement_url}
                     className="w-full h-full rounded-xl border-none"
                     title="Rent Agreement PDF"
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center overflow-auto">
                     <img
-                      src={viewingAgreement.rentAgreementUrl}
+                      src={viewingAgreement.rentAgreementUrl || (viewingAgreement as any).rent_agreement_url}
                       alt="Rent Agreement"
                       className="max-w-full max-h-full object-contain rounded-xl shadow-lg"
                     />
                   </div>
                 )}
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* View KYC Modal */}
+      <AnimatePresence>
+        {viewingKyc && viewingKyc.kyc_documents?.[0] && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setViewingKyc(null)}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-4xl bg-white dark:bg-[#111111] rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col border border-white/5"
+            >
+              <div className="p-6 sm:p-8 border-b border-gray-100 dark:border-white/5 flex items-center justify-between bg-white dark:bg-[#111111]">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">Tenant KYC Document</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">{viewingKyc.kyc_documents[0].document_type}</p>
+                </div>
+                <div className="flex gap-2">
+                  <a
+                    href={viewingKyc.kyc_documents[0].document_url}
+                    download={`KYC_${viewingKyc.name}.pdf`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors text-gray-400"
+                  >
+                    <Download className="w-6 h-6" />
+                  </a>
+                  <button onClick={() => setViewingKyc(null)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors">
+                    <Plus className="w-6 h-6 rotate-45 text-gray-400" />
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-hidden p-4 sm:p-8 bg-gray-100 dark:bg-black/20">
+                {viewingKyc.kyc_documents[0].document_url?.startsWith('data:application/pdf') || viewingKyc.kyc_documents[0].document_url?.toLowerCase().endsWith('.pdf') ? (
+                  <iframe
+                    src={viewingKyc.kyc_documents[0].document_url}
+                    className="w-full h-full rounded-xl border-none"
+                    title="KYC Document PDF"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center overflow-auto">
+                    <img
+                      src={viewingKyc.kyc_documents[0].document_url}
+                      alt="KYC Document"
+                      className="max-w-full max-h-full object-contain rounded-xl shadow-lg"
+                    />
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Admin Upload KYC Modal */}
+      <AnimatePresence>
+        {kycUploadTenant && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => { setKycUploadTenant(null); setAdminKycFile(null); }}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-md bg-white dark:bg-[#111111] rounded-3xl shadow-2xl overflow-hidden border border-white/5"
+            >
+              <div className="p-6 border-b border-gray-100 dark:border-white/5 flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">Admin Upload KYC</h3>
+                  <p className="text-sm text-gray-500">For {kycUploadTenant.name}</p>
+                </div>
+                <button onClick={() => { setKycUploadTenant(null); setAdminKycFile(null); }} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors">
+                  <Plus className="w-6 h-6 rotate-45 text-gray-400" />
+                </button>
+              </div>
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                if (kycUploadTenant && adminKycFile?.file) {
+                  await uploadVerifiedKYC(kycUploadTenant.id, adminKycType, adminKycFile.file);
+                  setKycUploadTenant(null);
+                  setAdminKycFile(null);
+                  refetch();
+                }
+              }} className="p-6 space-y-6">
+                <div className="space-y-4">
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Upload a valid identity document (Aadhar Card, PAN Card, etc.) to verify this tenant's identity.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <select
+                      value={adminKycType}
+                      onChange={(e) => setAdminKycType(e.target.value)}
+                      className="px-4 py-3 bg-gray-50 dark:bg-white/5 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                    >
+                      <option value="Aadhar Card">Aadhar Card</option>
+                      <option value="PAN Card">PAN Card</option>
+                      <option value="Voter ID">Voter ID</option>
+                      <option value="Passport">Passport</option>
+                      <option value="Driving License">Driving License</option>
+                    </select>
+                    <div className="relative">
+                      <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-200 dark:border-white/10 rounded-2xl hover:border-indigo-500/50 transition-colors cursor-pointer bg-gray-50/50 dark:bg-white/[0.02]">
+                        <Upload className="w-8 h-8 text-gray-400 mb-2" />
+                        <span className="text-sm font-medium text-gray-500 dark:text-gray-400 text-center px-2">
+                          {adminKycFile ? 'Document Selected' : 'Upload New KYC'}
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*,.pdf"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              if (file.size > 5 * 1024 * 1024) {
+                                toast.error('File size must be less than 5MB');
+                                return;
+                              }
+                              setAdminKycFile({ type: adminKycType, file, fileName: file.name, url: URL.createObjectURL(file) });
+                            }
+                          }}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+                {adminKycFile && (
+                  <button
+                    type="submit"
+                    className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20"
+                  >
+                    Upload & Verify Document
+                  </button>
+                )}
+              </form>
             </motion.div>
           </div>
         )}

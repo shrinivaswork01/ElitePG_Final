@@ -25,7 +25,8 @@ import {
   Users,
   X,
   Upload,
-  FileText
+  FileText,
+  MoreVertical
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { EmployeeMobileList } from '../components/EmployeeMobileList';
@@ -57,6 +58,7 @@ export const EmployeesPage = () => {
     return <Navigate to="/" replace />;
   }
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isMobileActionsOpen, setIsMobileActionsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'list' | 'salaries'>('list');
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
@@ -103,9 +105,8 @@ export const EmployeesPage = () => {
     kycStatus: 'unsubmitted'
   });
 
-  const [kycFile, setKycFile] = useState<{ type: string, url: string, fileName: string }>({
+  const [kycFile, setKycFile] = useState<{ type: string, file?: File, url?: string, fileName: string }>({
     type: 'Aadhar Card',
-    url: '',
     fileName: ''
   });
 
@@ -129,7 +130,6 @@ export const EmployeesPage = () => {
     });
     setKycFile({
       type: 'Aadhar Card',
-      url: '',
       fileName: ''
     });
   };
@@ -137,7 +137,7 @@ export const EmployeesPage = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const kycData = kycFile.url ? { type: kycFile.type, url: kycFile.url } : undefined;
+    const kycData = kycFile.url || kycFile.file ? { type: kycFile.type, file: kycFile.file, url: kycFile.url } : undefined;
     let success = false;
 
     if (editingEmployee) {
@@ -277,43 +277,55 @@ export const EmployeesPage = () => {
           <p className="text-gray-500 dark:text-gray-400">Manage your staff and payroll.</p>
         </div>
         {user?.role === 'admin' && (
-          <div className="flex gap-2">
-            <button
-              onClick={() => setActiveTab(activeTab === 'list' ? 'salaries' : 'list')}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all"
-            >
-              {activeTab === 'list' ? <History className="w-5 h-5" /> : <Users className="w-5 h-5" />}
-              {activeTab === 'list' ? 'Salary History' : 'Staff List'}
-            </button>
-            <button
-              onClick={() => setIsRolesModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all"
-            >
-              <Shield className="w-5 h-5 text-indigo-500" />
-              Manage Roles
-            </button>
-            <button
-              onClick={() => setIsVisibilityModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all"
-            >
-              <UserCog className="w-5 h-5 text-amber-500" />
-              Role Visibility
-            </button>
-            <button
-              onClick={() => setIsTaskModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all"
-            >
-              <ClipboardList className="w-5 h-5 text-indigo-500" />
-              Add Task
-            </button>
-            <button
-              onClick={() => setIsAddModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
-            >
-              <Plus className="w-5 h-5" />
-              Add Employee
-            </button>
-          </div>
+          <>
+            <div className="hidden md:flex gap-2">
+              <button
+                onClick={() => setActiveTab(activeTab === 'list' ? 'salaries' : 'list')}
+                className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all"
+              >
+                {activeTab === 'list' ? <History className="w-5 h-5" /> : <Users className="w-5 h-5" />}
+                {activeTab === 'list' ? 'Salary History' : 'Staff List'}
+              </button>
+              <button
+                onClick={() => setIsRolesModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all"
+              >
+                <Shield className="w-5 h-5 text-indigo-500" />
+                Manage Roles
+              </button>
+              <button
+                onClick={() => setIsVisibilityModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all"
+              >
+                <UserCog className="w-5 h-5 text-amber-500" />
+                Role Visibility
+              </button>
+              <button
+                onClick={() => setIsTaskModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all"
+              >
+                <ClipboardList className="w-5 h-5 text-indigo-500" />
+                Add Task
+              </button>
+              <button
+                onClick={() => setIsAddModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
+              >
+                <Plus className="w-5 h-5" />
+                Add Employee
+              </button>
+            </div>
+            
+            {/* Mobile Actions Trigger */}
+            <div className="md:hidden flex gap-2">
+              <button
+                onClick={() => setIsMobileActionsOpen(true)}
+                className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all"
+              >
+                <MoreVertical className="w-5 h-5" />
+              </button>
+            </div>
+          </>
         )}
       </div>
 
@@ -464,7 +476,7 @@ export const EmployeesPage = () => {
               </div>
             </div>
           </div>
-          <div className="overflow-x-auto">
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-100 dark:border-white/5">
@@ -518,6 +530,42 @@ export const EmployeesPage = () => {
                 )}
               </tbody>
             </table>
+          </div>
+          <div className="flex flex-col md:hidden border-t border-gray-100 dark:border-white/5 divide-y divide-gray-50 dark:divide-white/5">
+            {filteredSalaries.map((payment) => {
+              const employee = employees.find(e => e.id === payment.employeeId);
+              return (
+                <div key={payment.id} className="p-4 flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 shrink-0 rounded-full bg-gray-100 dark:bg-white/5 flex items-center justify-center font-bold text-xs text-gray-900 dark:text-white">
+                        {employee?.name?.charAt(0) || '?'}
+                      </div>
+                      <div>
+                        <span className="text-sm font-bold text-gray-900 dark:text-white block truncate max-w-[140px]">{employee?.name}</span>
+                        <span className="text-[10px] text-gray-500">{format(parseISO(payment.month + '-01'), 'MMM yyyy')} • {payment.paymentDate}</span>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                       <span className="text-sm font-bold text-gray-900 dark:text-white block">₹{payment.amount.toLocaleString()}</span>
+                       <span className="px-2 py-0.5 mt-1 inline-block bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 rounded text-[9px] font-bold uppercase tracking-wider">{payment.status}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between pt-3 mt-1 border-t border-dashed border-gray-100 dark:border-white/10">
+                     <span className="text-xs text-gray-500 font-medium capitalize">Method: {payment.method}</span>
+                     <button
+                       onClick={() => setSalaryToDelete(payment)}
+                       className="p-1.5 rounded-lg text-red-400 hover:text-red-600 bg-red-50 dark:bg-red-500/10 transition-colors"
+                     >
+                       <Trash2 className="w-3.5 h-3.5" />
+                     </button>
+                  </div>
+                </div>
+              );
+            })}
+            {salaryPayments.length === 0 && (
+              <div className="p-8 text-center text-gray-500 dark:text-gray-400 italic text-sm">No salary payments recorded yet.</div>
+            )}
           </div>
         </div>
       )}
@@ -634,18 +682,14 @@ export const EmployeesPage = () => {
                           className="hidden"
                           accept="image/*,.pdf"
                           onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              if (file.size > 1.5 * 1024 * 1024) {
-                                toast.error('File size too large! Please upload a file smaller than 1.5MB.');
-                                return;
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                if (file.size > 1.5 * 1024 * 1024) {
+                                  toast.error('File size too large! Please upload a file smaller than 1.5MB.');
+                                  return;
+                                }
+                                setKycFile({ ...kycFile, file, fileName: file.name, url: URL.createObjectURL(file) });
                               }
-                              const reader = new FileReader();
-                              reader.onloadend = () => {
-                                setKycFile({ ...kycFile, url: reader.result as string, fileName: file.name });
-                              };
-                              reader.readAsDataURL(file);
-                            }
                           }}
                         />
                       </label>
@@ -1209,15 +1253,15 @@ export const EmployeesPage = () => {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-md bg-white dark:bg-[#111111] rounded-3xl shadow-2xl overflow-hidden border border-white/5"
+              className="relative w-full max-w-md bg-white dark:bg-[#111111] shadow-2xl overflow-hidden border border-white/5 flex flex-col max-h-[85vh] mt-auto md:mt-0 rounded-t-3xl md:rounded-3xl"
             >
-              <div className="p-6 border-b border-gray-100 dark:border-white/5 flex items-center justify-between">
+              <div className="p-6 border-b border-gray-100 dark:border-white/5 flex items-center justify-between sticky top-0 bg-white dark:bg-[#111111] z-10 shrink-0">
                 <h3 className="text-xl font-bold text-gray-900 dark:text-white">Manage Custom Roles</h3>
                 <button onClick={() => setIsRolesModalOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors">
                   <X className="w-6 h-6 text-gray-400" />
                 </button>
               </div>
-              <div className="p-6 space-y-6">
+              <div className="p-6 space-y-6 overflow-y-auto">
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -1283,9 +1327,9 @@ export const EmployeesPage = () => {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-4xl bg-white dark:bg-[#111111] rounded-3xl shadow-2xl overflow-hidden border border-white/5"
+              className="relative w-full max-w-4xl bg-white dark:bg-[#111111] shadow-2xl overflow-hidden border border-white/5 flex flex-col max-h-[85vh] mt-auto md:mt-0 rounded-t-3xl md:rounded-3xl"
             >
-              <div className="p-6 border-b border-gray-100 dark:border-white/5 flex items-center justify-between">
+              <div className="p-6 border-b border-gray-100 dark:border-white/5 flex items-center justify-between sticky top-0 bg-white dark:bg-[#111111] z-10 shrink-0">
                 <div>
                   <h3 className="text-xl font-bold text-gray-900 dark:text-white">Role Visibility Settings</h3>
                   <p className="text-sm text-gray-500">Control which tabs are visible for each employee role.</p>
@@ -1294,7 +1338,7 @@ export const EmployeesPage = () => {
                   <X className="w-6 h-6 text-gray-400" />
                 </button>
               </div>
-              <div className="p-6 overflow-x-auto">
+              <div className="p-6 overflow-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr>
@@ -1393,6 +1437,92 @@ export const EmployeesPage = () => {
                   style={{ backgroundColor: pgConfig?.primaryColor }}
                 >
                   Done
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* FAB for Mobile */}
+      {user?.role === 'admin' && (
+        <button
+          onClick={() => setIsAddModalOpen(true)}
+          className="md:hidden fixed bottom-24 right-6 w-14 h-14 bg-indigo-600 text-white rounded-2xl shadow-2xl flex items-center justify-center z-40 hover:bg-indigo-700 transition-colors"
+        >
+          <Plus className="w-7 h-7" />
+        </button>
+      )}
+
+      {/* Mobile Actions Bottom Sheet */}
+      <AnimatePresence>
+        {isMobileActionsOpen && (
+          <div className="md:hidden fixed inset-0 z-50 flex items-end justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsMobileActionsOpen(false)}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, y: "100%" }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="relative w-full bg-white dark:bg-[#111111] rounded-3xl shadow-2xl overflow-hidden border border-white/5"
+            >
+              <div className="p-4 border-b border-gray-100 dark:border-white/5 flex flex-col gap-2">
+                <div className="w-12 h-1.5 bg-gray-200 dark:bg-white/10 rounded-full mx-auto mb-2" />
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white px-2">Quick Actions</h3>
+              </div>
+              <div className="p-4 space-y-2">
+                <button
+                  onClick={() => { setIsMobileActionsOpen(false); setActiveTab(activeTab === 'list' ? 'salaries' : 'list'); }}
+                  className="w-full flex items-center gap-3 p-4 bg-gray-50 dark:bg-white/5 hover:bg-gray-100 dark:hover:bg-white/10 rounded-2xl text-left border border-gray-100 dark:border-white/5 transition-colors"
+                >
+                  <div className="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                    {activeTab === 'list' ? <History className="w-5 h-5" /> : <Users className="w-5 h-5" />}
+                  </div>
+                  <div>
+                    <span className="font-bold text-gray-900 dark:text-white block">{activeTab === 'list' ? 'Salary History' : 'Staff List'}</span>
+                    <span className="text-xs text-gray-500 truncate">Toggle between staff and salaries</span>
+                  </div>
+                </button>
+                <button
+                  onClick={() => { setIsMobileActionsOpen(false); setIsRolesModalOpen(true); }}
+                  className="w-full flex items-center gap-3 p-4 bg-gray-50 dark:bg-white/5 hover:bg-gray-100 dark:hover:bg-white/10 rounded-2xl text-left border border-gray-100 dark:border-white/5 transition-colors"
+                >
+                  <div className="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                    <Shield className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-gray-900 dark:text-white block">Manage Roles</span>
+                    <span className="text-xs text-gray-500 truncate">Create or delete custom roles</span>
+                  </div>
+                </button>
+                <button
+                  onClick={() => { setIsMobileActionsOpen(false); setIsVisibilityModalOpen(true); }}
+                  className="w-full flex items-center gap-3 p-4 bg-gray-50 dark:bg-white/5 hover:bg-gray-100 dark:hover:bg-white/10 rounded-2xl text-left border border-gray-100 dark:border-white/5 transition-colors"
+                >
+                  <div className="w-10 h-10 rounded-full bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center text-amber-600 dark:text-amber-400">
+                    <UserCog className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-gray-900 dark:text-white block">Role Visibility</span>
+                    <span className="text-xs text-gray-500 truncate">Configure tab access per role</span>
+                  </div>
+                </button>
+                <button
+                  onClick={() => { setIsMobileActionsOpen(false); setIsTaskModalOpen(true); }}
+                  className="w-full flex items-center gap-3 p-4 bg-gray-50 dark:bg-white/5 hover:bg-gray-100 dark:hover:bg-white/10 rounded-2xl text-left border border-gray-100 dark:border-white/5 transition-colors"
+                >
+                  <div className="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                    <ClipboardList className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-gray-900 dark:text-white block">Add Task</span>
+                    <span className="text-xs text-gray-500 truncate">Assign tasks to staff members</span>
+                  </div>
                 </button>
               </div>
             </motion.div>

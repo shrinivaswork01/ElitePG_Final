@@ -31,9 +31,11 @@ import { usePaginatedData } from '../hooks/usePaginatedData';
 import { DataGrid, ColumnDef } from '../components/DataGrid';
 import { DropdownMenu, DropdownItem } from '../components/DropdownMenu';
 import { PaymentDetailPanel } from '../components/PaymentDetailPanel';
+import { PaymentMobileList } from '../components/PaymentMobileList';
 import { cn } from '../utils';
 import { loadRazorpayScript } from '../utils/razorpay';
 import { generateTenantReceiptPDF } from '../utils/generateReceipt';
+import { uploadToSupabase } from '../utils/storage';
 import toast from 'react-hot-toast';
 
 export const PaymentsPage = () => {
@@ -125,31 +127,64 @@ export const PaymentsPage = () => {
       cell: (p) => (
         <div className="flex justify-end">
           <DropdownMenu>
-            {p.status === 'paid' && (
-              <DropdownItem icon={<Download className="w-4 h-4" />} label="Download Receipt" onClick={() => {
-                // Normalize DB row (snake_case) to camelCase Payment
-                const normalized: Payment = {
-                  id: p.id,
-                  tenantId: p.tenant_id || p.tenantId,
-                  amount: p.amount,
-                  lateFee: p.late_fee ?? p.lateFee ?? 0,
-                  totalAmount: p.total_amount ?? p.totalAmount ?? p.amount,
-                  paymentDate: p.payment_date || p.paymentDate,
-                  month: p.month,
-                  status: p.status,
-                  method: p.method,
-                  transactionId: p.transaction_id || p.transactionId,
-                  receiptUrl: p.receipt_url || p.receiptUrl,
-                  branchId: p.branch_id || p.branchId
-                };
-                handleGenerateReceipt(normalized);
-              }} />
-            )}
             {isAdmin && (
               <DropdownItem icon={<Edit2 className="w-4 h-4" />} label="Edit Payment" onClick={() => {
-                setPaymentToEdit(p);
+                const normalized: Payment = {
+                  id: p.id,
+                  tenantId: p.tenant_id || p.tenantId || '',
+                  amount: p.amount ?? 0,
+                  lateFee: p.late_fee ?? p.lateFee ?? 0,
+                  totalAmount: p.total_amount ?? p.totalAmount ?? p.amount ?? 0,
+                  paymentDate: p.payment_date || p.paymentDate || '',
+                  month: p.month || '',
+                  status: p.status || 'paid',
+                  method: p.method || 'Offline',
+                  transactionId: p.transaction_id || p.transactionId,
+                  receiptUrl: p.receipt_url || p.receiptUrl,
+                  branchId: p.branch_id || p.branchId || ''
+                };
+                setPaymentToEdit(normalized);
                 setIsEditModalOpen(true);
               }} />
+            )}
+            {p.status === 'paid' && (
+              <>
+                <DropdownItem icon={<Download className="w-4 h-4" />} label="Download Receipt" onClick={() => {
+                  const normalized: Payment = {
+                    id: p.id,
+                    tenantId: p.tenant_id || p.tenantId,
+                    amount: p.amount,
+                    lateFee: p.late_fee ?? p.lateFee ?? 0,
+                    totalAmount: p.total_amount ?? p.totalAmount ?? p.amount,
+                    paymentDate: p.payment_date || p.paymentDate,
+                    month: p.month,
+                    status: p.status,
+                    method: p.method,
+                    transactionId: p.transaction_id || p.transactionId,
+                    receiptUrl: p.receipt_url || p.receiptUrl,
+                    branchId: p.branch_id || p.branchId
+                  };
+                  handleDownloadReceipt(normalized);
+                }} />
+                <DropdownItem icon={<Share2 className="w-4 h-4" />} label="Share Receipt" onClick={() => {
+                  const normalized: Payment = {
+                    id: p.id,
+                    tenantId: p.tenant_id || p.tenantId,
+                    amount: p.amount,
+                    lateFee: p.late_fee ?? p.lateFee ?? 0,
+                    totalAmount: p.total_amount ?? p.totalAmount ?? p.amount,
+                    paymentDate: p.payment_date || p.paymentDate,
+                    month: p.month,
+                    status: p.status,
+                    method: p.method,
+                    transactionId: p.transaction_id || p.transactionId,
+                    receiptUrl: p.receipt_url || p.receiptUrl,
+                    branchId: p.branch_id || p.branchId
+                  };
+                  setSelectedPayment(normalized);
+                  setIsReceiptModalOpen(true);
+                }} />
+              </>
             )}
             {['admin', 'manager'].includes(user?.role || '') && (
               <DropdownItem icon={<Trash2 className="w-4 h-4" />} label="Delete Payment" onClick={() => {
@@ -162,39 +197,6 @@ export const PaymentsPage = () => {
     }
   ];
 
-
-  const sendWhatsAppReceipt = (payment: Payment, tenant: any) => {
-    if (!tenant.phone) {
-      toast.error('Phone number is missing for this tenant.');
-      return;
-    }
-
-    const message = `*Payment Receipt - ElitePG*\n\n` +
-      `Hello ${tenant.name},\n` +
-      `We have received your payment of *₹${payment.totalAmount.toLocaleString()}* for the month of ${format(parseISO(`${payment.month}-01`), 'MMMM yyyy')}.\n\n` +
-      `*Details:*\n` +
-      `- Date: ${payment.paymentDate}\n` +
-      `- Mode: ${payment.method?.toUpperCase()}\n` +
-      (payment.lateFee > 0 ? `- Late Fee: ₹${payment.lateFee}\n` : '') +
-      (receiptNotes ? `- Note: ${receiptNotes}\n` : '') +
-      `\nThank you for choosing ElitePG!`;
-
-    let cleanPhone = tenant.phone.replace(/\D/g, '');
-    if (cleanPhone.length === 10) {
-      cleanPhone = '91' + cleanPhone;
-    }
-
-    const encodedMessage = encodeURIComponent(message);
-    const whatsappUrl = `https://wa.me/${cleanPhone}?text=${encodedMessage}`;
-
-    const link = document.createElement('a');
-    link.href = whatsappUrl;
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
   const calculateLateFee = (tenantId: string, month: string) => {
     const tenant = tenants.find(t => t.id === tenantId);
@@ -323,17 +325,16 @@ export const PaymentsPage = () => {
     method: 'Offline'
   });
 
-  const handleAddPayment = (e: React.FormEvent) => {
+  const handleAddPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPayment.tenantId) {
-      // Duplicate validation
       const existingPayment = payments.find(p => p.tenantId === newPayment.tenantId && p.month === newPayment.month);
       if (existingPayment) {
         toast.error(`A payment record already exists for this tenant for ${newPayment.month}.`);
         return;
       }
 
-      addPayment(newPayment as Omit<Payment, 'id'>);
+      await addPayment(newPayment as Omit<Payment, 'id'>);
       setIsAddModalOpen(false);
       setNewPayment({
         tenantId: '',
@@ -345,13 +346,14 @@ export const PaymentsPage = () => {
         status: 'paid',
         method: 'Offline'
       });
+      refetchPayments();
     }
   };
 
-  const handleEditPayment = (e: React.FormEvent) => {
+  const handleEditPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (paymentToEdit) {
-      updatePayment(paymentToEdit.id, {
+      await updatePayment(paymentToEdit.id, {
         amount: paymentToEdit.amount,
         lateFee: paymentToEdit.lateFee,
         totalAmount: paymentToEdit.amount + paymentToEdit.lateFee,
@@ -363,6 +365,7 @@ export const PaymentsPage = () => {
       });
       setIsEditModalOpen(false);
       setPaymentToEdit(null);
+      refetchPayments();
     }
   };
 
@@ -374,14 +377,22 @@ export const PaymentsPage = () => {
 
   const handleDownloadReceipt = async (payment: Payment | null = selectedPayment) => {
     if (!payment) return;
+    
+    // 1. If we already have a receipt URL, just open it
+    if (payment.receiptUrl) {
+      window.open(payment.receiptUrl, '_blank');
+      return;
+    }
+
+    // 2. Otherwise, generate, upload, and update
     setIsGeneratingPDF(true);
+    const toastId = toast.loading('Generating & Storing Receipt...');
     try {
       const tenant = tenants.find(t => t.id === payment.tenantId);
-      
-      // Fetch branch-level official signature (bypasses RLS issues for individual admin records)
       const authorizedSignature = currentBranch?.officialSignatureUrl || user?.signatureUrl;
 
-      await generateTenantReceiptPDF({
+      // Generate PDF as Blob
+      const blob = await generateTenantReceiptPDF({
         paymentId: payment.id,
         paymentDate: payment.paymentDate,
         month: payment.month,
@@ -401,62 +412,25 @@ export const PaymentsPage = () => {
         pgName: pgConfig?.pgName || currentBranch?.name,
         logoUrl: pgConfig?.logoUrl,
         signatureUrl: authorizedSignature
-      });
-      toast.success('Receipt downloaded!');
-    } catch (err) {
-      console.error('PDF generation failed:', err);
-      toast.error('Failed to generate PDF. Please try again.');
-    } finally {
-      setIsGeneratingPDF(false);
-    }
-  };
-
-  const handleShareReceipt = async (payment: Payment | null = selectedPayment) => {
-    if (!payment) return;
-    setIsGeneratingPDF(true);
-    try {
-      const tenant = tenants.find(t => t.id === payment.tenantId);
-      const authorizedSignature = currentBranch?.officialSignatureUrl || user?.signatureUrl;
-      
-      const blob = await generateTenantReceiptPDF({
-        paymentId: payment.id,
-        paymentDate: payment.paymentDate,
-        month: payment.month,
-        amount: payment.amount,
-        lateFee: payment.lateFee,
-        totalAmount: payment.totalAmount,
-        method: payment.method,
-        transactionId: payment.transactionId,
-        status: payment.status,
-        tenantName: tenant?.name || 'N/A',
-        tenantPhone: tenant?.phone,
-        tenantEmail: tenant?.email,
-        roomNumber: tenant?.roomId,
-        branchName: currentBranch?.branchName,
-        branchPhone: currentBranch?.phone,
-        branchAddress: currentBranch?.address,
-        pgName: pgConfig?.pgName || currentBranch?.name,
-        logoUrl: pgConfig?.logoUrl,
-        signatureUrl: authorizedSignature
       }, true) as Blob;
 
-      const fileName = `receipt_${(payment.id || 'NEW').slice(-10)}.pdf`;
+      // Upload to Supabase Storage
+      const fileName = `receipt_${payment.id}_${Date.now()}.pdf`;
       const file = new File([blob], fileName, { type: 'application/pdf' });
+      const publicUrl = await uploadToSupabase('receipts', `${payment.branchId}/${fileName}`, file);
 
-      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({
-          title: 'ElitePG Payment Receipt',
-          text: `Payment Receipt for ${tenant?.name || 'N/A'} - ₹${payment.totalAmount.toLocaleString()}`,
-          files: [file]
-        });
-      } else {
-        // Fallback to text + download link or just copy text
-        const shareText = `Payment Receipt — ElitePG\nTenant: ${tenant?.name || 'N/A'}\nAmount: Rs.${payment.totalAmount.toLocaleString('en-IN')}\nDate: ${payment.paymentDate}\nTransaction ID: ${payment.transactionId || 'N/A'}`;
-        navigator.clipboard.writeText(shareText).then(() => toast.success('Receipt details copied! (File sharing not supported on this browser)'));
-      }
+      // Update backend
+      await updatePayment(payment.id, { receiptUrl: publicUrl });
+      
+      // Open the new URL
+      window.open(publicUrl, '_blank');
+      toast.success('Receipt generated and stored!', { id: toastId });
+      
+      // Refetch to sync local state
+      refetchPayments();
     } catch (err) {
-      console.error('Sharing failed:', err);
-      toast.error('Failed to share receipt.');
+      console.error('Receipt persistence failed:', err);
+      toast.error('Failed to generate/store receipt. Please try again.', { id: toastId });
     } finally {
       setIsGeneratingPDF(false);
     }
@@ -645,18 +619,93 @@ export const PaymentsPage = () => {
       </div>
 
 
-      <DataGrid
-        columns={paymentColumns}
-        data={paginatedPayments}
-        isLoading={isPaymentsLoading}
-        keyExtractor={(p) => p.id}
-        totalCount={totalCount}
-        page={page}
-        limit={limit}
-        onPageChange={setPage}
-        emptyStateMessage="No payment records found"
-        onRowClick={(p) => setDetailPayment(p)}
-      />
+      <div className="hidden lg:block">
+        <DataGrid
+          columns={paymentColumns}
+          data={paginatedPayments}
+          isLoading={isPaymentsLoading}
+          keyExtractor={(p) => p.id}
+          totalCount={totalCount}
+          page={page}
+          limit={limit}
+          onPageChange={setPage}
+          emptyStateMessage="No payment records found"
+          onRowClick={(p) => setDetailPayment({
+            id: p.id,
+            tenantId: p.tenant_id || p.tenantId,
+            amount: p.amount ?? 0,
+            lateFee: p.late_fee ?? p.lateFee ?? 0,
+            totalAmount: p.total_amount ?? p.totalAmount ?? p.amount ?? 0,
+            paymentDate: p.payment_date || p.paymentDate,
+            month: p.month,
+            status: p.status,
+            method: p.method,
+            transactionId: p.transaction_id || p.transactionId,
+            receiptUrl: p.receipt_url || p.receiptUrl,
+            tenants: p.tenants,
+            branchId: p.branch_id || p.branchId || currentBranch?.id
+          })}
+        />
+      </div>
+
+      <div className="lg:hidden">
+        <PaymentMobileList
+          payments={paginatedPayments}
+          isLoading={isPaymentsLoading}
+          onManage={(p) => setDetailPayment(p)}
+          onEdit={(p) => {
+            setPaymentToEdit(p);
+            setIsEditModalOpen(true);
+          }}
+          onDownloadReceipt={(p) => handleDownloadReceipt(p)}
+          onShareReceipt={(p) => {
+            setSelectedPayment(p);
+            setIsReceiptModalOpen(true);
+          }}
+          onDelete={(p) => {
+            if (window.confirm('Delete this payment record?')) {
+              deletePayment(p.id);
+              refetchPayments();
+            }
+          }}
+          onBulkDelete={(ids) => {
+            if (window.confirm(`Delete ${ids.length} selected records?`)) {
+              ids.forEach(id => deletePayment(id));
+              refetchPayments();
+            }
+          }}
+          onBulkShare={(ids) => {
+            const selected = paginatedPayments.filter(p => ids.includes(p.id));
+            const shareText = selected.map(p => {
+                const name = p.tenants?.name || 'Unknown';
+                const total = p.total_amount || p.totalAmount || p.amount;
+                return `${name}: ₹${total?.toLocaleString()} (${p.month})`;
+            }).join('\n');
+            navigator.clipboard.writeText(shareText).then(() => toast.success('Payment summaries copied!'));
+          }}
+        />
+        {paginatedPayments.length > 0 && (
+          <div className="mt-4 flex justify-center pb-8">
+            <button
+              disabled={page === 1}
+              onClick={() => setPage(page - 1)}
+              className="px-4 py-2 text-sm font-semibold text-gray-500 disabled:opacity-50"
+            >
+              Prev
+            </button>
+            <span className="px-4 py-2 text-sm font-bold text-indigo-600">
+              Page {page} of {Math.ceil(totalCount / limit)}
+            </span>
+            <button
+              disabled={page >= Math.ceil(totalCount / limit)}
+              onClick={() => setPage(page + 1)}
+              className="px-4 py-2 text-sm font-semibold text-gray-500 disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Payment Detail Panel */}
       <PaymentDetailPanel
@@ -839,29 +888,56 @@ export const PaymentsPage = () => {
                   <button
                     onClick={() => handleDownloadReceipt()}
                     disabled={isGeneratingPDF}
-                    className="flex-1 flex items-center justify-center gap-2 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20 disabled:opacity-60"
+                    className="flex-1 flex items-center justify-center gap-2 py-4 bg-emerald-600 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20 disabled:opacity-60"
                   >
-                    {isGeneratingPDF ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
-                    {isGeneratingPDF ? 'Generating PDF...' : 'Download PDF'}
+                    {isGeneratingPDF ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : selectedPayment.receiptUrl ? (
+                      <FileText className="w-5 h-5" />
+                    ) : (
+                      <Download className="w-5 h-5" />
+                    )}
+                    {isGeneratingPDF ? 'Working...' : selectedPayment.receiptUrl ? 'View Receipt' : 'Generate & Store PDF'}
                   </button>
-                  <button
-                    onClick={() => handleShareReceipt()}
-                    className="flex items-center justify-center gap-2 px-4 py-3 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl font-bold hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-all"
-                  >
-                    <Share2 className="w-5 h-5" />
-                    Share
-                  </button>
-                  {user?.role !== 'tenant' && (
-                    <button
-                      onClick={() => {
-                        const tenant = tenants.find(t => t.id === selectedPayment.tenantId);
-                        if (tenant) sendWhatsAppReceipt(selectedPayment, tenant);
-                      }}
-                      className="flex items-center justify-center gap-2 px-4 py-3 bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400 rounded-xl font-bold hover:bg-green-100 dark:hover:bg-green-500/20 transition-all"
-                    >
-                      <Send className="w-5 h-5" />
-                      WhatsApp
-                    </button>
+                  {selectedPayment.receiptUrl && (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          const tenant = tenants.find(t => t.id === selectedPayment.tenantId);
+                          const text = `Hello ${tenant?.name || ''}, your payment receipt for ${format(parseISO(`${selectedPayment.month}-01`), 'MMMM yyyy')} is ready. View it here: ${selectedPayment.receiptUrl}`;
+                          window.open(`https://wa.me/${tenant?.phone ? '91'+tenant.phone : ''}?text=${encodeURIComponent(text)}`, '_blank');
+                        }}
+                        className="p-4 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-2xl font-bold hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition-all shadow-sm"
+                        title="Share on WhatsApp"
+                      >
+                        <MessageCircle className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (navigator.share) {
+                            navigator.share({
+                              title: 'ElitePG Payment Receipt',
+                              text: `Payment receipt for ${selectedPayment.month}`,
+                              url: selectedPayment.receiptUrl
+                            }).catch(() => {});
+                          } else {
+                            navigator.clipboard.writeText(selectedPayment.receiptUrl);
+                            toast.success('Link copied to clipboard!');
+                          }
+                        }}
+                        className="p-4 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-2xl font-bold hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-all shadow-sm"
+                        title="Share / Copy Link"
+                      >
+                        <Share2 className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() => window.open(selectedPayment.receiptUrl, '_blank')}
+                        className="p-4 bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-gray-400 rounded-2xl font-bold hover:bg-gray-100 dark:hover:bg-white/10 transition-all shadow-sm"
+                        title="Download/Open"
+                      >
+                        <Download className="w-5 h-5" />
+                      </button>
+                    </div>
                   )}
                 </div>
 

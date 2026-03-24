@@ -50,6 +50,7 @@ export const RoomsPage = () => {
     description: '',
     amenities: []
   });
+  const [customAmenity, setCustomAmenity] = useState('');
 
   const filterType = searchTerm ? 'all' : 'all'; // placeholder so we can add type filter later
 
@@ -64,6 +65,7 @@ export const RoomsPage = () => {
     {
       header: 'Room',
       accessorKey: 'room_number',
+      className: 'w-[35%] min-w-[160px]',
       cell: (r) => (
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500 dark:text-indigo-400 flex items-center justify-center shrink-0">
@@ -79,13 +81,17 @@ export const RoomsPage = () => {
     {
       header: 'Occupancy',
       accessorKey: 'occupied_beds',
+      className: 'w-[28%] min-w-[150px]',
       cell: (r) => {
-        const isFull = r.occupied_beds >= r.total_beds;
-        const pct = r.total_beds > 0 ? Math.round((r.occupied_beds / r.total_beds) * 100) : 0;
+        // Compute live from tenants (DB occupied_beds column is not auto-synced)
+        const liveOccupied = tenants.filter(t => t.roomId === r.id && t.status === 'active').length;
+        const totalBeds = r.total_beds ?? 0;
+        const isFull = liveOccupied >= totalBeds;
+        const pct = totalBeds > 0 ? Math.round((liveOccupied / totalBeds) * 100) : 0;
         return (
           <div className="min-w-[130px]">
             <div className="flex justify-between text-xs mb-1">
-              <span className="font-semibold text-gray-900 dark:text-gray-200">{r.occupied_beds} / {r.total_beds} beds</span>
+              <span className="font-semibold text-gray-900 dark:text-gray-200">{liveOccupied} / {totalBeds} beds</span>
               <span className={cn('font-bold', isFull ? 'text-rose-500' : 'text-emerald-500')}>{isFull ? 'Full' : 'Available'}</span>
             </div>
             <div className="h-1.5 w-full bg-gray-100 dark:bg-white/5 rounded-full overflow-hidden">
@@ -98,6 +104,7 @@ export const RoomsPage = () => {
     {
       header: 'Type',
       accessorKey: 'type',
+      className: 'w-[15%]',
       cell: (r) => (
         <span className={cn(
           'px-2.5 py-1 rounded-full text-xs font-bold uppercase',
@@ -110,6 +117,7 @@ export const RoomsPage = () => {
     {
       header: 'Price',
       accessorKey: 'price',
+      className: 'w-[17%]',
       cell: (r) => (
         <span className="text-sm font-bold text-gray-900 dark:text-white">₹{Number(r.price).toLocaleString()}<span className="text-xs text-gray-500 font-normal">/mo</span></span>
       )
@@ -122,7 +130,7 @@ export const RoomsPage = () => {
         <div className="flex justify-end">
           <DropdownMenu>
             {['admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '') && (
-              <DropdownItem icon={<Edit2 className="w-4 h-4" />} label="Edit Room" onClick={() => { setEditingRoom(r); setFormData(r); setIsAddModalOpen(true); }} />
+              <DropdownItem icon={<Edit2 className="w-4 h-4" />} label="Edit Room" onClick={() => handleEditClick(r)} />
             )}
             {['admin', 'manager'].includes(user?.role || '') && (
               <DropdownItem icon={<Trash2 className="w-4 h-4" />} label="Delete Room" onClick={() => setRoomToDelete(r)} danger />
@@ -163,19 +171,19 @@ export const RoomsPage = () => {
   const handleCloseModal = () => {
     setIsAddModalOpen(false);
     setEditingRoom(null);
-    setFormData({ 
-      roomNumber: '', 
-      floor: 1, 
-      totalBeds: 2, 
-      occupiedBeds: 0, 
-      type: 'Non-AC', 
+    setFormData({
+      roomNumber: '',
+      floor: 1,
+      totalBeds: 2,
+      occupiedBeds: 0,
+      type: 'Non-AC',
       price: 6000,
       description: '',
       amenities: []
     });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const isDuplicate = rooms.some(r => r.roomNumber.toLowerCase() === formData.roomNumber.toLowerCase() && r.id !== editingRoom?.id);
@@ -189,9 +197,9 @@ export const RoomsPage = () => {
         toast.error(`Cannot reduce beds to ${formData.totalBeds}. ${editingRoom.occupiedBeds} are currently occupied.`);
         return;
       }
-      updateRoom(editingRoom.id, formData);
+      await updateRoom(editingRoom.id, formData);
     } else {
-      addRoom(formData);
+      await addRoom(formData);
     }
     handleCloseModal();
     refetch();
@@ -239,7 +247,7 @@ export const RoomsPage = () => {
             className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-[#111111] border border-gray-100 dark:border-white/5 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
           />
         </div>
-        
+
         {isNearLimit && !isAtLimit && (
           <div className="px-4 py-2 bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-xl text-xs font-bold border border-amber-100 dark:border-amber-500/20">
             {currentPlan?.maxRooms! - currentRoomsCount} rooms left on your plan
@@ -297,7 +305,7 @@ export const RoomsPage = () => {
 
       {/* Mobile View */}
       <div className="sm:hidden -mx-4 -mt-2">
-        <RoomMobileList 
+        <RoomMobileList
           rooms={roomsData}
           onAdd={() => {
             if (isAtLimit) {
@@ -421,15 +429,95 @@ export const RoomsPage = () => {
                       rows={2}
                     />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Amenities (comma separated)</label>
-                    <input
-                      type="text"
-                      value={formData.amenities?.join(', ')}
-                      onChange={(e) => setFormData({ ...formData, amenities: e.target.value.split(',').map(s => s.trim()).filter(s => s !== '') })}
-                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white text-sm"
-                      placeholder="e.g. Wi-Fi, Attached Bath, Study Table"
-                    />
+                  <div className="space-y-3">
+                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Amenities</label>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { label: 'Wi-Fi', emoji: '📶' },
+                        { label: 'Attached Bath', emoji: '🚿' },
+                        { label: 'TV', emoji: '📺' },
+                        { label: 'Study Table', emoji: '📚' },
+                        { label: 'Parking', emoji: '🅿️' },
+                        { label: 'Geyser', emoji: '🔥' },
+                        { label: 'Laundry', emoji: '🧺' },
+                        { label: 'Bed', emoji: '🛏️' },
+                      ].map(({ label, emoji }) => {
+                        const isSelected = formData.amenities?.includes(label);
+                        return (
+                          <button
+                            key={label}
+                            type="button"
+                            onClick={() => {
+                              const current = formData.amenities || [];
+                              setFormData({
+                                ...formData,
+                                amenities: isSelected
+                                  ? current.filter(a => a !== label)
+                                  : [...current, label]
+                              });
+                            }}
+                            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold transition-all min-h-[44px] ${isSelected
+                              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25 scale-105'
+                              : 'bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10'
+                              }`}
+                          >
+                            <span>{emoji}</span>
+                            {label}
+                          </button>
+                        );
+                      })}
+                      {/* Custom chips added by user */}
+                      {(formData.amenities || []).filter(a => ![
+                        'Wi-Fi', 'AC', 'Non-AC', 'Attached Bath', 'TV', 'Study Table', 'Parking', 'Geyser', 'Laundry', 'Bed'
+                      ].includes(a)).map(custom => (
+                        <button
+                          key={custom}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, amenities: formData.amenities?.filter(a => a !== custom) })}
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold bg-violet-600 text-white shadow-lg shadow-violet-600/25 min-h-[44px] transition-all hover:bg-violet-700"
+                        >
+                          ✨ {custom} <span className="ml-1 opacity-75 text-xs">✕</span>
+                        </button>
+                      ))}
+                    </div>
+                    {/* Custom amenity input */}
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={customAmenity}
+                        onChange={(e) => setCustomAmenity(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const val = customAmenity.trim();
+                            if (val && !(formData.amenities || []).includes(val)) {
+                              setFormData({ ...formData, amenities: [...(formData.amenities || []), val] });
+                            }
+                            setCustomAmenity('');
+                          }
+                        }}
+                        placeholder="+ Add custom amenity & press Enter"
+                        className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const val = customAmenity.trim();
+                          if (val && !(formData.amenities || []).includes(val)) {
+                            setFormData({ ...formData, amenities: [...(formData.amenities || []), val] });
+                          }
+                          setCustomAmenity('');
+                        }}
+                        className="px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shrink-0"
+                      >
+                        Add
+                      </button>
+                    </div>
+                    {formData.amenities && formData.amenities.length > 0 && (
+                      <p className="text-xs text-gray-400 dark:text-gray-500">
+                        {formData.amenities.length} amenit{formData.amenities.length === 1 ? 'y' : 'ies'} selected · tap to deselect
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="flex justify-end gap-3 pt-4">

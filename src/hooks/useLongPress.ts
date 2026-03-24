@@ -8,6 +8,7 @@ export const useLongPress = (
   const [longPressTriggered, setLongPressTriggered] = useState(false);
   const timeout = useRef<NodeJS.Timeout | null>(null);
   const target = useRef<EventTarget | null>(null);
+  const hasMoved = useRef(false);
 
   const start = useCallback(
     (event: React.TouchEvent | React.MouseEvent) => {
@@ -15,6 +16,7 @@ export const useLongPress = (
         event.target.addEventListener('contextmenu', preventDefault, { capture: true });
       }
       setLongPressTriggered(false);
+      hasMoved.current = false;
       target.current = event.target;
       timeout.current = setTimeout(() => {
         onLongPress(event);
@@ -27,7 +29,9 @@ export const useLongPress = (
   const clear = useCallback(
     (event: React.TouchEvent | React.MouseEvent, shouldTriggerClick = true) => {
       timeout.current && clearTimeout(timeout.current);
-      shouldTriggerClick && !longPressTriggered && onClick(event);
+      if (shouldTriggerClick && !longPressTriggered && !hasMoved.current) {
+        onClick(event);
+      }
       setLongPressTriggered(false);
       if (shouldPreventDefault && target.current) {
         target.current.removeEventListener('contextmenu', preventDefault, { capture: true });
@@ -43,7 +47,10 @@ export const useLongPress = (
     onMouseUp: (e: React.MouseEvent) => clear(e),
     onMouseLeave: (e: React.MouseEvent) => clear(e, false),
     onTouchEnd: (e: React.TouchEvent) => clear(e),
-    onTouchMove: (e: React.TouchEvent) => clear(e, false) // Cancel on move to avoid triggering on scroll
+    onTouchMove: (e: React.TouchEvent) => {
+      hasMoved.current = true;
+      clear(e, false);
+    }
   };
 };
 

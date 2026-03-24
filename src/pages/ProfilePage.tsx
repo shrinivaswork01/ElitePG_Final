@@ -39,7 +39,7 @@ export const ProfilePage = () => {
   const currentKYC = isTenant ? tenantKYC : employeeKYC;
   const currentData = isTenant ? tenantData : employeeData;
 
-  const [kycFile, setKycFile] = useState<{ type: string, url: string } | null>(null);
+  const [kycFile, setKycFile] = useState<{ type: string, file?: File, url?: string } | null>(null);
   const [kycType, setKycType] = useState('Aadhar Card');
   const [isKYCModalOpen, setIsKYCModalOpen] = useState(false);
 
@@ -78,15 +78,12 @@ export const ProfilePage = () => {
         e.target.value = '';
         return;
       }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setKycFile({
-          type: kycType,
-          url: reader.result as string
-        });
-        toast.success(`Selected ${file.name} `);
-      };
-      reader.readAsDataURL(file);
+      setKycFile({
+        type: kycType,
+        file,
+        url: URL.createObjectURL(file)
+      });
+      toast.success(`Selected ${file.name}`);
       // Clear the input value so the same file can be selected again if needed
       e.target.value = '';
     }
@@ -95,9 +92,9 @@ export const ProfilePage = () => {
   const handleKYCSubmit = () => {
     if (currentData && kycFile) {
       if (isTenant) {
-        updateTenant(currentData.id, {}, { type: kycType, url: kycFile.url });
+        updateTenant(currentData.id, {}, { type: kycType, file: kycFile.file, url: kycFile.url });
       } else {
-        updateEmployee(currentData.id, {}, { type: kycType, url: kycFile.url });
+        updateEmployee(currentData.id, {}, { type: kycType, file: kycFile.file, url: kycFile.url });
       }
       toast.success('KYC document submitted for verification!');
       setKycFile(null);
@@ -490,7 +487,7 @@ export const ProfilePage = () => {
                   <div className="mt-2 p-4 bg-gray-50 dark:bg-white/[0.02] rounded-2xl border border-gray-100 dark:border-white/5">
                     <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-3">Verified Document Preview</p>
                     <div className="relative aspect-video rounded-xl overflow-hidden bg-white dark:bg-black/20 group/preview">
-                      {currentKYC.documentUrl.startsWith('data:application/pdf') ? (
+                      {currentKYC.documentUrl.startsWith('data:application/pdf') || currentKYC.documentUrl.endsWith('.pdf') ? (
                         <div className="w-full h-full flex flex-col items-center justify-center text-gray-400">
                           <FileText className="w-12 h-12 mb-2" />
                           <span className="text-[10px] font-bold uppercase tracking-widest">PDF - Click View to See Full Document</span>
@@ -625,7 +622,7 @@ export const ProfilePage = () => {
                 </button>
               </div>
               <div className="flex-1 overflow-auto p-6 bg-gray-50 dark:bg-white/5 flex items-center justify-center min-h-[400px]">
-                {currentKYC.documentUrl.startsWith('data:application/pdf') ? (
+                {currentKYC.documentUrl.startsWith('data:application/pdf') || currentKYC.documentUrl.endsWith('.pdf') ? (
                   <object
                     data={currentKYC.documentUrl}
                     type="application/pdf"
