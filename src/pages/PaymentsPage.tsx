@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { Payment } from '../types';
 import { useAuth } from '../context/AuthContext';
@@ -36,6 +36,8 @@ import { cn } from '../utils';
 import { loadRazorpayScript } from '../utils/razorpay';
 import { generateTenantReceiptPDF } from '../utils/generateReceipt';
 import { uploadToSupabase } from '../utils/storage';
+import { fetchElectricityBill, calculateElectricityShares } from '../utils/electricityUtils';
+import { ElectricityBill, ElectricityShare } from '../types';
 import toast from 'react-hot-toast';
 
 export const PaymentsPage = () => {
@@ -51,6 +53,9 @@ export const PaymentsPage = () => {
   const [filterStatus, setFilterStatus] = useState<'all' | 'paid' | 'pending'>('all');
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [detailPayment, setDetailPayment] = useState<any | null>(null);
+  const [electricityShare, setElectricityShare] = useState<number>(0);
+  const [electricityBillId, setElectricityBillId] = useState<string | null>(null);
+  const [electricityBillData, setElectricityBillData] = useState<ElectricityBill | null>(null);
 
   // Server-side paginated hook — fetches ONLY 10 records at a time
   const { data: paginatedPayments, totalCount, isLoading: isPaymentsLoading, page, setPage, limit, refetch: refetchPayments } = usePaginatedData<any>({
@@ -94,6 +99,7 @@ export const PaymentsPage = () => {
       cell: (p) => (
         <div>
           <p className="text-sm font-bold text-gray-900 dark:text-white">₹{Number(p.total_amount).toLocaleString()}</p>
+          {Number(p.electricity_amount || 0) > 0 && <p className="text-[10px] text-amber-500 flex items-center gap-0.5">⚡ includes electricity</p>}
           {p.late_fee > 0 && <p className="text-[10px] text-rose-500">+₹{p.late_fee} late fee</p>}
         </div>
       )
@@ -325,6 +331,53 @@ export const PaymentsPage = () => {
     method: 'Offline'
   });
 
+  // Auto-fetch electricity when tenant + month are both set
+  const fetchAndSetElectricity = useCallback(async (tenantId: string, month: string) => {
+    if (!tenantId || !month) {
+      setElectricityShare(0);
+      setElectricityBillId(null);
+      setElectricityBillData(null);
+      return 0;
+    }
+    const tenant = tenants.find(t => t.id === tenantId);
+    if (!tenant) return 0;
+    
+    // Find room to get meterGroupId
+    const room = rooms.find(r => r.id === tenant.roomId || r.id === (tenant as any).room_id);
+    if (!room?.meterGroupId) {
+      setElectricityShare(0);
+      setElectricityBillId(null);
+      setElectricityBillData(null);
+      return 0;
+    }
+
+    const bill = await fetchElectricityBill(room.meterGroupId, month);
+    if (!bill) {
+      setElectricityShare(0);
+      setElectricityBillId(null);
+      setElectricityBillData(null);
+      return 0;
+    }
+    setElectricityBillData(bill);
+    setElectricityBillId(bill.id);
+
+    // Get ALL active tenants in ALL rooms belonging to this Flat
+    const flatTenants = tenants.filter(t => {
+      const r = rooms.find(rm => rm.id === t.roomId || rm.id === (t as any).room_id);
+      return r?.meterGroupId === room.meterGroupId && t.status === 'active';
+    }).map(t => ({
+      id: t.id, 
+      name: t.name, 
+      is_ac_user: (t as any).isAcUser || (t as any).is_ac_user || false
+    }));
+
+    const shares = calculateElectricityShares(bill, flatTenants);
+    const myShare = shares.find(s => s.tenantId === tenantId);
+    const amount = myShare?.total || 0;
+    setElectricityShare(amount);
+    return amount;
+  }, [tenants, rooms]);
+
   const handleAddPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPayment.tenantId) {
@@ -334,7 +387,12 @@ export const PaymentsPage = () => {
         return;
       }
 
-      await addPayment(newPayment as Omit<Payment, 'id'>);
+      await addPayment({
+        ...newPayment,
+        electricityAmount: electricityShare,
+        electricityBillId: electricityBillId || undefined,
+        totalAmount: (newPayment.amount || 0) + electricityShare + (newPayment.lateFee || 0)
+      } as Omit<Payment, 'id'>);
       setIsAddModalOpen(false);
       setNewPayment({
         tenantId: '',
@@ -346,6 +404,9 @@ export const PaymentsPage = () => {
         status: 'paid',
         method: 'Offline'
       });
+      setElectricityShare(0);
+      setElectricityBillId(null);
+      setElectricityBillData(null);
       refetchPayments();
     }
   };
@@ -991,6 +1052,7 @@ export const PaymentsPage = () => {
                           lateFee,
                           totalAmount: (tenant?.rentAmount || 0) + lateFee
                         });
+                        fetchAndSetElectricity(e.target.value, newPayment.month || '');
                       }}
                       className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                     >
@@ -1015,6 +1077,7 @@ export const PaymentsPage = () => {
                             lateFee,
                             totalAmount: (newPayment.amount || 0) + lateFee
                           });
+                          fetchAndSetElectricity(newPayment.tenantId || '', e.target.value);
                         }}
                         className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                       />
@@ -1070,9 +1133,42 @@ export const PaymentsPage = () => {
                       ))}
                     </div>
                   </div>
-                  <div className="p-4 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-between">
-                    <span className="text-sm font-bold text-indigo-900 dark:text-indigo-100">Total Amount</span>
-                    <span className="text-xl font-bold text-indigo-600 dark:text-indigo-400">₹{newPayment.totalAmount?.toLocaleString()}</span>
+
+                  {/* Electricity Auto-Fill */}
+                  {electricityShare > 0 && (
+                    <div className="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-500/10 rounded-xl border border-amber-100 dark:border-amber-500/20">
+                      <div className="flex items-center gap-2">
+                        <span className="text-amber-500 text-sm">⚡</span>
+                        <span className="text-sm font-semibold text-amber-700 dark:text-amber-300">Electricity</span>
+                      </div>
+                      <span className="text-sm font-bold text-amber-600 dark:text-amber-400">₹{electricityShare.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {newPayment.tenantId && electricityShare === 0 && electricityBillData === null && (
+                    <p className="text-[10px] text-gray-400 italic">No electricity bill found for this month.</p>
+                  )}
+
+                  <div className="p-4 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-gray-500">Rent</span>
+                      <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">₹{(newPayment.amount || 0).toLocaleString()}</span>
+                    </div>
+                    {electricityShare > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-amber-500">⚡ Electricity</span>
+                        <span className="text-xs font-semibold text-amber-600">₹{electricityShare.toLocaleString()}</span>
+                      </div>
+                    )}
+                    {(newPayment.lateFee || 0) > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-rose-500">Late Fee</span>
+                        <span className="text-xs font-semibold text-rose-600">₹{(newPayment.lateFee || 0).toLocaleString()}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between pt-2 border-t border-indigo-200 dark:border-indigo-500/20">
+                      <span className="text-sm font-bold text-indigo-900 dark:text-indigo-100">Total Amount</span>
+                      <span className="text-xl font-bold text-indigo-600 dark:text-indigo-400">₹{((newPayment.amount || 0) + electricityShare + (newPayment.lateFee || 0)).toLocaleString()}</span>
+                    </div>
                   </div>
                 </div>
                 <div className="flex justify-end gap-3 pt-4">

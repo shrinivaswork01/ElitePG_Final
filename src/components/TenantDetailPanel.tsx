@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Home, Phone, Mail, Calendar, CreditCard, Shield, FileCheck, MessageCircle, Edit2, Trash2 } from 'lucide-react';
+import { X, Home, Phone, Mail, Calendar, CreditCard, Shield, FileCheck, MessageCircle, Edit2, Trash2, Zap } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { cn } from '../utils';
 
@@ -14,6 +14,7 @@ interface TenantDetailPanelProps {
   canEdit?: boolean;
   canDelete?: boolean;
   onAuthorize?: (userId: string) => void;
+  electricityShare?: { baseShare: number; acShare: number; total: number; month: string; billUrl?: string } | null;
 }
 
 const Field = ({ label, value, className }: { label: string; value: React.ReactNode; className?: string }) => (
@@ -37,7 +38,7 @@ const statusColor: Record<string, string> = {
 };
 
 export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
-  tenant, onClose, onEdit, onDelete, onViewAgreement, onViewPayments, canEdit, canDelete, onAuthorize
+  tenant, onClose, onEdit, onDelete, onViewAgreement, onViewPayments, canEdit, canDelete, onAuthorize, electricityShare
 }) => {
   return (
     <AnimatePresence>
@@ -156,6 +157,39 @@ export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
                   <FileCheck className="w-5 h-5 shrink-0" />
                   <span className="text-sm font-bold">View Rent Agreement</span>
                 </button>
+              )}
+
+              {/* Electricity Share */}
+              {electricityShare && electricityShare.total > 0 && (
+                <div className="bg-amber-50 dark:bg-amber-500/10 rounded-2xl p-4 space-y-3 border border-amber-100 dark:border-amber-500/20">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-amber-500" />
+                      <span className="text-xs font-black uppercase tracking-widest text-amber-600 dark:text-amber-400">Electricity ({electricityShare.month})</span>
+                    </div>
+                    <span className="text-sm font-bold text-amber-700 dark:text-amber-300">₹{electricityShare.total.toLocaleString()}</span>
+                  </div>
+                  <div className="space-y-1 pl-6">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-500">Base Share</span>
+                      <span className="font-semibold text-gray-700 dark:text-gray-300">₹{electricityShare.baseShare.toLocaleString()}</span>
+                    </div>
+                    {electricityShare.acShare > 0 && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-500">AC Share</span>
+                        <span className="font-semibold text-gray-700 dark:text-gray-300">₹{electricityShare.acShare.toLocaleString()}</span>
+                      </div>
+                    )}
+                  </div>
+                  {electricityShare.billUrl && (
+                    <button
+                      onClick={() => window.open(electricityShare.billUrl, '_blank')}
+                      className="w-full flex items-center justify-center gap-2 py-2 bg-amber-100 dark:bg-amber-500/20 rounded-xl text-amber-700 dark:text-amber-300 text-xs font-bold hover:bg-amber-200 dark:hover:bg-amber-500/30 transition-colors"
+                    >
+                      View Bill
+                    </button>
+                  )}
+                </div>
               )}
 
               {/* Payment history button */}

@@ -102,6 +102,15 @@ export interface Tenant {
   rentAgreementUrl?: string;
   inviteCode?: string;
   branchId: string;
+  isAcUser?: boolean; // Whether tenant uses AC (for electricity split)
+}
+
+export interface MeterGroup {
+  id: string;
+  name: string;
+  floor: number;
+  branchId: string;
+  createdAt: string;
 }
 
 export interface Room {
@@ -115,6 +124,8 @@ export interface Room {
   branchId: string;
   description?: string;
   amenities?: string[];
+  meterGroupId?: string; // Links room to a MeterGroup (Flat)
+  meterGroup?: MeterGroup; // Embedded optional joined object
 }
 
 export interface Payment {
@@ -131,6 +142,29 @@ export interface Payment {
   receiptUrl?: string;
   branchId: string;
   createdBy?: string; // User ID
+  electricityAmount?: number; // Per-tenant electricity share
+  electricityBillId?: string; // FK to electricity_bills
+}
+
+export interface ElectricityBill {
+  id: string;
+  meterGroupId: string; // The primary link now
+  branchId: string;
+  month: string; // e.g., '2026-03'
+  totalAmount: number;
+  acExtraAmount: number;
+  billUrl?: string;
+  createdAt: string;
+  roomId?: string; // Kept for legacy compatibility if needed
+}
+
+export interface ElectricityShare {
+  tenantId: string;
+  tenantName: string;
+  baseShare: number;
+  acShare: number;
+  total: number;
+  isAcUser: boolean;
 }
 
 export interface SalaryPayment {

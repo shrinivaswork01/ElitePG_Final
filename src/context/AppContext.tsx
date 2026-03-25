@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useMemo, useCallback } from 'react';
-import { Tenant, Room, Payment, Complaint, Employee, KYCData, Announcement, SalaryPayment, Task, PGConfig, PGBranch, RolePermissions, SubscriptionPlan, AppFeature, KYCStatus, UserInvite } from '../types';
+import { Tenant, Room, Payment, Complaint, Employee, KYCData, Announcement, SalaryPayment, Task, PGConfig, PGBranch, RolePermissions, SubscriptionPlan, AppFeature, KYCStatus, UserInvite, MeterGroup } from '../types';
 import { uploadToSupabase, deleteFromSupabase } from '../utils/storage';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 interface AppContextType {
   tenants: Tenant[];
   rooms: Room[];
+  meterGroups: MeterGroup[];
   payments: Payment[];
   complaints: Complaint[];
   employees: Employee[];
@@ -29,6 +30,10 @@ interface AppContextType {
   addRoom: (room: Omit<Room, 'id' | 'branchId'>) => Promise<void>;
   updateRoom: (id: string, updates: Partial<Room>) => Promise<void>;
   deleteRoom: (id: string) => Promise<void>;
+
+  addMeterGroup: (meterGroup: Omit<MeterGroup, 'id' | 'branchId' | 'createdAt'>) => Promise<void>;
+  updateMeterGroup: (id: string, updates: Partial<MeterGroup>) => Promise<void>;
+  deleteMeterGroup: (id: string) => Promise<void>;
 
   addPayment: (payment: Omit<Payment, 'id' | 'branchId'>) => Promise<void>;
   updatePayment: (id: string, updates: Partial<Payment>) => Promise<void>;
@@ -94,16 +99,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const [data, setData] = useState<any>(() => {
     const cached = localStorage.getItem('elite_pg_cached_data');
-    if (cached) {
-      try {
-        return JSON.parse(cached);
-      } catch (e) {
-        console.error('Failed to parse cached data', e);
-      }
-    }
-    return {
+    const defaults = {
       tenants: [],
       rooms: [],
+      meterGroups: [],
       payments: [],
       complaints: [],
       employees: [],
@@ -117,6 +116,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       userInvites: [],
       superSignatureUrl: null
     };
+
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        // Merge with defaults to ensure all keys like meterGroups exist
+        return { ...defaults, ...parsed };
+      } catch (e) {
+        console.error('Failed to parse cached data', e);
+      }
+    }
+    return defaults;
   });
 
   const userId = user?.id;
@@ -141,6 +151,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         { data: plans },
         { data: tenants },
         { data: rooms },
+        { data: meterGroups },
         { data: payments },
         { data: complaints },
         { data: employees },
@@ -155,7 +166,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         supabase.from('pg_branches').select('*').match(isSuper ? {} : { id: branchId }),
         supabase.from('subscription_plans').select('*'),
         supabase.from('tenants').select('*, users(is_authorized)').match(branchFilter),
-        supabase.from('rooms').select('*').match(branchFilter),
+        supabase.from('rooms').select('*, meter_groups(id, name, floor, branch_id, created_at)').match(branchFilter),
+        supabase.from('meter_groups').select('*').match(branchFilter),
         supabase.from('payments').select('*').match(branchFilter),
         supabase.from('complaints').select('*').match(branchFilter),
         supabase.from('employees').select('*').match(branchFilter),
@@ -186,7 +198,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           isAuthorized: t.users?.is_authorized ?? true // default to true if user account doesn't exist yet (standard for manually added)
         })),
         rooms: (rooms || []).map(r => ({
-          id: r.id, roomNumber: r.room_number, floor: r.floor, totalBeds: r.total_beds, occupiedBeds: r.occupied_beds, type: r.type, price: r.price, branchId: r.branch_id
+          id: r.id, roomNumber: r.room_number, floor: r.floor, totalBeds: r.total_beds, occupiedBeds: r.occupied_beds, type: r.type, price: r.price, branchId: r.branch_id,
+          meterGroupId: r.meter_group_id,
+          meterGroup: r.meter_groups ? {
+            id: r.meter_groups.id, name: r.meter_groups.name, floor: r.meter_groups.floor, branchId: r.meter_groups.branch_id, createdAt: r.meter_groups.created_at
+          } : undefined
+        })),
+        meterGroups: (meterGroups || []).map(m => ({
+          id: m.id, name: m.name, floor: m.floor, branchId: m.branch_id, createdAt: m.created_at
         })),
         payments: (payments || []).map(p => ({
           id: p.id, tenantId: p.tenant_id, amount: p.amount, lateFee: p.late_fee, totalAmount: p.total_amount, paymentDate: p.payment_date, month: p.month, status: p.status, method: p.method, transactionId: p.transaction_id, receiptUrl: p.receipt_url, branchId: p.branch_id
@@ -267,7 +286,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // Filtered data based on branchId
   const filteredData = useMemo(() => {
     if (!user) return {
-      tenants: [], rooms: [], payments: [], complaints: [], employees: [], kycs: [], announcements: [], salaryPayments: [], tasks: [], pgConfig: null, subscriptionPlans: [], branches: [], userInvites: []
+      tenants: [], rooms: [], meterGroups: [], payments: [], complaints: [], employees: [], kycs: [], announcements: [], salaryPayments: [], tasks: [], pgConfig: null, subscriptionPlans: [], branches: [], userInvites: []
     };
 
     if (user.role === 'super') return {
@@ -284,6 +303,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return {
       tenants: data.tenants.filter((t: Tenant) => t.branchId === branchId),
       rooms: data.rooms.filter((r: Room) => r.branchId === branchId),
+      meterGroups: data.meterGroups.filter((m: MeterGroup) => m.branchId === branchId),
       payments: data.payments.filter((p: Payment) => p.branchId === branchId),
       complaints: data.complaints.filter((c: Complaint) => c.branchId === branchId),
       employees: data.employees.filter((e: Employee) => e.branchId === branchId),
@@ -511,7 +531,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     applyOptimistic(prev => ({ ...prev, rooms: [...prev.rooms, { ...room, id: `temp-${Date.now()}`, branchId: targetBranch }] }));
     await refetch(supabase.from('rooms').insert({
       room_number: room.roomNumber, floor: room.floor, total_beds: room.totalBeds, occupied_beds: room.occupiedBeds,
-      type: room.type, price: room.price, branch_id: targetBranch
+      type: room.type, price: room.price, branch_id: targetBranch, meter_group_id: room.meterGroupId || null
     }), 'Room added successfully');
   };
 
@@ -524,6 +544,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.occupiedBeds !== undefined) dbUpdates.occupied_beds = updates.occupiedBeds;
     if (updates.type !== undefined) dbUpdates.type = updates.type;
     if (updates.price !== undefined) dbUpdates.price = updates.price;
+    if (updates.meterGroupId !== undefined) dbUpdates.meter_group_id = updates.meterGroupId;
     await refetch(supabase.from('rooms').update(dbUpdates).eq('id', id), 'Room updated successfully');
   };
 
@@ -542,6 +563,38 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await refetch(supabase.from('rooms').delete().eq('id', id), 'Room deleted'); 
   };
 
+  const addMeterGroup = async (meterGroup: Omit<MeterGroup, 'id' | 'branchId' | 'createdAt'> & { branchId?: string }) => {
+    const targetBranch = meterGroup.branchId || filteredData.currentBranch?.id || user?.branchId;
+    if (!targetBranch) { toast.error("No active branch selected."); return; }
+    applyOptimistic(prev => ({ ...prev, meterGroups: [...prev.meterGroups, { ...meterGroup, id: `temp-${Date.now()}`, branchId: targetBranch, createdAt: new Date().toISOString() }] }));
+    await refetch(supabase.from('meter_groups').insert({
+      name: meterGroup.name, floor: meterGroup.floor, branch_id: targetBranch
+    }), 'Flat / Meter Group created');
+  };
+
+  const updateMeterGroup = async (id: string, updates: Partial<MeterGroup>) => {
+    applyOptimistic(prev => ({ ...prev, meterGroups: prev.meterGroups.map((m: any) => m.id === id ? { ...m, ...updates } : m) }));
+    const dbUpdates: any = {};
+    if (updates.name !== undefined) dbUpdates.name = updates.name;
+    if (updates.floor !== undefined) dbUpdates.floor = updates.floor;
+    await refetch(supabase.from('meter_groups').update(dbUpdates).eq('id', id), 'Flat / Meter Group updated');
+  };
+
+  const deleteMeterGroup = async (id: string) => { 
+    // Unassign rooms from this meter group first
+    const roomsInGroup = data.rooms.filter((r: any) => r.meterGroupId === id);
+    if (roomsInGroup.length > 0) {
+      applyOptimistic(prev => ({
+        ...prev,
+        rooms: prev.rooms.map((r: any) => r.meterGroupId === id ? { ...r, meterGroupId: null } : r)
+      }));
+      await supabase.from('rooms').update({ meter_group_id: null }).eq('meter_group_id', id);
+    }
+
+    applyOptimistic(prev => ({ ...prev, meterGroups: prev.meterGroups.filter((m: any) => m.id !== id) }));
+    await refetch(supabase.from('meter_groups').delete().eq('id', id), 'Flat / Meter Group deleted'); 
+  };
+
   const addPayment = async (payment: Omit<Payment, 'id' | 'branchId'> & { branchId?: string }) => {
     const targetBranch = payment.branchId || filteredData.currentBranch?.id || user?.branchId;
     if (!targetBranch) { toast.error("No active branch selected."); return; }
@@ -550,6 +603,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       tenant_id: payment.tenantId, amount: payment.amount, late_fee: payment.lateFee, total_amount: payment.totalAmount,
       payment_date: payment.paymentDate, month: payment.month, status: payment.status, method: payment.method,
       transaction_id: payment.transactionId || null, receipt_url: payment.receiptUrl || null, branch_id: targetBranch,
+      electricity_amount: payment.electricityAmount || 0,
+      electricity_bill_id: payment.electricityBillId || null
     }), 'Payment recorded');
   };
 
@@ -566,6 +621,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.method !== undefined) dbUpdates.method = updates.method;
     if (updates.transactionId !== undefined) dbUpdates.transaction_id = updates.transactionId;
     if (updates.receiptUrl !== undefined) dbUpdates.receipt_url = updates.receiptUrl;
+    if (updates.electricityAmount !== undefined) dbUpdates.electricity_amount = updates.electricityAmount;
+    if (updates.electricityBillId !== undefined) dbUpdates.electricity_bill_id = updates.electricityBillId;
     await refetch(supabase.from('payments').update(dbUpdates).eq('id', id), 'Payment updated');
   };
 
@@ -1153,6 +1210,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       ...filteredData,
       addTenant, updateTenant, deleteTenant,
       addRoom, updateRoom, deleteRoom,
+      addMeterGroup, updateMeterGroup, deleteMeterGroup,
       addPayment, updatePayment, deletePayment,
       addComplaint, updateComplaint, deleteComplaint,
       addEmployee, updateEmployee, deleteEmployee,

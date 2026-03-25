@@ -26,6 +26,7 @@ import { DropdownMenu, DropdownItem } from '../components/DropdownMenu';
 import { TenantDetailPanel } from '../components/TenantDetailPanel';
 import { TenantMobileList } from '../components/TenantMobileList';
 import { cn } from '../utils';
+import { getTenantElectricityShare } from '../utils/electricityUtils';
 import toast from 'react-hot-toast';
 
 export const TenantsPage = () => {
@@ -64,6 +65,7 @@ export const TenantsPage = () => {
   const [adminKycFile, setAdminKycFile] = useState<{ type: string; file?: File; url?: string; fileName: string } | null>(null);
   const [adminKycType, setAdminKycType] = useState('Aadhar Card');
   const [detailTenant, setDetailTenant] = useState<any | null>(null);
+  const [tenantElectricityShare, setTenantElectricityShare] = useState<{ baseShare: number; acShare: number; total: number; month: string; billUrl?: string } | null>(null);
   const { payments } = useApp();
 
   // Server-side paginated hook — fetches ONLY 10 records at a time
@@ -250,6 +252,46 @@ export const TenantsPage = () => {
     window.open(whatsappUrl, '_blank');
   };
 
+  useEffect(() => {
+    if (detailTenant) {
+      const currentMonth = format(new Date(), 'yyyy-MM');
+      
+      // Find the room to get the meterGroupId
+      const room = rooms.find(r => r.id === (detailTenant.roomId || detailTenant.room_id));
+      if (!room?.meterGroupId) {
+        setTenantElectricityShare(null);
+        return;
+      }
+
+      // Get ALL active tenants in ALL rooms belonging to this Flat
+      const flatTenants = tenants.filter(t => {
+        const r = rooms.find(rm => rm.id === t.roomId || rm.id === (t as any).room_id);
+        return r?.meterGroupId === room.meterGroupId && t.status === 'active';
+      }).map(t => ({
+        id: t.id, 
+        name: t.name, 
+        is_ac_user: (t as any).isAcUser || (t as any).is_ac_user || false
+      }));
+
+      getTenantElectricityShare(room.meterGroupId, currentMonth, flatTenants, detailTenant.id)
+        .then(share => {
+          if (share) {
+            setTenantElectricityShare({
+              baseShare: share.baseShare,
+              acShare: share.acShare,
+              total: share.total,
+              month: currentMonth,
+              // we don't fetch billUrl in the share object directly, but we can if we want. For now just show amount.
+            });
+          } else {
+            setTenantElectricityShare(null);
+          }
+        });
+    } else {
+      setTenantElectricityShare(null);
+    }
+  }, [detailTenant, tenants, rooms]);
+
   const handleEditClick = (tenant: any) => {
     // Normalize data from DB (snake_case) or context (camelCase) to the form's camelCase shape
     const normalized = {
@@ -288,7 +330,8 @@ export const TenantsPage = () => {
       joiningDate: new Date().toISOString().split('T')[0],
       paymentDueDate: 5,
       status: 'active',
-      kycStatus: 'unsubmitted'
+      kycStatus: 'unsubmitted',
+      isAcUser: false
     });
     setKycDoc({ type: 'Aadhar Card', fileName: '' });
     setRentAgreement({ fileName: '' });
@@ -570,6 +613,7 @@ export const TenantsPage = () => {
           toast.success('Tenant login authorized successfully!');
           setDetailTenant(null);
         }}
+        electricityShare={tenantElectricityShare}
         canEdit={['admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '')}
         canDelete={['admin', 'manager'].includes(user?.role || '')}
       />
@@ -715,6 +759,22 @@ export const TenantsPage = () => {
                       className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                     />
                   </div>
+
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="flex items-center gap-3 p-4 bg-amber-50 dark:bg-amber-500/10 rounded-2xl cursor-pointer border border-amber-100 dark:border-amber-500/20 hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={(formData as any).isAcUser || false}
+                        onChange={(e) => setFormData({ ...formData, isAcUser: e.target.checked } as any)}
+                        className="w-5 h-5 rounded text-amber-500 focus:ring-amber-500/20 bg-white dark:bg-black border-amber-200 dark:border-amber-500/30"
+                      />
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-amber-700 dark:text-amber-400">Uses AC (Air Conditioning)</span>
+                        <span className="text-xs text-amber-600/70 dark:text-amber-400/70">Check this if the tenant shares the room's AC electricity bill.</span>
+                      </div>
+                    </label>
+                  </div>
+
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Deposit Amount (₹)</label>
                     <input

@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, DoorOpen, Users, LayoutGrid, Wind, Sun, Edit2, Trash2 } from 'lucide-react';
+import { X, DoorOpen, Users, LayoutGrid, Wind, Sun, Edit2, Trash2, Zap } from 'lucide-react';
 import { Room } from '../types';
 import { cn } from '../utils';
 
@@ -9,6 +9,7 @@ interface RoomDetailPanelProps {
   onClose: () => void;
   onEdit?: (r: Room) => void;
   onDelete?: (r: Room) => void;
+  onManageElectricity?: (r: Room) => void;
   canEdit?: boolean;
 }
 
@@ -20,7 +21,7 @@ const Field = ({ label, value, className }: { label: string; value: React.ReactN
 );
 
 export const RoomDetailPanel: React.FC<RoomDetailPanelProps> = ({
-  room, onClose, onEdit, onDelete, canEdit
+  room, onClose, onEdit, onDelete, onManageElectricity, canEdit
 }) => {
   return (
     <AnimatePresence>
@@ -52,7 +53,7 @@ export const RoomDetailPanel: React.FC<RoomDetailPanelProps> = ({
                 <div>
                   <h3 className="text-lg font-black text-gray-900 dark:text-white">Room {room.roomNumber}</h3>
                   <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
-                    Floor {room.floor}
+                    {room.meterGroup ? `${room.meterGroup.name} (Floor ${room.floor})` : `Floor ${room.floor}`}
                   </span>
                 </div>
               </div>
@@ -104,6 +105,17 @@ export const RoomDetailPanel: React.FC<RoomDetailPanelProps> = ({
                     ))}
                   </div>
                 </div>
+              )}
+
+              {/* Electricity */}
+              {canEdit && onManageElectricity && (
+                <button
+                  onClick={() => onManageElectricity(room)}
+                  className="w-full flex items-center gap-3 p-4 bg-amber-50 dark:bg-amber-500/10 rounded-2xl text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-colors"
+                >
+                  <Zap className="w-5 h-5 shrink-0" />
+                  <span className="text-sm font-bold">⚡ Manage Electricity</span>
+                </button>
               )}
             </div>
 

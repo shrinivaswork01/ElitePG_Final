@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
-import { Room } from '../types';
+import { Room, MeterGroup } from '../types';
 import { Navigate } from 'react-router-dom';
 import {
   Plus,
@@ -12,22 +12,28 @@ import {
   Edit2,
   Wind,
   Sun,
-  Search
+  Search,
+  Layers,
+  MapPin,
+  LayoutDashboard
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePaginatedData } from '../hooks/usePaginatedData';
 import { DataGrid, ColumnDef } from '../components/DataGrid';
 import { DropdownMenu, DropdownItem } from '../components/DropdownMenu';
 import { RoomDetailPanel } from '../components/RoomDetailPanel';
+import { FlatDetailPanel } from '../components/FlatDetailPanel';
 import { RoomMobileList } from '../components/RoomMobileList';
+import { ElectricityBillModal } from '../components/ElectricityBillModal';
 import { cn } from '../utils';
 import toast from 'react-hot-toast';
 
 export const RoomsPage = () => {
   const { user } = useAuth();
-  const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants } = useApp();
+const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroups, addMeterGroup, updateMeterGroup, deleteMeterGroup } = useApp();
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [roomToDelete, setRoomToDelete] = useState<Room | null>(null);
+  const [electricityRoom, setElectricityRoom] = useState<Room | null>(null);
 
   const currentRoomsCount = rooms.length;
   const isAtLimit = currentPlan && currentRoomsCount >= currentPlan.maxRooms;
@@ -40,7 +46,7 @@ export const RoomsPage = () => {
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [detailRoom, setDetailRoom] = useState<Room | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [formData, setFormData] = useState<Omit<Room, 'id' | 'branchId'>>({
+  const [formData, setFormData] = useState<Omit<Room, 'id' | 'branchId'> & { meterGroupId?: string }>({
     roomNumber: '',
     floor: 1,
     totalBeds: 2,
@@ -48,15 +54,28 @@ export const RoomsPage = () => {
     type: 'Non-AC',
     price: 6000,
     description: '',
-    amenities: []
+    amenities: [],
+    meterGroupId: ''
   });
   const [customAmenity, setCustomAmenity] = useState('');
+  
+  const [activeTab, setActiveTab] = useState<'rooms' | 'flats'>('rooms');
+  const [isAddFlatModalOpen, setIsAddFlatModalOpen] = useState(false);
+  const [editingFlat, setEditingFlat] = useState<MeterGroup | null>(null);
+  const [detailFlat, setDetailFlat] = useState<MeterGroup | null>(null);
+  const [flatFormData, setFlatFormData] = useState({ name: '', floor: 1 });
+
+  // Inline flat creation state (keeping for backward compat in add room modal if needed)
+  const [isAddingFlat, setIsAddingFlat] = useState(false);
+  const [newFlatName, setNewFlatName] = useState('');
+  const [newFlatFloor, setNewFlatFloor] = useState(1);
 
   const filterType = searchTerm ? 'all' : 'all'; // placeholder so we can add type filter later
 
   // Server-side paginated hook — fetches ONLY 10 records at a time
   const { data: paginatedRooms, totalCount, isLoading, page, setPage, limit, refetch } = usePaginatedData<any>({
     table: 'rooms',
+    select: '*, meter_groups(id, name, floor, branch_id, created_at)',
     ilikeFilters: searchTerm ? { room_number: searchTerm } : undefined,
     orderBy: { column: 'room_number', ascending: true }
   });
@@ -73,7 +92,7 @@ export const RoomsPage = () => {
           </div>
           <div>
             <p className="text-sm font-bold text-gray-900 dark:text-white">Room {r.room_number}</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">Floor {r.floor} • {r.type}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{r.meter_groups ? `${r.meter_groups.name} (Floor ${r.floor})` : `Floor ${r.floor}`} • {r.type}</p>
           </div>
         </div>
       )
@@ -141,6 +160,68 @@ export const RoomsPage = () => {
     }
   ];
 
+  const flatColumns: ColumnDef<MeterGroup>[] = [
+    {
+      header: 'Flat / Group',
+      accessorKey: 'name',
+      className: 'w-[40%] min-w-[200px]',
+      cell: (f) => (
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400 flex items-center justify-center shrink-0">
+            <Layers className="w-5 h-5" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-gray-900 dark:text-white">{f.name}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Floor {f.floor}</p>
+          </div>
+        </div>
+      )
+    },
+    {
+      header: 'Linked Rooms',
+      accessorKey: 'id',
+      className: 'w-[25%]',
+      cell: (f) => {
+        const linkedCount = rooms.filter(r => r.meterGroupId === f.id).length;
+        return (
+          <div className="flex items-center gap-2">
+            <DoorOpen className="w-4 h-4 text-gray-400" />
+            <span className="text-sm font-semibold text-gray-900 dark:text-gray-200">{linkedCount} Rooms</span>
+          </div>
+        );
+      }
+    },
+    {
+      header: 'Occupancy',
+      accessorKey: 'id',
+      className: 'w-[25%]',
+      cell: (f) => {
+        const linkedRooms = rooms.filter(r => r.meterGroupId === f.id);
+        const total = linkedRooms.reduce((sum, r) => sum + (r.totalBeds || 0), 0);
+        const occupied = tenants.filter(t => linkedRooms.some(r => r.id === t.roomId) && t.status === 'active').length;
+        return (
+          <div className="flex items-center gap-2">
+            <Users className="w-4 h-4 text-gray-400" />
+            <span className="text-sm font-semibold text-gray-900 dark:text-gray-200">{occupied} / {total} Beds</span>
+          </div>
+        );
+      }
+    },
+    {
+      header: '',
+      accessorKey: 'id',
+      className: 'w-[60px]',
+      cell: (f) => (
+        <div className="flex justify-end">
+          <DropdownMenu>
+            <DropdownItem icon={<Edit2 className="w-4 h-4" />} label="Edit Group" onClick={() => handleEditFlat(f)} />
+            <DropdownItem icon={<Trash2 className="w-4 h-4" />} label="Delete Group" onClick={() => deleteMeterGroup(f.id)} danger />
+          </DropdownMenu>
+        </div>
+      )
+    }
+  ];
+
 
   const handleEditClick = (room: any) => {
     setDetailRoom(null);
@@ -153,7 +234,8 @@ export const RoomsPage = () => {
       type: room.type || 'Non-AC',
       price: room.price ?? 6000,
       description: room.description || '',
-      amenities: room.amenities || []
+      amenities: room.amenities || [],
+      meterGroupId: room.meterGroupId || room.meter_group_id || ''
     };
     setEditingRoom({ id: room.id, branchId: room.branchId || room.branch_id, ...normalized });
     setFormData(normalized);
@@ -179,12 +261,45 @@ export const RoomsPage = () => {
       type: 'Non-AC',
       price: 6000,
       description: '',
-      amenities: []
+      amenities: [],
+      meterGroupId: ''
     });
+    setIsAddingFlat(false);
+    setNewFlatName('');
+    setNewFlatFloor(1);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    let finalMeterGroupId = formData.meterGroupId;
+
+    if (isAddingFlat) {
+      if (!newFlatName.trim()) {
+        toast.error("Please enter a flat name");
+        return;
+      }
+      try {
+        const id = `temp-flat-${Date.now()}`;
+        await addMeterGroup({ name: newFlatName, floor: newFlatFloor });
+        // The optimistic UI update doesn't return the real ID immediately, 
+        // but AppContext pushes it to Supabase. For stability, we might want to wait, or assume it joins in refetch. 
+        // Actually since addRoom takes meterGroupId as string, we can temporarily assume the UI catches up or require them to fetch.
+        // Let's create it and find it via name & floor
+        toast.success("Flat created. Please select it from dropdown.");
+        setIsAddingFlat(false);
+        setNewFlatName('');
+        return; // Break here intentionally so they can select it via the dropdown once synced. 
+      } catch (err: any) {
+        toast.error("Failed to create flat.");
+        return;
+      }
+    }
+
+    if (!finalMeterGroupId) {
+      toast.error('Please select a Flat / Meter Group for this room.');
+      return;
+    }
 
     const isDuplicate = rooms.some(r => r.roomNumber.toLowerCase() === formData.roomNumber.toLowerCase() && r.id !== editingRoom?.id);
     if (isDuplicate) {
@@ -192,17 +307,37 @@ export const RoomsPage = () => {
       return;
     }
 
+    const payload = { ...formData, meterGroupId: finalMeterGroupId };
+
     if (editingRoom) {
       if (formData.totalBeds < editingRoom.occupiedBeds) {
         toast.error(`Cannot reduce beds to ${formData.totalBeds}. ${editingRoom.occupiedBeds} are currently occupied.`);
         return;
       }
-      await updateRoom(editingRoom.id, formData);
+      await updateRoom(editingRoom.id, payload);
     } else {
-      await addRoom(formData);
+      await addRoom(payload);
     }
     handleCloseModal();
     refetch();
+  };
+
+  const handleEditFlat = (flat: MeterGroup) => {
+    setEditingFlat(flat);
+    setFlatFormData({ name: flat.name, floor: flat.floor });
+    setIsAddFlatModalOpen(true);
+  };
+
+  const handleFlatSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingFlat) {
+      await updateMeterGroup(editingFlat.id, flatFormData);
+    } else {
+      await addMeterGroup(flatFormData);
+    }
+    setIsAddFlatModalOpen(false);
+    setEditingFlat(null);
+    setFlatFormData({ name: '', floor: 1 });
   };
 
   const roomsData: Room[] = (paginatedRooms || []).map((r: any) => ({
@@ -215,25 +350,70 @@ export const RoomsPage = () => {
     price: r.price,
     description: r.description,
     amenities: r.amenities || [],
-    branchId: r.branch_id
+    branchId: r.branch_id,
+    meterGroupId: r.meter_group_id,
+    meterGroup: r.meter_groups
   }));
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">Rooms</h2>
-          <p className="text-gray-500 dark:text-gray-400">Manage rooms and occupancy.</p>
-        </div>
-        {!isAtLimit && (
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all hidden sm:flex"
+        <div className="flex items-center gap-6">
+          <button 
+            onClick={() => setActiveTab('rooms')}
+            className={cn(
+              "group relative py-2 transition-all",
+              activeTab === 'rooms' ? "text-indigo-600 dark:text-indigo-400" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            )}
           >
-            <Plus className="w-5 h-5" />
-            Add Room
+            <span className="text-xl font-bold tracking-tight flex items-center gap-2">
+              <DoorOpen className={cn("w-5 h-5", activeTab === 'rooms' ? "text-indigo-600" : "text-gray-400")} />
+              Rooms
+            </span>
+            {activeTab === 'rooms' && (
+              <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" />
+            )}
           </button>
-        )}
+          <button 
+            onClick={() => setActiveTab('flats')}
+            className={cn(
+              "group relative py-2 transition-all",
+              activeTab === 'flats' ? "text-violet-600 dark:text-violet-400" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            )}
+          >
+            <span className="text-xl font-bold tracking-tight flex items-center gap-2">
+              <Layers className={cn("w-5 h-5", activeTab === 'flats' ? "text-violet-600" : "text-gray-400")} />
+              Flats / Groups
+            </span>
+            {activeTab === 'flats' && (
+              <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-violet-600 rounded-full" />
+            )}
+          </button>
+        </div>
+        <div className="flex items-center gap-3">
+          {['admin', 'manager', 'super'].includes(user?.role || '') && (
+            <button
+              onClick={() => {
+                setEditingFlat(null);
+                setFlatFormData({ name: '', floor: 1 });
+                setIsAddFlatModalOpen(true);
+              }}
+              className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-200 border border-gray-100 dark:border-white/5 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all shadow-sm"
+            >
+              <Layers className="w-5 h-5 text-violet-500" />
+              Add Flat
+            </button>
+          )}
+          {!isAtLimit && ['admin', 'manager', 'super'].includes(user?.role || '') && (
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
+            >
+              <Plus className="w-5 h-5" />
+              Add Room
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
@@ -290,17 +470,31 @@ export const RoomsPage = () => {
 
       {/* Desktop View */}
       <div className="hidden sm:block">
-        <DataGrid
-          columns={roomColumns}
-          data={paginatedRooms || []}
-          isLoading={isLoading}
-          keyExtractor={(r: any) => r.id}
-          page={page}
-          limit={limit}
-          totalCount={totalCount}
-          onPageChange={setPage}
-          onRowClick={(r: any) => setDetailRoom(rooms.find(room => room.id === r.id) || null)}
-        />
+        {activeTab === 'rooms' ? (
+          <DataGrid
+            columns={roomColumns}
+            data={paginatedRooms || []}
+            isLoading={isLoading}
+            keyExtractor={(r: any) => r.id}
+            page={page}
+            limit={limit}
+            totalCount={totalCount}
+            onPageChange={setPage}
+            onRowClick={(r: any) => setDetailRoom(rooms.find(room => room.id === r.id) || null)}
+          />
+        ) : (
+          <DataGrid
+            columns={flatColumns}
+            data={meterGroups}
+            isLoading={false}
+            keyExtractor={(f: any) => f.id}
+            onRowClick={(f: any) => setDetailFlat(f)}
+            page={1}
+            limit={100}
+            totalCount={meterGroups.length}
+            onPageChange={() => {}}
+          />
+        )}
       </div>
 
       {/* Mobile View */}
@@ -326,10 +520,67 @@ export const RoomsPage = () => {
         onClose={() => setDetailRoom(null)}
         onEdit={handleEditClick}
         onDelete={(r) => { setRoomToDelete(r); }}
+        onManageElectricity={(r) => { setDetailRoom(null); setElectricityRoom(r); }}
         canEdit={['admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '')}
       />
 
+      {/* Flat Detail Panel */}
       <AnimatePresence>
+        {detailFlat && (
+          <FlatDetailPanel
+            flat={detailFlat}
+            rooms={rooms}
+            tenants={tenants}
+            onClose={() => setDetailFlat(null)}
+            onEdit={handleEditFlat}
+            onDelete={(f) => { deleteMeterGroup(f.id); setDetailFlat(null); }}
+            onViewRoom={(r) => { setDetailFlat(null); setDetailRoom(r); }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Electricity Bill Modal */}
+      <ElectricityBillModal
+        room={electricityRoom}
+        branchId={rooms[0]?.branchId || ''}
+        tenants={tenants.filter(t => {
+          const room = rooms.find(r => r.id === t.roomId || r.id === (t as any).room_id);
+          return room?.meterGroupId === electricityRoom?.meterGroupId && t.status === 'active';
+        }).map(t => ({ 
+          id: t.id, 
+          name: t.name, 
+          is_ac_user: (t as any).isAcUser || (t as any).is_ac_user || false 
+        }))}
+        isOpen={!!electricityRoom}
+        onClose={() => setElectricityRoom(null)}
+        onSaved={() => refetch()}
+      />
+
+      <AnimatePresence>
+        {isAddFlatModalOpen && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 text-left">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsAddFlatModalOpen(false)} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#111111] rounded-3xl shadow-2xl overflow-hidden border border-white/5">
+              <div className="p-6 border-b border-gray-100 dark:border-white/5 flex items-center justify-between">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">{editingFlat ? 'Edit Flat' : 'Add New Flat'}</h3>
+                <button onClick={() => setIsAddFlatModalOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors"><Plus className="w-5 h-5 rotate-45 text-gray-400" /></button>
+              </div>
+              <form onSubmit={handleFlatSubmit} className="p-6 space-y-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-500 uppercase">Flat / Group Name</label>
+                  <input required autoFocus value={flatFormData.name} onChange={e => setFlatFormData({ ...flatFormData, name: e.target.value })} className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-violet-500/20 text-gray-900 dark:text-white" placeholder="e.g. Flat 101" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-500 uppercase">Floor</label>
+                  <input required type="number" value={flatFormData.floor} onChange={e => setFlatFormData({ ...flatFormData, floor: Number(e.target.value) })} className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-violet-500/20 text-gray-900 dark:text-white" />
+                </div>
+                <button type="submit" className="w-full py-3 bg-violet-600 text-white rounded-xl font-bold shadow-lg shadow-violet-600/20 hover:bg-violet-700 transition-all">
+                  {editingFlat ? 'Update Group' : 'Create Flat Group'}
+                </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
 
         {isAddModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -346,7 +597,7 @@ export const RoomsPage = () => {
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               className="relative w-full max-w-md bg-white dark:bg-[#111111] rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto border border-white/5"
             >
-              <div className="p-6 sm:p-8 border-b border-gray-100 dark:border-white/5 flex items-center justify-between sticky top-0 bg-white dark:bg-[#111111] z-10">
+              <div className="p-6 sm:p-8 border-b border-gray-100 dark:border-white/5 flex items-center justify-between sticky top-0 bg-white dark:bg-[#111111] z-10 text-left">
                 <h3 className="text-xl font-bold text-gray-900 dark:text-white">
                   {editingRoom ? 'Edit Room' : 'Add New Room'}
                 </h3>
@@ -354,8 +605,38 @@ export const RoomsPage = () => {
                   <Plus className="w-6 h-6 rotate-45 text-gray-400" />
                 </button>
               </div>
-              <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-6">
-                <div className="space-y-4">
+              <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-6 text-left">
+                 <div className="space-y-4">
+                  <div className="space-y-3 p-4 bg-indigo-50/50 dark:bg-indigo-500/5 border border-indigo-100 dark:border-indigo-500/10 rounded-2xl">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-semibold text-indigo-900 dark:text-indigo-300">Flat / Meter Group <span className="text-rose-500">*</span></label>
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          setEditingFlat(null);
+                          setFlatFormData({ name: '', floor: 1 });
+                          setIsAddFlatModalOpen(true);
+                        }}
+                        className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 transition-colors"
+                      >
+                         + Add New Flat
+                      </button>
+                    </div>
+
+                    <select
+                      value={formData.meterGroupId}
+                      onChange={(e) => setFormData({ ...formData, meterGroupId: e.target.value })}
+                      className="w-full px-4 py-2.5 bg-white dark:bg-[#1a1a1a] border border-indigo-100 dark:border-white/5 rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                    >
+                      <option value="" disabled>Select a flat...</option>
+                      {meterGroups.map(mg => (
+                        <option key={mg.id} value={mg.id}>{mg.name} (Floor {mg.floor})</option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-indigo-600/70 dark:text-indigo-400/70">
+                      Rooms in the same flat share electricity bills.
+                    </p>
+                  </div>
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Room Number</label>
                     <input
@@ -513,11 +794,6 @@ export const RoomsPage = () => {
                         Add
                       </button>
                     </div>
-                    {formData.amenities && formData.amenities.length > 0 && (
-                      <p className="text-xs text-gray-400 dark:text-gray-500">
-                        {formData.amenities.length} amenit{formData.amenities.length === 1 ? 'y' : 'ies'} selected · tap to deselect
-                      </p>
-                    )}
                   </div>
                 </div>
                 <div className="flex justify-end gap-3 pt-4">

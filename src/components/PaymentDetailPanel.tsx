@@ -94,9 +94,17 @@ export const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
               <div className="bg-white dark:bg-white/5 rounded-2xl p-4 border border-gray-100 dark:border-white/5 shadow-sm space-y-3">
                 <p className="text-xs font-black uppercase tracking-widest text-gray-400 border-b border-gray-100 dark:border-white/5 pb-2">Amount Summary</p>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600 dark:text-gray-400">Base Amount</span>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Rent</span>
                   <span className="text-sm font-semibold text-gray-900 dark:text-white">₹{(Number(payment.amount || (payment as any).amount) || 0).toLocaleString()}</span>
                 </div>
+                {((Number((payment as any).electricityAmount || (payment as any).electricity_amount) || 0) > 0) && (
+                  <>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-amber-500 flex items-center gap-1">⚡ Electricity</span>
+                      <span className="text-sm font-semibold text-amber-600">₹{(Number((payment as any).electricityAmount || (payment as any).electricity_amount) || 0).toLocaleString()}</span>
+                    </div>
+                  </>
+                )}
                 {((Number(payment.lateFee || (payment as any).late_fee) || 0) > 0) && (
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-rose-500">Late Fee</span>
@@ -108,6 +116,7 @@ export const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
                   <span className="text-lg font-black text-indigo-600 dark:text-indigo-400">
                     ₹{(
                       (Number(payment.amount || (payment as any).amount) || 0) + 
+                      (Number((payment as any).electricityAmount || (payment as any).electricity_amount) || 0) +
                       (Number(payment.lateFee || (payment as any).late_fee) || 0)
                     ).toLocaleString()}
                   </span>
