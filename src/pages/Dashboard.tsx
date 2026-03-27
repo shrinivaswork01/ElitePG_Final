@@ -23,9 +23,14 @@ import {
   DollarSign,
   BarChart3,
   Building2,
-  MessageCircle
+  MessageCircle,
+  Zap
 } from 'lucide-react';
 import { WHATSAPP_GROUP_URL } from '../constants';
+import { ElectricityBreakdownCard } from '../components/ElectricityBreakdownCard';
+import { DocumentViewerModal } from '../components/DocumentViewerModal';
+import { ElectricityShare, Payment } from '../types';
+import { PaymentDetailPanel } from '../components/PaymentDetailPanel';
 import {
   BarChart,
   Bar,
@@ -58,6 +63,10 @@ export const Dashboard = () => {
   const { user, markAnnouncementAsRead } = useAuth();
   const [isEditingRules, setIsEditingRules] = React.useState(false);
   const [editedRules, setEditedRules] = React.useState(pgConfig?.rules || []);
+  const [myElectricityShare, setMyElectricityShare] = React.useState<ElectricityShare | null>(null);
+  const [myElectricityBill, setMyElectricityBill] = React.useState<any>(null);
+  const [viewerDoc, setViewerDoc] = React.useState<{ url: string, title: string } | null>(null);
+  const [detailPayment, setDetailPayment] = React.useState<any | null>(null);
 
   const handleSaveRules = () => {
     updatePGConfig({ rules: editedRules });
@@ -98,22 +107,51 @@ export const Dashboard = () => {
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-  const newTenantsLast30 = tenants.filter(t => new Date(t.joiningDate) > thirtyDaysAgo).length;
-  const tenantTrend = tenants.length > 0 ? `+${Math.round((newTenantsLast30 / tenants.length) * 100)}%` : '0%';
+  const newTenantsLast30 = (tenants || []).filter(t => new Date(t.joiningDate) > thirtyDaysAgo).length;
+  const tenantTrend = (tenants || []).length > 0 ? `+${Math.round((newTenantsLast30 / tenants.length) * 100)}%` : '0%';
 
   let statCards = [];
   if (isSuper) {
+    const authUsers = useAuth().users || [];
     statCards = [
       { label: 'Total Branches', value: branches.length, icon: Building2, color: 'bg-indigo-600', trend: 'Active', link: '/branches' },
-      { label: 'Total Admins', value: useAuth().users.filter(u => u.role === 'admin').length, icon: Users, color: 'bg-blue-500', trend: 'System', link: '/branches' },
-      { label: 'Total Revenue', value: `₹${payments.filter(p => p.status === 'paid').reduce((sum, p) => sum + p.totalAmount, 0).toLocaleString()}`, icon: TrendingUp, color: 'bg-emerald-500', trend: 'Lifetime', link: '/branches' },
+      { label: 'Total Admins', value: authUsers.filter(u => u.role === 'admin').length, icon: Users, color: 'bg-blue-500', trend: 'System', link: '/branches' },
+      { label: 'Total Revenue', value: `₹${(payments || []).filter(p => p.status === 'paid').reduce((sum, p) => sum + p.totalAmount, 0).toLocaleString()}`, icon: TrendingUp, color: 'bg-emerald-500', trend: 'Lifetime', link: '/branches' },
     ];
   } else if (isTenant) {
     statCards = [
-      { label: 'My Rent', value: `₹${tenantData?.rentAmount.toLocaleString()}`, icon: CreditCard, color: 'bg-indigo-500', trend: 'Monthly', link: '/payments' },
-      { label: 'KYC Status', value: tenantData?.kycStatus?.toUpperCase() || 'UNKNOWN', icon: ShieldCheck, color: tenantData?.kycStatus === 'verified' ? 'bg-emerald-500' : 'bg-amber-500', trend: 'Identity', link: '/profile' },
+      { label: 'My Rent', value: `₹${(tenantData?.rentAmount || 0).toLocaleString()}`, icon: CreditCard, color: 'bg-indigo-500', trend: 'Monthly', link: '/payments' },
+      { 
+        label: 'Electricity Due', 
+        value: `₹${(myElectricityShare?.total || 0).toLocaleString()}`, 
+        icon: DollarSign, 
+        color: (myElectricityShare?.total || 0) > 0 ? 'bg-amber-500' : 'bg-emerald-500', 
+        trend: (myElectricityShare?.total || 0) > 0 ? 'Action Needed' : 'Paid', 
+        onClick: () => {
+          if (myElectricityShare) {
+            setDetailPayment({
+              id: 'upcoming',
+              tenantId: tenantData?.id,
+              amount: tenantData?.rentAmount || 0,
+              lateFee: 0,
+              totalAmount: (tenantData?.rentAmount || 0) + (myElectricityShare?.total || 0),
+              month: new Date().toISOString().slice(0, 7),
+              status: 'pending',
+              method: 'Online',
+              electricityAmount: myElectricityShare?.total || 0,
+              electricityBillId: myElectricityBill?.id,
+              baseShare: myElectricityShare?.baseShare,
+              acShare: myElectricityShare?.acShare,
+              branchId: user?.branchId || '',
+              actualBillUrl: myElectricityBill?.actualBillUrl,
+              acBillUrl: myElectricityBill?.acBillUrl,
+              tenants: { name: tenantData?.name }
+            });
+          }
+        }
+      },
       { label: 'My Complaints', value: tenantComplaints.filter(c => c.status !== 'resolved').length, icon: AlertCircle, color: 'bg-rose-500', trend: 'Active', link: '/complaints' },
-      { label: 'Total Paid', value: `₹${tenantPayments.reduce((sum, p) => sum + p.totalAmount, 0).toLocaleString()}`, icon: TrendingUp, color: 'bg-violet-500', trend: 'Lifetime', link: '/payments' },
+      { label: 'Total Paid', value: `₹${(tenantPayments || []).reduce((sum, p) => sum + (p.totalAmount || 0), 0).toLocaleString()}`, icon: TrendingUp, color: 'bg-violet-500', trend: 'Lifetime', link: '/payments' },
     ];
   } else if (isEmployee) {
     statCards = [
@@ -129,7 +167,7 @@ export const Dashboard = () => {
       { label: 'Verified Tenants', value: stats.verifiedTenants, icon: ShieldCheck, color: 'bg-emerald-500', trend: 'KYC', link: '/tenants' },
       { label: 'Pending KYC', value: stats.pendingKYC, icon: AlertCircle, color: 'bg-amber-500', trend: 'Action', link: '/kyc' },
       { label: 'Vacant Beds', value: stats.vacantBeds, icon: DoorOpen, color: 'bg-indigo-500', trend: `${stats.vacantBeds} left`, link: '/rooms' },
-      { label: 'Monthly Revenue', value: `₹${stats.monthlyRevenue.toLocaleString()}`, icon: TrendingUp, color: 'bg-violet-500', trend: 'Current', link: '/payments' },
+      { label: 'Monthly Revenue', value: `₹${(stats.monthlyRevenue || 0).toLocaleString()}`, icon: TrendingUp, color: 'bg-violet-500', trend: 'Current', link: '/payments' },
       { label: 'Open Complaints', value: stats.openComplaints, icon: AlertCircle, color: 'bg-rose-500', trend: 'Active', link: '/complaints' },
     ];
   }
@@ -198,6 +236,31 @@ export const Dashboard = () => {
     window.open(whatsappUrl, '_blank');
   };
 
+  React.useEffect(() => {
+    if (isTenant && tenantData && tenantRoom?.meterGroupId) {
+      import('../utils/electricityUtils').then(async ({ fetchElectricityBill, calculateElectricityShares }) => {
+        try {
+          const currentMonth = new Date().toISOString().slice(0, 7);
+          const bill = await fetchElectricityBill(tenantRoom.meterGroupId!, currentMonth);
+          if (bill) {
+            const flatTenants = tenants.filter(t => {
+              const r = rooms.find(rm => rm.id === t.roomId);
+              return r?.meterGroupId === tenantRoom.meterGroupId && t.status === 'active';
+            });
+            const shares = calculateElectricityShares(bill, flatTenants);
+            const myShare = shares.find(s => s.tenantId === tenantData.id);
+            if (myShare) {
+              setMyElectricityShare(myShare);
+              setMyElectricityBill(bill);
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to fetch electricity share:', err);
+        }
+      }).catch(err => console.warn('Failed to load electricityUtils:', err));
+    }
+  }, [isTenant, tenantData, tenantRoom, tenants, rooms]);
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -206,7 +269,7 @@ export const Dashboard = () => {
             {user?.avatar ? (
               <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
             ) : (
-              <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: pgConfig?.primaryColor }}>
+              <div className="w-full h-full flex items-center justify-center font-bold text-white" style={{ backgroundColor: pgConfig?.primaryColor || '#4f46e5' }}>
                 {user?.name?.charAt(0) || '?'}
               </div>
             )}
@@ -219,7 +282,7 @@ export const Dashboard = () => {
                   {isEmployee ? `Staff Dashboard - ${user?.role}` : isTenant ? 'Your resident dashboard' : "Here's what's happening with your property today."}
                   {user?.branchId && (
                     <span className="block text-indigo-600 dark:text-indigo-400 font-medium mt-1">
-                      {pgConfig?.pgName || branches.find(b => b.id === user.branchId)?.name} - {branches.find(b => b.id === user.branchId)?.branchName}
+                      {pgConfig?.pgName || (branches || []).find(b => b.id === user?.branchId)?.name} - {(branches || []).find(b => b.id === user?.branchId)?.branchName}
                     </span>
                   )}
                 </>
@@ -234,8 +297,8 @@ export const Dashboard = () => {
           {isManagerial && (
             <button
               onClick={handleDownloadReport}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-medium shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-colors"
-              style={{ backgroundColor: pgConfig?.primaryColor }}
+              className="px-4 py-2 text-white rounded-xl text-sm font-medium shadow-lg hover:brightness-110 transition-all"
+              style={{ background: pgConfig?.primaryColor || '#4f46e5', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
             >
               Download Report
             </button>
@@ -254,7 +317,13 @@ export const Dashboard = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.1 }}
-              className="bg-white dark:bg-[#111111] p-5 sm:p-6 rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm hover:shadow-md hover:border-indigo-500/30 transition-all group h-full"
+              onClick={(e) => {
+                if (stat.onClick) {
+                  e.preventDefault();
+                  stat.onClick();
+                }
+              }}
+              className="bg-white dark:bg-[#111111] p-5 sm:p-6 rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm hover:shadow-md hover:border-indigo-500/30 transition-all group h-full cursor-pointer"
             >
               <div className="flex items-start justify-between">
                 <div className={cn("p-3 rounded-2xl text-white transition-transform group-hover:scale-110", stat.color)}>
@@ -304,7 +373,7 @@ export const Dashboard = () => {
                       contentStyle={{ backgroundColor: 'var(--tooltip-bg, #fff)', borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                       itemStyle={{ color: 'var(--tooltip-text, #111)' }}
                     />
-                    <Area type="monotone" dataKey="revenue" stroke="#4F46E5" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
+                    <Area type="monotone" dataKey="revenue" stroke={pgConfig?.primaryColor || '#4F46E5'} strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
                   </AreaChart>
                 </ResponsiveContainer>
               ) : (
@@ -332,7 +401,7 @@ export const Dashboard = () => {
                       contentStyle={{ backgroundColor: 'var(--tooltip-bg, #fff)', borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                       itemStyle={{ color: 'var(--tooltip-text, #111)' }}
                     />
-                    <Bar dataKey="occupied" fill="#4F46E5" radius={[6, 6, 0, 0]} barSize={40} />
+                    <Bar dataKey="occupied" fill={pgConfig?.primaryColor || '#4F46E5'} radius={[6, 6, 0, 0]} barSize={40} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
@@ -461,6 +530,18 @@ export const Dashboard = () => {
             </div>
           )}
 
+          {isTenant && (
+            <div className="lg:col-span-1">
+              <ElectricityBreakdownCard
+                baseAmount={myElectricityShare?.baseShare || 0}
+                acAmount={myElectricityShare?.acShare || 0}
+                totalAmount={myElectricityShare?.total || 0}
+                billUrl={myElectricityBill?.actualBillUrl}
+                acReadingUrl={myElectricityBill?.acBillUrl}
+                onViewDoc={(url, title) => setViewerDoc({ url, title })}
+              />
+            </div>
+          )}
           {isTenant && (
             <div className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden flex flex-col">
               <div className="p-6 sm:p-8 border-b border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/[0.02]">
@@ -683,6 +764,18 @@ export const Dashboard = () => {
           </div>
         )}
       </AnimatePresence>
+      <DocumentViewerModal
+        isOpen={!!viewerDoc}
+        url={viewerDoc?.url || ''}
+        title={viewerDoc?.title || ''}
+        onClose={() => setViewerDoc(null)}
+      />
+      <PaymentDetailPanel
+        payment={detailPayment}
+        tenantName={detailPayment?.tenants?.name}
+        onClose={() => setDetailPayment(null)}
+        onViewDoc={(url, title) => setViewerDoc({ url, title })}
+      />
     </div>
   );
 };

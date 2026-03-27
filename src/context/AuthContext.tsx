@@ -87,7 +87,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const { data: branches } = await supabase.from('pg_branches').select('id').limit(1);
       finalBranchId = branches?.[0]?.id || null;
     }
-    const newId = `u${Date.now()}`;
+    const newId = session.user.id;
     const newDbUser = {
       id: newId,
       username: session.user.email.split('@')[0] || `user${Date.now()}`,
@@ -104,9 +104,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       branch_id: finalBranchId,
       seen_announcements: []
     };
-    const { error: insertError } = await supabase.from('users').insert(newDbUser);
-    if (insertError) {
-      console.error('Failed to create user:', insertError);
+    const { error: upsertError } = await supabase.from('users').upsert(newDbUser, { onConflict: 'id' });
+    if (upsertError) {
+      console.error('Failed to provision user:', upsertError);
       await supabase.auth.signOut();
       return;
     }

@@ -8,6 +8,7 @@ export interface TenantReceiptData {
   paymentDate: string;
   month: string;
   amount: number;
+  electricityAmount?: number;
   lateFee: number;
   totalAmount: number;
   method: string;
@@ -343,7 +344,9 @@ export async function generateTenantReceiptPDF(data: TenantReceiptData, returnBl
   const roomBranch = [data.roomNumber ? `Room ${data.roomNumber}` : '', data.branchName].filter(Boolean).join(' · ');
   if (roomBranch) billedToLines.push(roomBranch);
 
-  const desc = `Monthly Rent Payment for ${monthLabel}${data.lateFee > 0 ? ` (Includes Late Fee: Rs. ${data.lateFee})` : ''}`;
+  const electricityDesc = data.electricityAmount && data.electricityAmount > 0 ? ` + Electricity: Rs. ${data.electricityAmount.toLocaleString('en-IN')}` : '';
+  const lateFeeDesc = data.lateFee > 0 ? ` + Late Fee: Rs. ${data.lateFee.toLocaleString('en-IN')}` : '';
+  const desc = `Monthly Rent: Rs. ${data.amount.toLocaleString('en-IN')}${electricityDesc}${lateFeeDesc}\nFor Period: ${monthLabel}`;
 
   return await buildPDF({
     receiptNo,

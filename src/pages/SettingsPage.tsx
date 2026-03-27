@@ -95,18 +95,36 @@ export const SettingsPage = () => {
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">Branch Settings</h2>
           <p className="text-gray-500 dark:text-gray-400">Manage your PG branding, roles, and access</p>
         </div>
-        {hasChanges && (
+        <div className="flex gap-2">
           <motion.button
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
-            onClick={() => setIsConfirmModalOpen(true)}
-            className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all flex items-center gap-2"
-            style={{ backgroundColor: settingsForm.primaryColor }}
+            onClick={() => {
+              setSettingsForm(prev => ({
+                ...prev,
+                pgName: 'ElitePG',
+                logoUrl: '',
+                primaryColor: 'linear-gradient(135deg, #1e3a8a 0%, #312e81 100%)'
+              }));
+            }}
+            className="px-6 py-2.5 bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-300 rounded-xl font-bold hover:bg-gray-200 dark:hover:bg-white/20 transition-all flex items-center gap-2"
           >
-            <Save className="w-5 h-5" />
-            Save All Changes
+            Reset Default
           </motion.button>
-        )}
+          
+          {hasChanges && (
+            <motion.button
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              onClick={() => setIsConfirmModalOpen(true)}
+              className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all flex items-center gap-2"
+              style={{ background: settingsForm.primaryColor }}
+            >
+              <Save className="w-5 h-5" />
+              Save All 
+            </motion.button>
+          )}
+        </div>
       </div>
 
       {/* App Branding Section */}
@@ -171,66 +189,33 @@ export const SettingsPage = () => {
             <div className="space-y-3">
               <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Primary Brand Color</label>
               <div className="flex items-center gap-4">
-                <input
-                  type="color"
-                  value={settingsForm.primaryColor}
-                  onChange={(e) => setSettingsForm({ ...settingsForm, primaryColor: e.target.value })}
-                  className="w-12 h-12 rounded-xl border-none cursor-pointer bg-transparent"
+                <div 
+                  className="w-12 h-12 rounded-xl border border-gray-200 dark:border-white/10 shrink-0 shadow-sm"
+                  style={{ background: settingsForm.primaryColor }}
                 />
-                <div className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-white/5 rounded-xl text-sm font-mono text-gray-500">
-                  {settingsForm.primaryColor}
+                <div className="flex-1 flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={settingsForm.primaryColor?.startsWith('linear') ? '#4f46e5' : settingsForm.primaryColor}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, primaryColor: e.target.value })}
+                    className="w-10 h-10 rounded-lg border-none cursor-pointer bg-transparent shrink-0"
+                  />
+                  <input
+                    type="text"
+                    value={settingsForm.primaryColor}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, primaryColor: e.target.value })}
+                    placeholder="HEX, RGB, or linear-gradient"
+                    className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white font-mono text-sm"
+                  />
                 </div>
               </div>
+              <p className="text-[10px] text-gray-400">Supports HEX (#4f46e5), RGB/RGBA, or CSS Gradients (linear-gradient(...)). Copy & paste a value.</p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Payment Policies Section */}
-      <div className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-200 dark:border-white/5 overflow-hidden shadow-sm">
-        <div className="p-6 border-b border-gray-100 dark:border-white/5">
-          <h3 className="text-lg font-bold text-gray-900 dark:text-white">Payment Policies</h3>
-          <p className="text-sm text-gray-500">Configure global due dates and late fee calculations</p>
-        </div>
-        <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Default Due Date (Day of Month)</label>
-              <input
-                type="number"
-                min="1"
-                max="31"
-                value={settingsForm.defaultPaymentDueDate}
-                onChange={(e) => setSettingsForm({ ...settingsForm, defaultPaymentDueDate: parseInt(e.target.value) })}
-                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-              />
-              <p className="text-[10px] text-gray-400">The day rent is officially due each month.</p>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Late Fee Grace Period (Days)</label>
-              <input
-                type="number"
-                min="0"
-                value={settingsForm.defaultLateFeeDay}
-                onChange={(e) => setSettingsForm({ ...settingsForm, defaultLateFeeDay: parseInt(e.target.value) })}
-                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-              />
-              <p className="text-[10px] text-gray-400">Number of days after due date before late fees start.</p>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Late Fee Amount (₹ per day)</label>
-              <input
-                type="number"
-                min="0"
-                value={settingsForm.lateFeeAmount}
-                onChange={(e) => setSettingsForm({ ...settingsForm, lateFeeAmount: parseInt(e.target.value) })}
-                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-              />
-              <p className="text-[10px] text-gray-400">Amount charged for each day past the grace period.</p>
-            </div>
-          </div>
-        </div>
-      </div>
+
 
 
       {/* Confirmation Modal */}
@@ -270,7 +255,7 @@ export const SettingsPage = () => {
                   onClick={handleSaveAll}
                   disabled={isSaving}
                   className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all disabled:opacity-50"
-                  style={{ backgroundColor: settingsForm.primaryColor }}
+                  style={{ background: settingsForm.primaryColor }}
                 >
                   {isSaving ? 'Saving...' : 'Confirm'}
                 </button>

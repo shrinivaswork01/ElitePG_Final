@@ -77,6 +77,8 @@ const PaymentMobileCard = memo(({
         transactionId: payment.transaction_id || payment.transactionId,
         receiptUrl: payment.receipt_url || payment.receiptUrl,
         tenants: payment.tenants,
+        electricityAmount: payment.electricity_amount || payment.electricityAmount || 0,
+        electricityBillId: payment.electricity_bill_id || payment.electricityBillId,
         branchId: payment.branch_id || payment.branchId
       } as Payment);
     }
@@ -190,6 +192,8 @@ export const PaymentMobileList: React.FC<PaymentMobileListProps> = ({
       transactionId: p.transaction_id || p.transactionId,
       receiptUrl: p.receipt_url || p.receiptUrl,
       tenants: p.tenants,
+      electricityAmount: p.electricity_amount || p.electricityAmount || 0,
+      electricityBillId: p.electricity_bill_id || p.electricityBillId,
       branchId: p.branch_id || p.branchId
     } as Payment;
   })();

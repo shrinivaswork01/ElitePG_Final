@@ -144,6 +144,7 @@ export interface Payment {
   createdBy?: string; // User ID
   electricityAmount?: number; // Per-tenant electricity share
   electricityBillId?: string; // FK to electricity_bills
+  proofUrl?: string; // Tenant uploaded payment proof (screenshot)
 }
 
 export interface ElectricityBill {
@@ -152,8 +153,10 @@ export interface ElectricityBill {
   branchId: string;
   month: string; // e.g., '2026-03'
   totalAmount: number;
-  acExtraAmount: number;
-  billUrl?: string;
+  actualAmount: number;
+  acAmount: number;
+  actualBillUrl?: string;
+  acBillUrl?: string;
   createdAt: string;
   roomId?: string; // Kept for legacy compatibility if needed
 }

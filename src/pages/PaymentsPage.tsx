@@ -23,7 +23,8 @@ import {
   Loader2,
   Edit2,
   MoreVertical,
-  MessageCircle
+  MessageCircle,
+  Settings
 } from 'lucide-react';
 import { format, parseISO, differenceInDays, getDate, isAfter } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
@@ -33,16 +34,18 @@ import { DropdownMenu, DropdownItem } from '../components/DropdownMenu';
 import { PaymentDetailPanel } from '../components/PaymentDetailPanel';
 import { PaymentMobileList } from '../components/PaymentMobileList';
 import { cn } from '../utils';
+import { DocumentViewerModal } from '../components/DocumentViewerModal';
+import { ConfirmationModal } from '../components/ConfirmationModal';
 import { loadRazorpayScript } from '../utils/razorpay';
 import { generateTenantReceiptPDF } from '../utils/generateReceipt';
 import { uploadToSupabase } from '../utils/storage';
-import { fetchElectricityBill, calculateElectricityShares } from '../utils/electricityUtils';
+import { fetchElectricityBill, calculateElectricityShares, fetchElectricityBillById } from '../utils/electricityUtils';
 import { ElectricityBill, ElectricityShare } from '../types';
 import toast from 'react-hot-toast';
 
 export const PaymentsPage = () => {
   const { user, users } = useAuth();
-  const { payments, tenants, rooms, addPayment, updatePayment, deletePayment, currentBranch, pgConfig } = useApp();
+  const { payments, tenants, rooms, addPayment, updatePayment, deletePayment, currentBranch, pgConfig, updatePGConfig } = useApp();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
@@ -56,6 +59,32 @@ export const PaymentsPage = () => {
   const [electricityShare, setElectricityShare] = useState<number>(0);
   const [electricityBillId, setElectricityBillId] = useState<string | null>(null);
   const [electricityBillData, setElectricityBillData] = useState<ElectricityBill | null>(null);
+  const [viewerDoc, setViewerDoc] = useState<{ url: string, title: string } | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState<{ isOpen: boolean, paymentId?: string, bulkIds?: string[] } | null>(null);
+
+  const [isPoliciesModalOpen, setIsPoliciesModalOpen] = useState(false);
+  const [policiesForm, setPoliciesForm] = useState({
+    defaultPaymentDueDate: pgConfig?.defaultPaymentDueDate || 1,
+    defaultLateFeeDay: pgConfig?.defaultLateFeeDay || 5,
+    lateFeeAmount: pgConfig?.lateFeeAmount || 50
+  });
+
+  useEffect(() => {
+    if (pgConfig) {
+      setPoliciesForm({
+        defaultPaymentDueDate: pgConfig.defaultPaymentDueDate || 1,
+        defaultLateFeeDay: pgConfig.defaultLateFeeDay || 5,
+        lateFeeAmount: pgConfig.lateFeeAmount || 50
+      });
+    }
+  }, [pgConfig]);
+
+  const handleSavePolicies = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await updatePGConfig(policiesForm);
+    toast.success('Payment Policies updated successfully');
+    setIsPoliciesModalOpen(false);
+  };
 
   // Server-side paginated hook — fetches ONLY 10 records at a time
   const { data: paginatedPayments, totalCount, isLoading: isPaymentsLoading, page, setPage, limit, refetch: refetchPayments } = usePaginatedData<any>({
@@ -147,6 +176,8 @@ export const PaymentsPage = () => {
                   method: p.method || 'Offline',
                   transactionId: p.transaction_id || p.transactionId,
                   receiptUrl: p.receipt_url || p.receiptUrl,
+                  electricityAmount: p.electricity_amount || p.electricityAmount || 0,
+                  electricityBillId: p.electricity_bill_id || p.electricityBillId,
                   branchId: p.branch_id || p.branchId || ''
                 };
                 setPaymentToEdit(normalized);
@@ -168,6 +199,8 @@ export const PaymentsPage = () => {
                     method: p.method,
                     transactionId: p.transaction_id || p.transactionId,
                     receiptUrl: p.receipt_url || p.receiptUrl,
+                    electricityAmount: p.electricity_amount || p.electricityAmount || 0,
+                    electricityBillId: p.electricity_bill_id || p.electricityBillId,
                     branchId: p.branch_id || p.branchId
                   };
                   handleDownloadReceipt(normalized);
@@ -185,6 +218,8 @@ export const PaymentsPage = () => {
                     method: p.method,
                     transactionId: p.transaction_id || p.transactionId,
                     receiptUrl: p.receipt_url || p.receiptUrl,
+                    electricityAmount: p.electricity_amount || p.electricityAmount || 0,
+                    electricityBillId: p.electricity_bill_id || p.electricityBillId,
                     branchId: p.branch_id || p.branchId
                   };
                   setSelectedPayment(normalized);
@@ -202,134 +237,6 @@ export const PaymentsPage = () => {
       )
     }
   ];
-
-
-  const calculateLateFee = (tenantId: string, month: string) => {
-    const tenant = tenants.find(t => t.id === tenantId);
-    if (!tenant) return 0;
-
-    const dueDateDay = tenant.paymentDueDate || pgConfig?.defaultPaymentDueDate || 1;
-    const gracePeriod = pgConfig?.defaultLateFeeDay || 5;
-    const lateFeePerDay = pgConfig?.lateFeeAmount || 50;
-    
-    const dueDate = new Date(`${month}-${dueDateDay.toString().padStart(2, '0')}`);
-    const graceDate = new Date(dueDate);
-    graceDate.setDate(graceDate.getDate() + gracePeriod);
-    
-    const today = new Date();
-
-    if (isAfter(today, graceDate)) {
-      const daysLate = Math.max(0, differenceInDays(today, graceDate));
-      return (daysLate + 1) * lateFeePerDay; 
-    }
-    return 0;
-  };
-
-  const isTenant = user?.role === 'tenant';
-  const tenantData = isTenant ? tenants.find(t => t.userId === user.id) : null;
-
-  const [isPayModalOpen, setIsPayModalOpen] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'Online' | 'Offline'>('Online');
-
-  const currentMonth = format(new Date(), 'yyyy-MM');
-  const hasPaidCurrentMonth = payments.some(p => p.tenantId === tenantData?.id && p.month === currentMonth && p.status === 'paid');
-
-  const upcomingDues = isTenant && tenantData && !hasPaidCurrentMonth ? [{
-    month: currentMonth,
-    amount: tenantData.rentAmount,
-    dueDate: `${currentMonth}-${(tenantData.paymentDueDate || pgConfig?.defaultPaymentDueDate || 1).toString().padStart(2, '0')}`,
-    lateFee: calculateLateFee(tenantData.id, currentMonth)
-  }] : [];
-
-  const handleOnlinePayment = async () => {
-    if (tenantData && upcomingDues.length > 0) {
-      const due = upcomingDues[0];
-
-      // Check for exact duplicate payment
-      const existingPayment = payments.find(p => p.tenantId === tenantData.id && p.month === due.month && (p.status === 'paid' || p.status === 'pending'));
-      if (existingPayment) {
-        toast.error('A payment for this month is already recorded or in progress.');
-        return;
-      }
-
-      const isOffline = paymentMethod === 'Offline';
-      const totalAmount = due.amount + due.lateFee;
-
-      if (isOffline) {
-        addPayment({
-          tenantId: tenantData.id,
-          amount: due.amount,
-          lateFee: due.lateFee,
-          totalAmount,
-          paymentDate: format(new Date(), 'yyyy-MM-dd'),
-          month: due.month,
-          status: 'pending',
-          method: 'Offline',
-        });
-        setIsPayModalOpen(false);
-        toast.success(`Offline payment request submitted for ₹${totalAmount.toLocaleString()}. Please pay at the desk.`);
-      } else {
-        const res = await loadRazorpayScript();
-
-        if (!res) {
-          toast.error('Razorpay SDK failed to load. Are you online?');
-          return;
-        }
-
-        const options = {
-          key: import.meta.env.VITE_RAZORPAY_KEY || 'rzp_test_SPuhgTcTc6kl88',
-          amount: totalAmount * 100, // Amount in paise
-          currency: 'INR',
-          name: 'ElitePG',
-          description: `Rent Payment for ${format(parseISO(`${due.month}-01`), 'MMMM yyyy')}`,
-          image: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&q=80&w=150&h=150',
-          handler: function (response: any) {
-            const paymentRecord: Omit<Payment, 'id' | 'branchId'> = {
-              tenantId: tenantData.id,
-              amount: due.amount,
-              lateFee: due.lateFee,
-              totalAmount,
-              paymentDate: format(new Date(), 'yyyy-MM-dd'),
-              month: due.month,
-              status: 'paid',
-              method: 'Online',
-              transactionId: response.razorpay_payment_id
-            };
-            
-            addPayment(paymentRecord);
-            setIsPayModalOpen(false);
-            toast.success(`Payment successful! Transaction ID: ${response.razorpay_payment_id}`);
-
-            // Immediate receipt download
-            const receiptPayment: Payment = { ...paymentRecord, id: response.razorpay_payment_id } as Payment;
-            handleDownloadReceipt(receiptPayment);
-          },
-          prefill: {
-            name: tenantData.name,
-            email: tenantData.email,
-            contact: tenantData.phone || '9999999999',
-          },
-          theme: {
-            color: '#4F46E5', // indigo-600
-          },
-        };
-
-        const paymentObject = new (window as any).Razorpay(options);
-        paymentObject.open();
-      }
-    }
-  };
-
-  const [newPayment, setNewPayment] = useState<Omit<Payment, 'id' | 'branchId'>>({
-    tenantId: '',
-    amount: 0,
-    lateFee: 0,
-    totalAmount: 0,
-    paymentDate: new Date().toISOString().split('T')[0],
-    month: format(new Date(), 'yyyy-MM'),
-    status: 'paid',
-    method: 'Offline'
-  });
 
   // Auto-fetch electricity when tenant + month are both set
   const fetchAndSetElectricity = useCallback(async (tenantId: string, month: string) => {
@@ -377,6 +284,145 @@ export const PaymentsPage = () => {
     setElectricityShare(amount);
     return amount;
   }, [tenants, rooms]);
+
+  const calculateLateFee = (tenantId: string, month: string) => {
+    const tenant = tenants.find(t => t.id === tenantId);
+    if (!tenant) return 0;
+
+    const dueDateDay = tenant.paymentDueDate || pgConfig?.defaultPaymentDueDate || 1;
+    const gracePeriod = pgConfig?.defaultLateFeeDay || 5;
+    const lateFeePerDay = pgConfig?.lateFeeAmount || 50;
+    
+    const dueDate = new Date(`${month}-${dueDateDay.toString().padStart(2, '0')}`);
+    const graceDate = new Date(dueDate);
+    graceDate.setDate(graceDate.getDate() + gracePeriod);
+    
+    const today = new Date();
+
+    if (isAfter(today, graceDate)) {
+      const daysLate = Math.max(0, differenceInDays(today, graceDate));
+      return (daysLate + 1) * lateFeePerDay; 
+    }
+    return 0;
+  };
+
+  const isTenant = user?.role === 'tenant';
+  const tenantData = isTenant ? tenants.find(t => t.userId === user.id) : null;
+
+  useEffect(() => {
+    if (isTenant && tenantData) {
+      fetchAndSetElectricity(tenantData.id, format(new Date(), 'yyyy-MM'));
+    }
+  }, [isTenant, tenantData?.id, fetchAndSetElectricity]);
+
+  const [isPayModalOpen, setIsPayModalOpen] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'Online' | 'Offline'>('Online');
+
+  const currentMonth = format(new Date(), 'yyyy-MM');
+  const hasPaidCurrentMonth = payments.some(p => p.tenantId === tenantData?.id && p.month === currentMonth && p.status === 'paid');
+
+  const upcomingDues = isTenant && tenantData && !hasPaidCurrentMonth ? [{
+    month: currentMonth,
+    rentAmount: tenantData.rentAmount,
+    electricityAmount: electricityShare || 0,
+    amount: tenantData.rentAmount + (electricityShare || 0),
+    dueDate: `${currentMonth}-${(tenantData.paymentDueDate || pgConfig?.defaultPaymentDueDate || 1).toString().padStart(2, '0')}`,
+    lateFee: calculateLateFee(tenantData.id, currentMonth)
+  }] : [];
+
+  const handleOnlinePayment = async () => {
+    if (tenantData && upcomingDues.length > 0) {
+      const due = upcomingDues[0];
+
+      // Check for exact duplicate payment
+      const existingPayment = payments.find(p => p.tenantId === tenantData.id && p.month === due.month && (p.status === 'paid' || p.status === 'pending'));
+      if (existingPayment) {
+        toast.error('A payment for this month is already recorded or in progress.');
+        return;
+      }
+
+      const isOffline = paymentMethod === 'Offline';
+      const totalAmount = due.amount + due.lateFee;
+
+      if (isOffline) {
+        addPayment({
+          tenantId: tenantData.id,
+          amount: due.rentAmount,
+          lateFee: due.lateFee,
+          totalAmount,
+          electricityAmount: due.electricityAmount,
+          electricityBillId: electricityBillId || undefined,
+          paymentDate: format(new Date(), 'yyyy-MM-dd'),
+          month: due.month,
+          status: 'pending',
+          method: 'Offline',
+        });
+        setIsPayModalOpen(false);
+        toast.success(`Offline payment request submitted for ₹${totalAmount.toLocaleString()}. Please pay at the desk.`);
+      } else {
+        const res = await loadRazorpayScript();
+
+        if (!res) {
+          toast.error('Razorpay SDK failed to load. Are you online?');
+          return;
+        }
+
+        const options = {
+          key: import.meta.env.VITE_RAZORPAY_KEY || 'rzp_test_SPuhgTcTc6kl88',
+          amount: totalAmount * 100, // Amount in paise
+          currency: 'INR',
+          name: 'ElitePG',
+          description: `Rent Payment for ${format(parseISO(`${due.month}-01`), 'MMMM yyyy')}`,
+          image: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&q=80&w=150&h=150',
+          handler: function (response: any) {
+            const paymentRecord: Omit<Payment, 'id' | 'branchId'> = {
+              tenantId: tenantData.id,
+              amount: due.rentAmount,
+              lateFee: due.lateFee,
+              totalAmount,
+              electricityAmount: due.electricityAmount,
+              electricityBillId: electricityBillId || undefined,
+              paymentDate: format(new Date(), 'yyyy-MM-dd'),
+              month: due.month,
+              status: 'paid',
+              method: 'Online',
+              transactionId: response.razorpay_payment_id
+            };
+            
+            addPayment(paymentRecord);
+            setIsPayModalOpen(false);
+            toast.success(`Payment successful! Transaction ID: ${response.razorpay_payment_id}`);
+
+            // Immediate receipt download
+            const receiptPayment: Payment = { ...paymentRecord, id: response.razorpay_payment_id } as Payment;
+            handleDownloadReceipt(receiptPayment);
+          },
+          prefill: {
+            name: tenantData.name,
+            email: tenantData.email,
+            contact: tenantData.phone || '9999999999',
+          },
+          theme: {
+            color: '#4F46E5', // indigo-600
+          },
+        };
+
+        const paymentObject = new (window as any).Razorpay(options);
+        paymentObject.open();
+      }
+    }
+  };
+
+  const [newPayment, setNewPayment] = useState<Omit<Payment, 'id' | 'branchId'>>({
+    tenantId: '',
+    amount: 0,
+    lateFee: 0,
+    totalAmount: 0,
+    paymentDate: new Date().toISOString().split('T')[0],
+    month: format(new Date(), 'yyyy-MM'),
+    status: 'paid',
+    method: 'Offline'
+  });
 
   const handleAddPayment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -436,6 +482,19 @@ export const PaymentsPage = () => {
     setIsReceiptModalOpen(true);
   };
 
+  const handleConfirmDelete = async () => {
+    if (deleteConfirmation?.paymentId) {
+      await deletePayment(deleteConfirmation.paymentId);
+    } else if (deleteConfirmation?.bulkIds) {
+      for (const id of deleteConfirmation.bulkIds) {
+        await deletePayment(id);
+      }
+    }
+    setDeleteConfirmation(null);
+    refetchPayments();
+    toast.success('Successfully deleted!');
+  };
+
   const handleDownloadReceipt = async (payment: Payment | null = selectedPayment) => {
     if (!payment) return;
     
@@ -458,19 +517,20 @@ export const PaymentsPage = () => {
         paymentDate: payment.paymentDate,
         month: payment.month,
         amount: payment.amount,
+        electricityAmount: (payment as any).electricityAmount || (payment as any).electricity_amount || 0,
         lateFee: payment.lateFee,
         totalAmount: payment.totalAmount,
         method: payment.method,
         transactionId: payment.transactionId,
         status: payment.status,
-        tenantName: tenant?.name || 'Unknown Tenant',
+        tenantName: tenant?.name || 'Tenant',
         tenantPhone: tenant?.phone,
         tenantEmail: tenant?.email,
-        roomNumber: rooms.find(r => r.id === tenant?.roomId)?.roomNumber,
-        branchName: currentBranch?.name,
+        roomNumber: rooms.find(r => r.id === tenant?.roomId || r.id === (tenant as any)?.room_id)?.roomNumber,
+        branchName: currentBranch?.branchName,
         branchPhone: currentBranch?.phone,
         branchAddress: currentBranch?.address,
-        pgName: pgConfig?.pgName || currentBranch?.name,
+        pgName: currentBranch?.name,
         logoUrl: pgConfig?.logoUrl,
         signatureUrl: authorizedSignature
       }, true) as Blob;
@@ -566,13 +626,25 @@ export const PaymentsPage = () => {
           </p>
         </div>
         {!isTenant && (
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
-          >
-            <Plus className="w-5 h-5" />
-            Record Payment
-          </button>
+          <div className="flex gap-3">
+            {isAdmin && (
+              <button
+                onClick={() => setIsPoliciesModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-200 border border-gray-100 dark:border-white/5 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all shadow-sm"
+              >
+                <Settings className="w-5 h-5 text-gray-500" />
+                Payment Policies
+              </button>
+            )}
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
+              style={{ background: pgConfig?.primaryColor || '#4f46e5' }}
+            >
+              <Plus className="w-5 h-5" />
+              Record Payment
+            </button>
+          </div>
         )}
       </div>
 
@@ -594,15 +666,27 @@ export const PaymentsPage = () => {
               <h3 className="text-5xl font-black mt-2 tracking-tighter">₹{(upcomingDues[0].amount + upcomingDues[0].lateFee).toLocaleString()}</h3>
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 mt-4">
                 <span className="px-3 py-1 bg-white/10 rounded-full text-xs font-bold flex items-center gap-2">
-                  <Clock className="w-3 h-3" />
-                  Due: {upcomingDues[0].dueDate}
+                  <CreditCard className="w-3 h-3" />
+                  Rent: ₹{upcomingDues[0].rentAmount.toLocaleString()}
                 </span>
+                {upcomingDues[0].electricityAmount > 0 && (
+                  <span className="px-3 py-1 bg-white/10 rounded-full text-xs font-bold flex items-center gap-2 text-amber-300">
+                    <TrendingUp className="w-3 h-3" />
+                    Electricity: ₹{upcomingDues[0].electricityAmount.toLocaleString()}
+                  </span>
+                )}
                 {upcomingDues[0].lateFee > 0 && (
                   <span className="px-3 py-1 bg-rose-500/20 text-rose-200 rounded-full text-xs font-bold flex items-center gap-2">
                     <Clock className="w-3 h-3" />
-                    ₹{upcomingDues[0].lateFee} Late Fee
+                    Late Fee: ₹{upcomingDues[0].lateFee}
                   </span>
                 )}
+              </div>
+              <div className="mt-4 border-t border-white/20 pt-4">
+                <span className="text-indigo-100 text-xs font-semibold flex items-center gap-2">
+                  <Clock className="w-4 h-4" />
+                  Pay by {upcomingDues[0].dueDate} to avoid additional late fees.
+                </span>
               </div>
             </div>
           </div>
@@ -691,21 +775,43 @@ export const PaymentsPage = () => {
           limit={limit}
           onPageChange={setPage}
           emptyStateMessage="No payment records found"
-          onRowClick={(p) => setDetailPayment({
-            id: p.id,
-            tenantId: p.tenant_id || p.tenantId,
-            amount: p.amount ?? 0,
-            lateFee: p.late_fee ?? p.lateFee ?? 0,
-            totalAmount: p.total_amount ?? p.totalAmount ?? p.amount ?? 0,
-            paymentDate: p.payment_date || p.paymentDate,
-            month: p.month,
-            status: p.status,
-            method: p.method,
-            transactionId: p.transaction_id || p.transactionId,
-            receiptUrl: p.receipt_url || p.receiptUrl,
-            tenants: p.tenants,
-            branchId: p.branch_id || p.branchId || currentBranch?.id
-          })}
+          onRowClick={(p: any) => {
+            const normalized = {
+              id: p.id,
+              tenantId: p.tenant_id || p.tenantId,
+              amount: p.amount ?? 0,
+              lateFee: p.late_fee ?? p.lateFee ?? 0,
+              totalAmount: p.total_amount ?? p.totalAmount ?? p.amount ?? 0,
+              paymentDate: p.payment_date || p.paymentDate,
+              month: p.month,
+              status: p.status,
+              method: p.method,
+              transactionId: p.transaction_id || p.transactionId,
+              receiptUrl: p.receipt_url || p.receiptUrl,
+              tenants: p.tenants,
+              branchId: p.branch_id || p.branchId || currentBranch?.id,
+              electricityBillId: p.electricity_bill_id || p.electricityBillId,
+              electricityAmount: p.electricity_amount || p.electricityAmount || 0
+            };
+            setDetailPayment(normalized);
+            
+            if (normalized.electricityBillId) {
+              fetchElectricityBillById(normalized.electricityBillId).then(bill => {
+                if (bill && normalized.tenantId) {
+                  const share = calculateElectricityShares(bill, [tenants.find(t => t.id === normalized.tenantId)!]).find(s => s.tenantId === normalized.tenantId);
+                  if (share) {
+                    setDetailPayment((prev: any) => ({
+                      ...prev,
+                      baseShare: share.baseShare,
+                      acShare: share.acShare,
+                      actualBillUrl: bill.actualBillUrl,
+                      acBillUrl: bill.acBillUrl
+                    }));
+                  }
+                }
+              });
+            }
+          }}
         />
       </div>
 
@@ -713,7 +819,42 @@ export const PaymentsPage = () => {
         <PaymentMobileList
           payments={paginatedPayments}
           isLoading={isPaymentsLoading}
-          onManage={(p) => setDetailPayment(p)}
+          onManage={(p: any) => {
+            const normalized = {
+              ...p,
+              tenantId: p.tenant_id || p.tenantId,
+              amount: p.amount ?? 0,
+              lateFee: p.late_fee ?? p.lateFee ?? 0,
+              totalAmount: p.total_amount ?? p.totalAmount ?? p.amount ?? 0,
+              paymentDate: p.payment_date || p.paymentDate,
+              month: p.month,
+              status: p.status,
+              method: p.method,
+              transactionId: p.transaction_id || p.transactionId,
+              receiptUrl: p.receipt_url || p.receiptUrl,
+              branchId: p.branch_id || p.branchId || currentBranch?.id,
+              electricityBillId: p.electricity_bill_id || p.electricityBillId,
+              electricityAmount: p.electricity_amount || p.electricityAmount || 0
+            };
+            setDetailPayment(normalized);
+            
+            if (normalized.electricityBillId) {
+              fetchElectricityBillById(normalized.electricityBillId).then(bill => {
+                if (bill && normalized.tenantId) {
+                  const share = calculateElectricityShares(bill, [tenants.find(t => t.id === normalized.tenantId)!]).find(s => s.tenantId === normalized.tenantId);
+                  if (share) {
+                    setDetailPayment((prev: any) => ({
+                      ...prev,
+                      baseShare: share.baseShare,
+                      acShare: share.acShare,
+                      actualBillUrl: bill.actualBillUrl,
+                      acBillUrl: bill.acBillUrl
+                    }));
+                  }
+                }
+              });
+            }
+          }}
           onEdit={(p) => {
             setPaymentToEdit(p);
             setIsEditModalOpen(true);
@@ -723,17 +864,11 @@ export const PaymentsPage = () => {
             setSelectedPayment(p);
             setIsReceiptModalOpen(true);
           }}
-          onDelete={(p) => {
-            if (window.confirm('Delete this payment record?')) {
-              deletePayment(p.id);
-              refetchPayments();
-            }
+          onDelete={(p: any) => {
+            setDeleteConfirmation({ isOpen: true, paymentId: p.id });
           }}
           onBulkDelete={(ids) => {
-            if (window.confirm(`Delete ${ids.length} selected records?`)) {
-              ids.forEach(id => deletePayment(id));
-              refetchPayments();
-            }
+            setDeleteConfirmation({ isOpen: true, bulkIds: ids });
           }}
           onBulkShare={(ids) => {
             const selected = paginatedPayments.filter(p => ids.includes(p.id));
@@ -779,13 +914,17 @@ export const PaymentsPage = () => {
           setIsReceiptModalOpen(true);
         }}
         onDelete={(p) => {
-          if (window.confirm('Delete this payment?')) {
-            setDetailPayment(null);
-            deletePayment(p.id);
-            refetchPayments();
-          }
-        }}
+            setDeleteConfirmation({ isOpen: true, paymentId: p.id });
+          }}
+        onViewDoc={(url, title) => setViewerDoc({ url, title })}
         canEdit={isAdmin}
+      />
+
+      <DocumentViewerModal
+        isOpen={!!viewerDoc}
+        url={viewerDoc?.url || ''}
+        title={viewerDoc?.title || ''}
+        onClose={() => setViewerDoc(null)}
       />
 
 
@@ -799,6 +938,7 @@ export const PaymentsPage = () => {
               onClick={() => setIsPayModalOpen(false)}
               className="absolute inset-0 bg-black/40 backdrop-blur-sm"
             />
+
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -928,6 +1068,12 @@ export const PaymentsPage = () => {
                       <span className="text-gray-500 dark:text-gray-400">Late Fee</span>
                       <span className="font-bold text-rose-600 dark:text-rose-400">₹{selectedPayment.lateFee.toLocaleString()}</span>
                     </div>
+                    {Number((selectedPayment as any).electricityAmount || (selectedPayment as any).electricity_amount || 0) > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-amber-500 font-bold flex items-center gap-1">⚡ Electricity</span>
+                        <span className="font-bold text-amber-600">₹{Number((selectedPayment as any).electricityAmount || (selectedPayment as any).electricity_amount || 0).toLocaleString()}</span>
+                      </div>
+                    )}
                     <div className="pt-4 border-t border-gray-200 dark:border-white/10 flex justify-between items-center">
                       <span className="text-base sm:text-lg font-bold text-gray-900 dark:text-white">Total Paid</span>
                       <span className="text-xl sm:text-2xl font-black text-indigo-600 dark:text-indigo-400">₹{selectedPayment.totalAmount.toLocaleString()}</span>
@@ -1314,6 +1460,90 @@ export const PaymentsPage = () => {
           </div>
         )}
       </AnimatePresence>
+
+      <AnimatePresence>
+        {isPoliciesModalOpen && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsPoliciesModalOpen(false)}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-lg bg-white dark:bg-[#111111] rounded-3xl shadow-2xl overflow-hidden border border-white/5"
+            >
+              <div className="p-6 border-b border-gray-100 dark:border-white/5 flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">Payment Policies</h3>
+                  <p className="text-xs text-gray-500">Configure global due dates and late fee calculations</p>
+                </div>
+                <button onClick={() => setIsPoliciesModalOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors">
+                  <X className="w-5 h-5 text-gray-400" />
+                </button>
+              </div>
+              <form onSubmit={handleSavePolicies} className="p-6 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Default Due Date</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="31"
+                      value={policiesForm.defaultPaymentDueDate}
+                      onChange={(e) => setPoliciesForm({ ...policiesForm, defaultPaymentDueDate: parseInt(e.target.value) })}
+                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                    />
+                    <p className="text-[10px] text-gray-400">Day of month rent is due.</p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Grace Period (Days)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={policiesForm.defaultLateFeeDay}
+                      onChange={(e) => setPoliciesForm({ ...policiesForm, defaultLateFeeDay: parseInt(e.target.value) })}
+                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                    />
+                    <p className="text-[10px] text-gray-400">Days after due date before late fee.</p>
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Late Fee Amount (₹ per day)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={policiesForm.lateFeeAmount}
+                      onChange={(e) => setPoliciesForm({ ...policiesForm, lateFeeAmount: parseInt(e.target.value) })}
+                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                    />
+                    <p className="text-[10px] text-gray-400">Amount charged per day past grace period.</p>
+                  </div>
+                </div>
+                <button type="submit" className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all" style={{ background: pgConfig?.primaryColor || '#4f46e5' }}>
+                  Save Policies
+                </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <ConfirmationModal
+        isOpen={deleteConfirmation?.isOpen || false}
+        onClose={() => setDeleteConfirmation(null)}
+        onConfirm={handleConfirmDelete}
+        title="Delete Payment Record?"
+        message={deleteConfirmation?.bulkIds 
+          ? `Are you sure you want to delete ${deleteConfirmation.bulkIds.length} selected records? This action cannot be undone.`
+          : "Are you sure you want to delete this payment record? This action cannot be undone."
+        }
+        confirmLabel={deleteConfirmation?.bulkIds ? `Delete all` : "Delete"}
+        variant="danger"
+      />
     </div>
   );
 };

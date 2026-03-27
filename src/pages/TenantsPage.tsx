@@ -32,7 +32,7 @@ import toast from 'react-hot-toast';
 export const TenantsPage = () => {
   const { user, users, register, updateUser, authorizeUser } = useAuth();
   const location = useLocation();
-  const { tenants, rooms, addTenant, updateTenant, deleteTenant, checkFeatureAccess, currentPlan, uploadVerifiedKYC, kycs, userInvites } = useApp();
+  const { tenants, rooms, addTenant, updateTenant, deleteTenant, checkFeatureAccess, currentPlan, uploadVerifiedKYC, kycs, userInvites, pgConfig } = useApp();
   const canSendWhatsApp = checkFeatureAccess('whatsapp');
 
   const currentTenantsCount = tenants.length;
@@ -495,6 +495,7 @@ export const TenantsPage = () => {
               "flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all",
               isAtLimit && "opacity-50 cursor-not-allowed"
             )}
+            style={{ background: pgConfig?.primaryColor || '#4f46e5' }}
           >
             <Plus className="w-5 h-5" />
             Add Tenant
@@ -853,9 +854,10 @@ export const TenantsPage = () => {
                             className={cn(
                               "flex-1 py-2.5 rounded-xl text-[10px] font-bold transition-all",
                               formData.status === s
-                                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
+                                ? "text-white shadow-lg"
                                 : "bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10"
                             )}
+                            style={formData.status === s ? { background: pgConfig?.primaryColor || '#4f46e5', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` } : {}}
                           >
                             {s?.toUpperCase()}
                           </button>
@@ -874,7 +876,8 @@ export const TenantsPage = () => {
                   </button>
                   <button
                     type="submit"
-                    className="px-6 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
+                    className="px-8 py-3 bg-indigo-600 text-white font-bold rounded-2xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
+                    style={{ background: pgConfig?.primaryColor || '#4f46e5' }}
                   >
                     {editingTenant ? 'Update Tenant' : 'Add Tenant'}
                   </button>
@@ -1213,7 +1216,8 @@ export const TenantsPage = () => {
                 {adminKycFile && (
                   <button
                     type="submit"
-                    className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20"
+                    className="w-full py-4 text-white rounded-2xl font-bold shadow-lg transition-all"
+                    style={{ background: pgConfig?.primaryColor || '#4f46e5', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
                   >
                     Upload & Verify Document
                   </button>

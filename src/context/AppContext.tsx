@@ -291,30 +291,30 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     if (user.role === 'super') return {
       ...data,
-      pgConfig: data.pgConfigs[0] || null,
-      subscriptionPlans: data.subscriptionPlans,
-      branches: data.branches
+      pgConfig: (data.pgConfigs || [])[0] || null,
+      subscriptionPlans: data.subscriptionPlans || [],
+      branches: data.branches || []
     };
 
     const branchId = user.branchId;
-    const branch = data.branches.find((b: PGBranch) => b.id === branchId);
-    const plan = data.subscriptionPlans.find((p: SubscriptionPlan) => p.id === branch?.planId);
+    const branch = (data.branches || []).find((b: PGBranch) => b.id === branchId);
+    const plan = (data.subscriptionPlans || []).find((p: SubscriptionPlan) => p.id === branch?.planId);
 
     return {
-      tenants: data.tenants.filter((t: Tenant) => t.branchId === branchId),
-      rooms: data.rooms.filter((r: Room) => r.branchId === branchId),
-      meterGroups: data.meterGroups.filter((m: MeterGroup) => m.branchId === branchId),
-      payments: data.payments.filter((p: Payment) => p.branchId === branchId),
-      complaints: data.complaints.filter((c: Complaint) => c.branchId === branchId),
-      employees: data.employees.filter((e: Employee) => e.branchId === branchId),
-      kycs: data.kycs.filter((k: KYCData) => k.branchId === branchId),
-      announcements: data.announcements.filter((a: Announcement) => a.branchId === branchId),
-      salaryPayments: data.salaryPayments.filter((p: SalaryPayment) => p.branchId === branchId),
-      tasks: data.tasks.filter((t: Task) => t.branchId === branchId),
-      pgConfig: data.pgConfigs.find((c: PGConfig) => c.branchId === branchId) || null,
-      subscriptionPlans: data.subscriptionPlans,
-      branches: data.branches,
-      userInvites: data.userInvites,
+      tenants: (data.tenants || []).filter((t: Tenant) => t.branchId === branchId),
+      rooms: (data.rooms || []).filter((r: Room) => r.branchId === branchId),
+      meterGroups: (data.meterGroups || []).filter((m: MeterGroup) => m.branchId === branchId),
+      payments: (data.payments || []).filter((p: Payment) => p.branchId === branchId),
+      complaints: (data.complaints || []).filter((c: Complaint) => c.branchId === branchId),
+      employees: (data.employees || []).filter((e: Employee) => e.branchId === branchId),
+      kycs: (data.kycs || []).filter((k: KYCData) => k.branchId === branchId),
+      announcements: (data.announcements || []).filter((a: Announcement) => a.branchId === branchId),
+      salaryPayments: (data.salaryPayments || []).filter((p: SalaryPayment) => p.branchId === branchId),
+      tasks: (data.tasks || []).filter((t: Task) => t.branchId === branchId),
+      pgConfig: (data.pgConfigs || []).find((c: PGConfig) => c.branchId === branchId) || null,
+      subscriptionPlans: data.subscriptionPlans || [],
+      branches: data.branches || [],
+      userInvites: data.userInvites || [],
       currentBranch: branch,
       currentPlan: plan
     };
@@ -1176,12 +1176,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       revenueHistory.push({ name: monthStr, revenue: monthRev });
     }
 
-    const floors = [...new Set(rooms.map((r: Room) => r.floor))].sort();
-    const occupancyByFloor = rooms.length > 0 && floors.length > 0 ? floors.map((floor) => {
-      const floorRooms = rooms.filter((r: Room) => r.floor === floor);
+    const floors = [...new Set((rooms || []).map((r: Room) => r.floor))].sort();
+    const occupancyByFloor = (rooms || []).length > 0 && floors.length > 0 ? floors.map((floor) => {
+      const floorRooms = (rooms || []).filter((r: Room) => r.floor === floor);
 
       const floorRoomIds = floorRooms.map((r: Room) => r.id);
-      const occupied = tenants.filter((t: Tenant) =>
+      const occupied = (tenants || []).filter((t: Tenant) =>
         t.status === 'active' && floorRoomIds.includes(t.roomId)
       ).length;
 

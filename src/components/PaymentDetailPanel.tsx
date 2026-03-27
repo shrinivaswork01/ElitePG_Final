@@ -4,6 +4,10 @@ import { X, CreditCard, Calendar, Clock, CheckCircle2, AlertCircle, FileText, Pr
 import { Payment } from '../types';
 import { format, parseISO } from 'date-fns';
 import { cn } from '../utils';
+import { uploadToSupabase } from '../utils/storage';
+import { useApp } from '../context/AppContext';
+import toast from 'react-hot-toast';
+import { Loader2, Upload } from 'lucide-react';
 
 interface PaymentDetailPanelProps {
   payment: Payment | null;
@@ -12,8 +16,11 @@ interface PaymentDetailPanelProps {
   onViewReceipt?: (p: Payment) => void;
   onMarkPaid?: (p: Payment) => void;
   onDelete?: (p: Payment) => void;
+  onViewDoc?: (url: string, title: string) => void;
   canEdit?: boolean;
 }
+
+import { ArrowUpRight } from 'lucide-react';
 
 const Field = ({ label, value, className }: { label: string; value: React.ReactNode; className?: string }) => (
   <div className={cn("flex flex-col gap-0.5", className)}>
@@ -23,8 +30,18 @@ const Field = ({ label, value, className }: { label: string; value: React.ReactN
 );
 
 export const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
-  payment, tenantName, onClose, onViewReceipt, onMarkPaid, onDelete, canEdit
+  payment, tenantName, onClose, onViewReceipt, onMarkPaid, onDelete, onViewDoc, canEdit
 }) => {
+  const { updatePayment, addPayment } = useApp();
+  const [isUploading, setIsUploading] = React.useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const electricityAmount = Number((payment as any)?.electricityAmount || (payment as any)?.electricity_amount || 0);
+  const baseShare = (payment as any)?.baseShare || (payment as any)?.base_share || 0;
+  const acShare = (payment as any)?.acShare || (payment as any)?.ac_share || 0;
+  const actualBillUrl = (payment as any)?.actualBillUrl || (payment as any)?.actual_bill_file_url;
+  const acBillUrl = (payment as any)?.acBillUrl || (payment as any)?.ac_bill_file_url;
+
   return (
     <AnimatePresence>
       {payment && (
@@ -93,32 +110,66 @@ export const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
               {/* Amount Breakdown */}
               <div className="bg-white dark:bg-white/5 rounded-2xl p-4 border border-gray-100 dark:border-white/5 shadow-sm space-y-3">
                 <p className="text-xs font-black uppercase tracking-widest text-gray-400 border-b border-gray-100 dark:border-white/5 pb-2">Amount Summary</p>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600 dark:text-gray-400">Rent</span>
-                  <span className="text-sm font-semibold text-gray-900 dark:text-white">₹{(Number(payment.amount || (payment as any).amount) || 0).toLocaleString()}</span>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-gray-600 dark:text-gray-400">Rent</span>
+                  <span className="font-semibold text-gray-900 dark:text-white">₹{(Number(payment.amount) || 0).toLocaleString()}</span>
                 </div>
-                {((Number((payment as any).electricityAmount || (payment as any).electricity_amount) || 0) > 0) && (
-                  <>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-amber-500 flex items-center gap-1">⚡ Electricity</span>
-                      <span className="text-sm font-semibold text-amber-600">₹{(Number((payment as any).electricityAmount || (payment as any).electricity_amount) || 0).toLocaleString()}</span>
+                
+                {electricityAmount > 0 && (
+                  <div className="space-y-2 py-2 border-t border-gray-50 dark:border-white/5">
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-amber-500 font-bold flex items-center gap-1">⚡ Electricity Total</span>
+                      <span className="font-bold text-amber-600">₹{electricityAmount.toLocaleString()}</span>
                     </div>
-                  </>
-                )}
-                {((Number(payment.lateFee || (payment as any).late_fee) || 0) > 0) && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-rose-500">Late Fee</span>
-                    <span className="text-sm font-semibold text-rose-600">₹{(Number(payment.lateFee || (payment as any).late_fee) || 0).toLocaleString()}</span>
+                    {(baseShare > 0 || acShare > 0) && (
+                      <div className="pl-4 space-y-1">
+                        <div className="flex justify-between items-center text-[11px]">
+                          <span className="text-gray-500">Base Consumption Share</span>
+                          <span className="font-medium text-gray-700 dark:text-gray-300">₹{Number(baseShare).toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-[11px]">
+                          <span className="text-gray-500">AC Consumption Share</span>
+                          <span className="font-medium text-gray-700 dark:text-gray-300">₹{Number(acShare).toLocaleString()}</span>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {onViewDoc && (actualBillUrl || acBillUrl) && (
+                      <div className="grid grid-cols-2 gap-2 mt-2">
+                        {actualBillUrl && (
+                          <button
+                            onClick={() => onViewDoc(actualBillUrl, 'Electricity Bill')}
+                            className="flex items-center justify-center gap-1.5 py-1.5 px-3 bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-lg text-[10px] font-bold hover:bg-amber-100 transition-colors border border-amber-200/50 dark:border-amber-500/20"
+                          >
+                            <FileText className="w-3 h-3" />
+                            View Bill
+                          </button>
+                        )}
+                        {acBillUrl && (
+                          <button
+                            onClick={() => onViewDoc(acBillUrl, 'AC Proof')}
+                            className="flex items-center justify-center gap-1.5 py-1.5 px-3 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-lg text-[10px] font-bold hover:bg-indigo-100 transition-colors border border-indigo-200/50 dark:border-indigo-500/20"
+                          >
+                            <FileText className="w-3 h-3" />
+                            AC Proof
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
+
+                {Number(payment.lateFee || 0) > 0 && (
+                  <div className="flex justify-between items-center text-sm pt-2 border-t border-gray-50 dark:border-white/5">
+                    <span className="text-rose-500">Late Fee</span>
+                    <span className="font-semibold text-rose-600">₹{Number(payment.lateFee).toLocaleString()}</span>
+                  </div>
+                )}
+                
                 <div className="pt-2 border-t border-gray-100 dark:border-white/5 flex justify-between items-center">
-                  <span className="text-sm font-bold text-gray-900 dark:text-white">Total</span>
+                  <span className="text-sm font-bold text-gray-900 dark:text-white">Total Amount</span>
                   <span className="text-lg font-black text-indigo-600 dark:text-indigo-400">
-                    ₹{(
-                      (Number(payment.amount || (payment as any).amount) || 0) + 
-                      (Number((payment as any).electricityAmount || (payment as any).electricity_amount) || 0) +
-                      (Number(payment.lateFee || (payment as any).late_fee) || 0)
-                    ).toLocaleString()}
+                    ₹{(Number(payment.totalAmount) || 0).toLocaleString()}
                   </span>
                 </div>
               </div>
@@ -134,6 +185,74 @@ export const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
                   )}
                 </div>
               )}
+
+              {/* Proof of Payment Section */}
+              <div className="bg-white dark:bg-white/5 rounded-2xl p-4 border border-gray-100 dark:border-white/5 shadow-sm space-y-3">
+                <p className="text-xs font-black uppercase tracking-widest text-gray-400 border-b border-gray-100 dark:border-white/5 pb-2">Proof of Payment</p>
+                {payment.proofUrl ? (
+                  <button
+                    onClick={() => onViewDoc?.(payment.proofUrl!, 'Payment Proof')}
+                    className="w-full flex items-center justify-between p-3 bg-emerald-50 dark:bg-emerald-500/10 rounded-xl border border-emerald-100 dark:border-emerald-500/20 group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 rounded-lg">
+                        <FileText className="w-4 h-4" />
+                      </div>
+                      <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">View Proof Screenshot</span>
+                    </div>
+                    <ArrowUpRight className="w-4 h-4 text-emerald-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                  </button>
+                ) : payment.status === 'pending' && (
+                  <div className="space-y-2">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      className="hidden"
+                      accept="image/*,.pdf"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setIsUploading(true);
+                        try {
+                          const path = `proofs/${payment.id || 'new'}_${Date.now()}_${file.name}`;
+                          const url = await uploadToSupabase('payment-proofs', path, file);
+                          
+                          if (payment.id === 'upcoming') {
+                            // Create a new pending payment record for this month
+                            const { tenants, ...paymentData } = payment as any; // strip UI-only props
+                            await addPayment({
+                              ...paymentData,
+                              id: undefined,
+                              status: 'pending',
+                              proofUrl: url,
+                              method: 'Offline',
+                              createdBy: paymentData.tenantId
+                            } as any);
+                            toast.success('Payment notification sent with proof!');
+                          } else {
+                            await updatePayment(payment.id, { proofUrl: url });
+                            toast.success('Proof uploaded!');
+                          }
+                          onClose();
+                        } catch (err: any) {
+                          toast.error(err.message || 'Upload failed');
+                        } finally {
+                          setIsUploading(false);
+                        }
+                      }}
+                    />
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploading}
+                      className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-gray-200 dark:border-white/10 rounded-xl text-sm font-bold text-gray-500 hover:border-indigo-500 hover:text-indigo-600 transition-all"
+                    >
+                      {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                      {isUploading ? 'Uploading...' : 'Upload Payment Screenshot'}
+                    </button>
+                    <p className="text-[10px] text-gray-400 text-center">Upload proof of transfer to notify the admin.</p>
+                  </div>
+                )}
+              </div>
 
               {/* View Receipt Button */}
               {payment.status === 'paid' && onViewReceipt && (

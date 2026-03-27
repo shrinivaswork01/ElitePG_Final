@@ -159,7 +159,8 @@ export const ComplaintsPage = () => {
         {['admin', 'manager', 'tenant'].includes(user?.role || '') && (
           <button
             onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
+            className="flex items-center gap-2 px-4 py-2.5 text-white rounded-xl font-semibold shadow-lg transition-all"
+            style={{ background: pgConfig?.primaryColor || '#4f46e5', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
           >
             <Plus className="w-5 h-5" />
             Raise Complaint
@@ -198,9 +199,10 @@ export const ComplaintsPage = () => {
               className={cn(
                 "px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-all",
                 filterStatus === status
-                  ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
+                  ? "text-white shadow-lg"
                   : "bg-white dark:bg-[#111111] text-gray-500 dark:text-gray-400 border border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5"
               )}
+              style={filterStatus === status ? { background: pgConfig?.primaryColor || '#4f46e5', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` } : {}}
             >
               {status?.charAt(0).toUpperCase() + status?.slice(1)}
             </button>
@@ -532,8 +534,8 @@ export const ComplaintsPage = () => {
                 <button
                   type="submit"
                   form="complaintForm"
-                  className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all font-outfit"
-                  style={{ backgroundColor: pgConfig?.primaryColor }}
+                  className="w-full py-4 text-white rounded-2xl font-bold shadow-lg transition-all font-outfit"
+                  style={{ background: pgConfig?.primaryColor || '#4f46e5', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
                 >
                   {editingComplaint ? 'Update Complaint' : 'Submit Complaint'}
                 </button>
@@ -590,18 +592,19 @@ export const ComplaintsPage = () => {
                     placeholder="New category name"
                     className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                   />
-                  <button
-                    onClick={() => {
-                      if (!newCategory.trim()) return;
-                      const currentCats = pgConfig?.complaintCategories || [];
-                      if (currentCats.includes(newCategory.trim())) return;
-                      updatePGConfig({ complaintCategories: [...currentCats, newCategory.trim()] });
-                      setNewCategory('');
-                    }}
-                    className="px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
-                  >
-                    Add
-                  </button>
+                    <button
+                      onClick={() => {
+                        if (!newCategory.trim()) return;
+                        const currentCats = pgConfig?.complaintCategories || [];
+                        if (currentCats.includes(newCategory.trim())) return;
+                        updatePGConfig({ complaintCategories: [...currentCats, newCategory.trim()] });
+                        setNewCategory('');
+                      }}
+                      className="px-4 py-2.5 text-white rounded-xl text-sm font-bold shadow-lg transition-all"
+                      style={{ background: pgConfig?.primaryColor || '#4f46e5', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
+                    >
+                      Add
+                    </button>
                 </div>
               </div>
             </motion.div>
@@ -653,24 +656,24 @@ export const ComplaintsPage = () => {
                   />
                 </div>
 
-                <button
-                  onClick={() => {
-                    updateComplaint(completingComplaint.id, {
-                      status: 'resolved',
-                      resolutionComment,
-                      resolutionImages
-                    });
+                  <button
+                    onClick={() => {
+                      updateComplaint(completingComplaint.id, {
+                        status: 'resolved',
+                        resolutionComment,
+                        resolutionImages
+                      });
 
-                    setCompletingComplaint(null);
-                    setResolutionComment('');
-                    setResolutionImages([]);
-                    toast.success('Complaint marked as resolved!');
-                  }}
-                  className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all font-outfit"
-                  style={{ backgroundColor: pgConfig?.primaryColor }}
-                >
-                  Verify & Resolve
-                </button>
+                      setCompletingComplaint(null);
+                      setResolutionComment('');
+                      setResolutionImages([]);
+                      toast.success('Complaint marked as resolved!');
+                    }}
+                    className="w-full py-4 text-white rounded-2xl font-bold shadow-lg transition-all font-outfit"
+                    style={{ background: pgConfig?.primaryColor || '#4f46e5', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
+                  >
+                    Verify & Resolve
+                  </button>
               </div>
             </motion.div>
           </div>

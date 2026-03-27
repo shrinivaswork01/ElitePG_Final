@@ -30,7 +30,7 @@ import toast from 'react-hot-toast';
 
 export const RoomsPage = () => {
   const { user } = useAuth();
-const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroups, addMeterGroup, updateMeterGroup, deleteMeterGroup } = useApp();
+const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroups, addMeterGroup, updateMeterGroup, deleteMeterGroup, pgConfig } = useApp();
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [roomToDelete, setRoomToDelete] = useState<Room | null>(null);
   const [electricityRoom, setElectricityRoom] = useState<Room | null>(null);
@@ -301,9 +301,9 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
       return;
     }
 
-    const isDuplicate = rooms.some(r => r.roomNumber.toLowerCase() === formData.roomNumber.toLowerCase() && r.id !== editingRoom?.id);
+    const isDuplicate = rooms.some(r => r.roomNumber.toLowerCase() === formData.roomNumber.toLowerCase() && r.floor === formData.floor && r.id !== editingRoom?.id);
     if (isDuplicate) {
-      toast.error(`Room number ${formData.roomNumber} already exists.`);
+      toast.error(`Room number ${formData.roomNumber} already exists on floor ${formData.floor}.`);
       return;
     }
 
@@ -330,6 +330,12 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
 
   const handleFlatSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const isDuplicate = meterGroups.some(m => m.name.toLowerCase() === flatFormData.name.toLowerCase() && m.floor === flatFormData.floor && m.id !== editingFlat?.id);
+    if (isDuplicate) {
+      toast.error(`Flat ${flatFormData.name} already exists on floor ${flatFormData.floor}.`);
+      return;
+    }
+
     if (editingFlat) {
       await updateMeterGroup(editingFlat.id, flatFormData);
     } else {
@@ -340,20 +346,23 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
     setFlatFormData({ name: '', floor: 1 });
   };
 
-  const roomsData: Room[] = (paginatedRooms || []).map((r: any) => ({
-    id: r.id,
-    roomNumber: r.room_number,
-    floor: r.floor,
-    totalBeds: r.total_beds,
-    occupiedBeds: r.occupied_beds,
-    type: r.type,
-    price: r.price,
-    description: r.description,
-    amenities: r.amenities || [],
-    branchId: r.branch_id,
-    meterGroupId: r.meter_group_id,
-    meterGroup: r.meter_groups
-  }));
+  const roomsData: Room[] = (paginatedRooms || []).map((r: any) => {
+    const liveOccupied = tenants.filter(t => t.roomId === r.id && t.status === 'active').length;
+    return {
+      id: r.id,
+      roomNumber: r.room_number,
+      floor: r.floor,
+      totalBeds: r.total_beds,
+      occupiedBeds: liveOccupied,
+      type: r.type,
+      price: r.price,
+      description: r.description,
+      amenities: r.amenities || [],
+      branchId: r.branch_id,
+      meterGroupId: r.meter_group_id,
+      meterGroup: r.meter_groups
+    };
+  });
 
   return (
     <div className="space-y-6">
@@ -371,7 +380,7 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
               Rooms
             </span>
             {activeTab === 'rooms' && (
-              <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" />
+              <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" style={{ background: pgConfig?.primaryColor || '#4f46e5' }} />
             )}
           </button>
           <button 
@@ -386,7 +395,7 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
               Flats / Groups
             </span>
             {activeTab === 'flats' && (
-              <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-violet-600 rounded-full" />
+              <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-violet-600 rounded-full" style={{ background: pgConfig?.primaryColor || '#7c3aed' }} />
             )}
           </button>
         </div>
@@ -408,6 +417,7 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
             <button
               onClick={() => setIsAddModalOpen(true)}
               className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
+              style={{ background: pgConfig?.primaryColor || '#4f46e5' }}
             >
               <Plus className="w-5 h-5" />
               Add Room
@@ -553,7 +563,7 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
         }))}
         isOpen={!!electricityRoom}
         onClose={() => setElectricityRoom(null)}
-        onSaved={() => refetch()}
+        onSaved={() => { /* AppContext handles data refresh automatically */ }}
       />
 
       <AnimatePresence>
@@ -574,7 +584,7 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
                   <label className="text-xs font-bold text-gray-500 uppercase">Floor</label>
                   <input required type="number" value={flatFormData.floor} onChange={e => setFlatFormData({ ...flatFormData, floor: Number(e.target.value) })} className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-violet-500/20 text-gray-900 dark:text-white" />
                 </div>
-                <button type="submit" className="w-full py-3 bg-violet-600 text-white rounded-xl font-bold shadow-lg shadow-violet-600/20 hover:bg-violet-700 transition-all">
+                <button type="submit" className="w-full py-3 bg-violet-600 text-white rounded-xl font-bold shadow-lg shadow-violet-600/20 hover:bg-violet-700 transition-all" style={{ background: pgConfig?.primaryColor || '#7c3aed' }}>
                   {editingFlat ? 'Update Group' : 'Create Flat Group'}
                 </button>
               </form>
@@ -807,6 +817,7 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
                   <button
                     type="submit"
                     className="px-6 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
+                    style={{ background: pgConfig?.primaryColor || '#4f46e5' }}
                   >
                     {editingRoom ? 'Update Room' : 'Add Room'}
                   </button>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useApp } from '../context/AppContext';
 import { X, Zap, Upload, FileText, Calendar, Loader2, AlertCircle } from 'lucide-react';
 import { Room, ElectricityBill } from '../types';
 import { saveElectricityBill, fetchElectricityBill, calculateElectricityShares } from '../utils/electricityUtils';
@@ -19,30 +20,54 @@ interface ElectricityBillModalProps {
 export const ElectricityBillModal: React.FC<ElectricityBillModalProps> = ({
   room, branchId, tenants, isOpen, onClose, onSaved
 }) => {
+  const { pgConfig } = useApp();
   const [month, setMonth] = useState(format(new Date(), 'yyyy-MM'));
-  const [totalAmount, setTotalAmount] = useState('');
-  const [acExtraAmount, setAcExtraAmount] = useState('');
-  const [file, setFile] = useState<File | null>(null);
+  const [actualAmount, setActualAmount] = useState('');
+  const [acAmount, setAcAmount] = useState('');
+  const [actualFile, setActualFile] = useState<File | null>(null);
+  const [acFile, setAcFile] = useState<File | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [existingBill, setExistingBill] = useState<ElectricityBill | null>(null);
   const [showBreakdown, setShowBreakdown] = useState(false);
 
+  // Auto-calculated total amount
+  const calculatedTotal = (Number(actualAmount) || 0) + (room?.type === 'AC' ? (Number(acAmount) || 0) : 0);
+
+  // Reset state when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setActualAmount('');
+      setAcAmount('');
+      setActualFile(null);
+      setAcFile(null);
+      setExistingBill(null);
+      setShowBreakdown(false);
+      setIsSaving(false);
+      setIsLoading(false);
+    }
+  }, [isOpen]);
+
   // Fetch existing bill when month changes
   useEffect(() => {
     if (!room || !isOpen || !room.meterGroupId) return;
+    let cancelled = false;
     setIsLoading(true);
     fetchElectricityBill(room.meterGroupId, month).then(bill => {
+      if (cancelled) return;
       setExistingBill(bill);
       if (bill) {
-        setTotalAmount(String(bill.totalAmount));
-        setAcExtraAmount(String(bill.acExtraAmount));
+        setActualAmount(String(bill.actualAmount));
+        setAcAmount(String(bill.acAmount));
       } else {
-        setTotalAmount('');
-        setAcExtraAmount('');
+        setActualAmount('');
+        setAcAmount('');
       }
       setIsLoading(false);
+    }).catch(() => {
+      if (!cancelled) setIsLoading(false);
     });
+    return () => { cancelled = true; };
   }, [room, month, isOpen]);
 
   const handleSave = async () => {
@@ -51,8 +76,8 @@ export const ElectricityBillModal: React.FC<ElectricityBillModalProps> = ({
       toast.error('Cannot save: Room has no tenants');
       return;
     }
-    if (!totalAmount || Number(totalAmount) <= 0) {
-      toast.error('Please enter a valid total bill amount');
+    if (!actualAmount || Number(actualAmount) <= 0) {
+      toast.error('Please enter a valid actual bill amount');
       return;
     }
 
@@ -62,9 +87,10 @@ export const ElectricityBillModal: React.FC<ElectricityBillModalProps> = ({
         meterGroupId: room.meterGroupId!,
         branchId,
         month,
-        totalAmount: Number(totalAmount),
-        acExtraAmount: Number(acExtraAmount) || 0,
-        file: file || undefined,
+        actualAmount: Number(actualAmount),
+        acAmount: room.type === 'AC' ? (Number(acAmount) || 0) : (existingBill?.acAmount || 0),
+        actualFile: actualFile || undefined,
+        acFile: acFile || undefined,
         existingBillId: existingBill?.id
       });
       toast.success(existingBill ? 'Bill updated!' : 'Bill saved!');
@@ -78,30 +104,31 @@ export const ElectricityBillModal: React.FC<ElectricityBillModalProps> = ({
   };
 
   // Live preview of breakdown
-  const previewShares = (totalAmount && room.meterGroupId) ? calculateElectricityShares(
+  const previewShares = (calculatedTotal > 0 && room?.meterGroupId) ? calculateElectricityShares(
     { 
       id: '', 
       meterGroupId: room.meterGroupId, 
       branchId, 
       month, 
-      totalAmount: Number(totalAmount), 
-      acExtraAmount: Number(acExtraAmount) || 0, 
+      actualAmount: Number(actualAmount),
+      acAmount: Number(acAmount) || 0,
+      totalAmount: calculatedTotal,
       createdAt: '' 
     },
     tenants
   ) : [];
 
-  if (!isOpen || !room) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={onClose}
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-      />
+    <AnimatePresence>
+      {isOpen && room && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+          />
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -153,77 +180,133 @@ export const ElectricityBillModal: React.FC<ElectricityBillModalProps> = ({
             )}
           </div>
 
-          {/* Total Bill Amount */}
-          <div className="space-y-2">
-            <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Total Bill Amount (₹)</label>
-            <input
-              type="number"
-              value={totalAmount}
-              onChange={(e) => setTotalAmount(e.target.value)}
-              placeholder="e.g. 3000"
-              className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-            />
+          {/* Base Bill Amount */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Base Electricity Bill (₹)</label>
+              <input
+                type="number"
+                value={actualAmount}
+                onChange={(e) => setActualAmount(e.target.value)}
+                placeholder="e.g. 3000"
+                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+              />
+            </div>
+            
+            {/* Upload Base Bill */}
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Proof of Base Bill</label>
+              <label className={cn(
+                "flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border-2 border-dashed cursor-pointer transition-all",
+                actualFile
+                  ? "border-emerald-300 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600"
+                  : existingBill?.actualBillUrl
+                    ? "border-amber-300 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 text-amber-600"
+                    : "border-gray-200 dark:border-white/10 hover:border-indigo-300 dark:hover:border-indigo-500/30 text-gray-500"
+              )}>
+                <input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png,.webp"
+                  className="hidden"
+                  onChange={(e) => setActualFile(e.target.files?.[0] || null)}
+                />
+                {actualFile ? (
+                  <>
+                    <FileText className="w-4 h-4" />
+                    <span className="text-sm font-semibold truncate">{actualFile.name}</span>
+                  </>
+                ) : existingBill?.actualBillUrl ? (
+                  <>
+                    <FileText className="w-4 h-4" />
+                    <span className="text-sm font-semibold">Replace File</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4" />
+                    <span className="text-sm font-semibold">Upload PDF/Image</span>
+                  </>
+                )}
+              </label>
+              {existingBill?.actualBillUrl && !actualFile && (
+                <button
+                  onClick={() => window.open(existingBill.actualBillUrl, '_blank')}
+                  className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold hover:underline block text-right mt-1"
+                >
+                  View Current Base Bill →
+                </button>
+              )}
+            </div>
           </div>
 
           {/* AC Extra Amount */}
-          <div className="space-y-2">
-            <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">AC Extra Amount (₹)</label>
-            <input
-              type="number"
-              value={acExtraAmount}
-              onChange={(e) => setAcExtraAmount(e.target.value)}
-              placeholder="0 if no AC surcharge"
-              className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-            />
-            <p className="text-[10px] text-gray-400">Extra amount charged to AC users only. Leave 0 if not applicable.</p>
-          </div>
+          {room?.type === 'AC' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">AC Sub-meter Bill (₹)</label>
+                <input
+                  type="number"
+                  value={acAmount}
+                  onChange={(e) => setAcAmount(e.target.value)}
+                  placeholder="0 if no AC surcharge"
+                  className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                />
+                <p className="text-[10px] text-gray-400">Charged to AC users only.</p>
+              </div>
+              
+              {/* Upload AC Bill */}
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Proof of AC Bill</label>
+                <label className={cn(
+                  "flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border-2 border-dashed cursor-pointer transition-all",
+                  acFile
+                    ? "border-emerald-300 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600"
+                    : existingBill?.acBillUrl
+                      ? "border-amber-300 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 text-amber-600"
+                      : "border-gray-200 dark:border-white/10 hover:border-indigo-300 dark:hover:border-indigo-500/30 text-gray-500"
+                )}>
+                  <input
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png,.webp"
+                    className="hidden"
+                    onChange={(e) => setAcFile(e.target.files?.[0] || null)}
+                  />
+                  {acFile ? (
+                    <>
+                      <FileText className="w-4 h-4" />
+                      <span className="text-sm font-semibold truncate">{acFile.name}</span>
+                    </>
+                  ) : existingBill?.acBillUrl ? (
+                    <>
+                      <FileText className="w-4 h-4" />
+                      <span className="text-sm font-semibold">Replace File</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4" />
+                      <span className="text-sm font-semibold">Upload PDF/Image</span>
+                    </>
+                  )}
+                </label>
+                {existingBill?.acBillUrl && !acFile && (
+                  <button
+                    onClick={() => window.open(existingBill.acBillUrl, '_blank')}
+                    className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold hover:underline block text-right mt-1"
+                  >
+                    View Current AC Bill →
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
-          {/* Upload Bill */}
-          <div className="space-y-2">
-            <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Upload Bill (PDF / Image)</label>
-            <label className={cn(
-              "flex items-center justify-center gap-2 py-3 px-4 rounded-2xl border-2 border-dashed cursor-pointer transition-all",
-              file
-                ? "border-emerald-300 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600"
-                : existingBill?.billUrl
-                  ? "border-amber-300 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 text-amber-600"
-                  : "border-gray-200 dark:border-white/10 hover:border-indigo-300 dark:hover:border-indigo-500/30 text-gray-500"
-            )}>
-              <input
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png,.webp"
-                className="hidden"
-                onChange={(e) => setFile(e.target.files?.[0] || null)}
-              />
-              {file ? (
-                <>
-                  <FileText className="w-4 h-4" />
-                  <span className="text-sm font-semibold truncate">{file.name}</span>
-                </>
-              ) : existingBill?.billUrl ? (
-                <>
-                  <FileText className="w-4 h-4" />
-                  <span className="text-sm font-semibold">Replace existing bill</span>
-                </>
-              ) : (
-                <>
-                  <Upload className="w-4 h-4" />
-                  <span className="text-sm font-semibold">Tap to upload</span>
-                </>
-              )}
-            </label>
-            {existingBill?.billUrl && !file && (
-              <button
-                onClick={() => window.open(existingBill.billUrl, '_blank')}
-                className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline"
-              >
-                View current bill →
-              </button>
-            )}
+          {/* Auto-Calculated Total */}
+          <div className="p-4 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/5 flex items-center justify-between">
+            <span className="font-bold text-gray-700 dark:text-gray-300">Total Bill Amount</span>
+            <span className="text-xl font-bold text-gray-900 dark:text-white">₹{calculatedTotal.toLocaleString()}</span>
           </div>
 
           {/* Live Breakdown Preview */}
-          {previewShares.length > 0 && totalAmount && (
+          {previewShares.length > 0 && calculatedTotal > 0 && (
             <div className="space-y-2">
               <button
                 onClick={() => setShowBreakdown(!showBreakdown)}
@@ -250,8 +333,9 @@ export const ElectricityBillModal: React.FC<ElectricityBillModalProps> = ({
           {/* Save Button */}
           <button
             onClick={handleSave}
-            disabled={isSaving || tenants.length === 0 || !totalAmount}
+            disabled={isSaving || tenants.length === 0 || !actualAmount || calculatedTotal <= 0}
             className="w-full py-4 bg-amber-500 text-white rounded-2xl font-bold shadow-lg shadow-amber-500/20 hover:bg-amber-600 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+            style={{ background: pgConfig?.primaryColor || '#f59e0b' }}
           >
             {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
             {isSaving ? 'Saving...' : existingBill ? 'Update Bill' : 'Save Bill'}
@@ -259,5 +343,7 @@ export const ElectricityBillModal: React.FC<ElectricityBillModalProps> = ({
         </div>
       </motion.div>
     </div>
+      )}
+    </AnimatePresence>
   );
 };

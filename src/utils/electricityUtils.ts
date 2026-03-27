@@ -4,7 +4,6 @@ import { uploadToSupabase } from './storage';
 
 /**
  * Calculate per-tenant electricity shares for a given bill and tenant list.
- * This is a pure function — no side effects.
  */
 export function calculateElectricityShares(
   bill: ElectricityBill,
@@ -16,9 +15,9 @@ export function calculateElectricityShares(
   const acTenants = tenants.filter(t => t.is_ac_user || t.isAcUser);
   const acCount = acTenants.length;
 
-  const basePool = bill.totalAmount - (acCount > 0 ? bill.acExtraAmount : 0);
+  const basePool = bill.actualAmount;
   const baseShare = Math.round((basePool / totalTenants) * 100) / 100;
-  const acShare = acCount > 0 ? Math.round((bill.acExtraAmount / acCount) * 100) / 100 : 0;
+  const acShare = acCount > 0 ? Math.round((bill.acAmount / acCount) * 100) / 100 : 0;
 
   return tenants.map(t => {
     const isAc = !!(t.is_ac_user || t.isAcUser);
@@ -35,7 +34,6 @@ export function calculateElectricityShares(
 
 /**
  * Fetch the electricity bill for a specific meter group (flat) and month.
- * Returns null if no bill exists.
  */
 export async function fetchElectricityBill(
   meterGroupId: string,
@@ -56,8 +54,39 @@ export async function fetchElectricityBill(
     branchId: data.branch_id,
     month: data.month,
     totalAmount: Number(data.total_amount),
-    acExtraAmount: Number(data.ac_extra_amount),
-    billUrl: data.bill_url,
+    actualAmount: Number(data.actual_bill_amount),
+    acAmount: Number(data.ac_bill_amount),
+    actualBillUrl: data.actual_bill_file_url,
+    acBillUrl: data.ac_bill_file_url,
+    createdAt: data.created_at,
+    roomId: data.room_id
+  };
+}
+
+/**
+ * Fetch a specific electricity bill by its ID.
+ */
+export async function fetchElectricityBillById(
+  id: string
+): Promise<ElectricityBill | null> {
+  const { data, error } = await supabase
+    .from('electricity_bills')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (error || !data) return null;
+
+  return {
+    id: data.id,
+    meterGroupId: data.meter_group_id,
+    branchId: data.branch_id,
+    month: data.month,
+    totalAmount: Number(data.total_amount),
+    actualAmount: Number(data.actual_bill_amount),
+    acAmount: Number(data.ac_bill_amount),
+    actualBillUrl: data.actual_bill_file_url,
+    acBillUrl: data.ac_bill_file_url,
     createdAt: data.created_at,
     roomId: data.room_id
   };
@@ -83,8 +112,10 @@ export async function fetchElectricityBillsForGroup(
     branchId: d.branch_id,
     month: d.month,
     totalAmount: Number(d.total_amount),
-    acExtraAmount: Number(d.ac_extra_amount),
-    billUrl: d.bill_url,
+    actualAmount: Number(d.actual_bill_amount),
+    acAmount: Number(d.ac_bill_amount),
+    actualBillUrl: d.actual_bill_file_url,
+    acBillUrl: d.ac_bill_file_url,
     createdAt: d.created_at,
     roomId: d.room_id
   }));
@@ -92,38 +123,47 @@ export async function fetchElectricityBillsForGroup(
 
 /**
  * Save (insert or update) an electricity bill for a meter group (flat).
- * If a file is provided, it's uploaded to Supabase Storage first.
+ * If files are provided, they are uploaded to Supabase Storage first.
  */
 export async function saveElectricityBill(params: {
   meterGroupId: string;
   branchId: string;
   month: string;
-  totalAmount: number;
-  acExtraAmount: number;
-  file?: File;
+  actualAmount: number;
+  acAmount: number;
+  actualFile?: File;
+  acFile?: File;
   existingBillId?: string;
 }): Promise<ElectricityBill> {
-  let billUrl: string | undefined;
+  let actualBillUrl: string | undefined;
+  let acBillUrl: string | undefined;
 
-  // Upload file if provided
-  if (params.file) {
-    const ext = params.file.name.split('.').pop() || 'pdf';
-    // Use meterGroupId in path now
-    const path = `${params.branchId}/flats/${params.meterGroupId}/${params.month}.${ext}`;
-    billUrl = await uploadToSupabase('electricity-bills', path, params.file);
+  // Upload Base Bill File
+  if (params.actualFile) {
+    const ext = params.actualFile.name.split('.').pop() || 'pdf';
+    const path = `${params.branchId}/flats/${params.meterGroupId}/${params.month}_base.${ext}`;
+    actualBillUrl = await uploadToSupabase('electricity-bills', path, params.actualFile);
+  }
+
+  // Upload AC Bill File
+  if (params.acFile) {
+    const ext = params.acFile.name.split('.').pop() || 'pdf';
+    const path = `${params.branchId}/flats/${params.meterGroupId}/${params.month}_ac.${ext}`;
+    acBillUrl = await uploadToSupabase('electricity-bills', path, params.acFile);
   }
 
   const payload: any = {
     meter_group_id: params.meterGroupId,
     branch_id: params.branchId,
     month: params.month,
-    total_amount: params.totalAmount,
-    ac_extra_amount: params.acExtraAmount
+    total_amount: params.actualAmount + params.acAmount,
+    actual_bill_amount: params.actualAmount,
+    ac_bill_amount: params.acAmount
   };
-  if (billUrl) payload.bill_url = billUrl;
+  if (actualBillUrl) payload.actual_bill_file_url = actualBillUrl;
+  if (acBillUrl) payload.ac_bill_file_url = acBillUrl;
 
   if (params.existingBillId) {
-    // Update existing
     const { data, error } = await supabase
       .from('electricity_bills')
       .update(payload)
@@ -135,11 +175,12 @@ export async function saveElectricityBill(params: {
     return {
       id: data.id, meterGroupId: data.meter_group_id, branchId: data.branch_id,
       month: data.month, totalAmount: Number(data.total_amount),
-      acExtraAmount: Number(data.ac_extra_amount), billUrl: data.bill_url,
+      actualAmount: Number(data.actual_bill_amount), acAmount: Number(data.ac_bill_amount),
+      actualBillUrl: data.actual_bill_file_url, acBillUrl: data.ac_bill_file_url,
       createdAt: data.created_at, roomId: data.room_id
     };
   } else {
-    // Insert new
+
     const { data, error } = await supabase
       .from('electricity_bills')
       .insert(payload)
@@ -150,7 +191,8 @@ export async function saveElectricityBill(params: {
     return {
       id: data.id, meterGroupId: data.meter_group_id, branchId: data.branch_id,
       month: data.month, totalAmount: Number(data.total_amount),
-      acExtraAmount: Number(data.ac_extra_amount), billUrl: data.bill_url,
+      actualAmount: Number(data.actual_bill_amount), acAmount: Number(data.ac_bill_amount),
+      actualBillUrl: data.actual_bill_file_url, acBillUrl: data.ac_bill_file_url,
       createdAt: data.created_at, roomId: data.room_id
     };
   }
@@ -158,7 +200,6 @@ export async function saveElectricityBill(params: {
 
 /**
  * Get the electricity share for a specific tenant in a specific month.
- * Fetches the bill for the tenant's flat (meter group).
  */
 export async function getTenantElectricityShare(
   meterGroupId: string,

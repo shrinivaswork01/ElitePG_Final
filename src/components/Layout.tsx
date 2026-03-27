@@ -123,7 +123,7 @@ export const Layout = ({ children }: LayoutProps) => {
           {pgConfig?.logoUrl ? (
             <img src={pgConfig.logoUrl} alt="Logo" className="w-10 h-10 rounded-xl object-cover" />
           ) : (
-            <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl" style={{ backgroundColor: pgConfig?.primaryColor }}>
+            <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl" style={{ background: pgConfig?.primaryColor || '#4f46e5' }}>
               {pgConfig?.pgName?.charAt(0) || 'E'}
             </div>
           )}
@@ -132,7 +132,7 @@ export const Layout = ({ children }: LayoutProps) => {
           </span>
         </div>
 
-        <nav className="flex-1 px-4 space-y-1 mt-4">
+        <nav className="flex-1 px-4 space-y-1 mt-4 overflow-y-auto custom-scrollbar pb-4">
           {filteredNavigation.map((item) => {
             const isActive = location.pathname === item.href;
             return (
@@ -146,13 +146,13 @@ export const Layout = ({ children }: LayoutProps) => {
                     : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 hover:text-gray-900 dark:hover:text-white"
                 )}
                 style={isActive && pgConfig?.primaryColor ? { 
-                  backgroundColor: `${pgConfig.primaryColor}15`, 
-                  color: pgConfig.primaryColor 
+                  background: pgConfig.primaryColor.includes('gradient') ? pgConfig.primaryColor : `${pgConfig.primaryColor}15`, 
+                  color: pgConfig.primaryColor.includes('gradient') ? '#fff' : pgConfig.primaryColor 
                 } : {}}
               >
                 <item.icon 
                   className={cn("w-5 h-5", isActive ? "text-indigo-600 dark:text-indigo-400" : "text-gray-400 dark:text-gray-500")} 
-                  style={isActive && pgConfig?.primaryColor ? { color: pgConfig.primaryColor } : {}}
+                  style={isActive && pgConfig?.primaryColor ? { color: pgConfig.primaryColor.includes('gradient') ? '#fff' : pgConfig.primaryColor } : {}}
                 />
                 {item.name}
                 {isActive && (
@@ -179,7 +179,7 @@ export const Layout = ({ children }: LayoutProps) => {
             )}
           >
             <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs overflow-hidden" 
-                 style={{ backgroundColor: !user?.avatar ? `${pgConfig?.primaryColor}20` : undefined, color: pgConfig?.primaryColor }}>
+                 style={{ background: !user?.avatar ? (pgConfig?.primaryColor?.includes('gradient') ? pgConfig.primaryColor : `${pgConfig?.primaryColor}20`) : undefined, color: pgConfig?.primaryColor?.includes('gradient') ? '#fff' : pgConfig?.primaryColor }}>
               {user?.avatar ? (
                 <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               ) : (
@@ -232,7 +232,7 @@ export const Layout = ({ children }: LayoutProps) => {
                 {pgConfig?.logoUrl ? (
                   <img src={pgConfig.logoUrl} alt="Logo" className="w-10 h-10 rounded-xl object-cover" />
                 ) : (
-                  <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl" style={{ backgroundColor: pgConfig?.primaryColor }}>
+                  <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl" style={{ background: pgConfig?.primaryColor || '#4f46e5' }}>
                     {pgConfig?.pgName?.charAt(0) || 'E'}
                   </div>
                 )}
@@ -241,7 +241,7 @@ export const Layout = ({ children }: LayoutProps) => {
                 </span>
               </div>
 
-              <nav className="flex-1 px-4 space-y-1 mt-4">
+              <nav className="flex-1 px-4 space-y-1 mt-4 overflow-y-auto custom-scrollbar pb-4">
                 {filteredNavigation.map((item) => {
                   const isActive = location.pathname === item.href;
                   return (
@@ -256,13 +256,13 @@ export const Layout = ({ children }: LayoutProps) => {
                           : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 hover:text-gray-900 dark:hover:text-white"
                       )}
                       style={isActive && pgConfig?.primaryColor ? { 
-                        backgroundColor: `${pgConfig.primaryColor}15`, 
-                        color: pgConfig.primaryColor 
+                        background: pgConfig.primaryColor.includes('gradient') ? pgConfig.primaryColor : `${pgConfig.primaryColor}15`, 
+                        color: pgConfig.primaryColor.includes('gradient') ? '#fff' : pgConfig.primaryColor 
                       } : {}}
                     >
                       <item.icon 
                         className={cn("w-5 h-5", isActive ? "text-indigo-600 dark:text-indigo-400" : "text-gray-400 dark:text-gray-500")} 
-                        style={isActive && pgConfig?.primaryColor ? { color: pgConfig.primaryColor } : {}}
+                        style={isActive && pgConfig?.primaryColor ? { color: pgConfig.primaryColor.includes('gradient') ? '#fff' : pgConfig.primaryColor } : {}}
                       />
                       {item.name}
                     </Link>
@@ -324,7 +324,7 @@ export const Layout = ({ children }: LayoutProps) => {
               className="flex items-center gap-2 sm:gap-3 p-1.5 pr-3 hover:bg-gray-100 dark:hover:bg-white/5 rounded-2xl transition-all"
             >
               <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-sm overflow-hidden"
-                   style={{ backgroundColor: !user?.avatar ? `${pgConfig?.primaryColor}20` : undefined, color: pgConfig?.primaryColor }}>
+                   style={{ background: !user?.avatar ? (pgConfig?.primaryColor?.includes('gradient') ? pgConfig.primaryColor : `${pgConfig?.primaryColor}20`) : undefined, color: pgConfig?.primaryColor?.includes('gradient') ? '#fff' : pgConfig?.primaryColor }}>
                 {user?.avatar ? (
                   <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 ) : (
