@@ -19,13 +19,18 @@ import {
   User,
   BarChart3,
   Building2,
-  Zap
+  Zap,
+  LifeBuoy,
+  ClipboardList
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../utils';
 import { useTheme } from '../context/ThemeContext';
 import { useApp } from '../context/AppContext';
 import { AppFeature } from '../types';
+import { ProfilePage } from '../pages/ProfilePage';
+import { UnifiedStaffTasksPage } from '../pages/UnifiedStaffTasksPage';
+import { HelpSupportPage } from '../pages/HelpSupportPage';
 
 interface LayoutProps {
   children: ReactNode;
@@ -40,20 +45,21 @@ export const Layout = ({ children }: LayoutProps) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const navigation = [
-    { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: ['admin', 'manager', 'caretaker', 'tenant', 'cleaner', 'security', 'super'] },
-    { name: 'Tenants', href: '/tenants', icon: Users, roles: ['admin', 'manager', 'caretaker'] },
-    { name: 'Rooms', href: '/rooms', icon: DoorOpen, roles: ['admin', 'manager', 'caretaker'] },
-    { name: 'Payments', href: '/payments', icon: CreditCard, roles: ['admin', 'manager', 'caretaker', 'tenant'] },
-    { name: 'Complaints', href: '/complaints', icon: MessageSquare, roles: ['admin', 'manager', 'caretaker', 'tenant', 'cleaner', 'security'] },
-    { name: 'KYC Verification', href: '/kyc', icon: ShieldCheck, roles: ['admin', 'manager', 'caretaker'] },
-    { name: 'Employees', href: '/employees', icon: UserCog, roles: ['admin', 'manager', 'caretaker', 'cleaner', 'security'] },
+    { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant', 'super'] },
+    { name: 'Tenants', href: '/tenants', icon: Users, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'security'] },
+    { name: 'Rooms', href: '/rooms', icon: DoorOpen, roles: ['admin', 'manager', 'receptionist', 'caretaker'] },
+    { name: ['admin', 'manager', 'super'].includes(user?.role || '') ? 'Payments' : 'My Payments', href: '/payments', icon: CreditCard, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'tenant'] },
+    { name: 'Complaints', href: '/complaints', icon: MessageSquare, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant'] },
+    { name: 'KYC Verification', href: '/kyc', icon: ShieldCheck, roles: ['admin', 'manager', 'receptionist'] },
+    { name: 'Employees', href: '/employees', icon: UserCog, roles: ['admin', 'manager'] },
     { name: 'Reports', href: '/reports', icon: BarChart3, roles: ['admin', 'manager'] },
     { name: 'Broadcast', href: '/broadcast', icon: Megaphone, roles: ['admin'] },
-    { name: 'Authorize Users', href: '/authorize', icon: ShieldCheck, roles: ['admin'] },
+    { name: 'PG Branches', href: '/branches', icon: Building2, roles: ['super'] },
+    { name: 'Tasks', href: '/tasks', icon: ClipboardList, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner'] },
+    { name: 'Profile', href: '/profile', icon: User, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant', 'super'] },
     { name: 'Subscription', href: '/subscription', icon: Zap, roles: ['admin'] },
     { name: 'Settings', href: '/settings', icon: UserCog, roles: ['admin'] },
-    { name: 'PG Branches', href: '/branches', icon: Building2, roles: ['super'] },
-    { name: 'Profile', href: '/profile', icon: User, roles: ['admin', 'manager', 'caretaker', 'tenant', 'cleaner', 'security', 'super'] },
+    { name: 'Help & Support', href: '/help', icon: LifeBuoy, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant', 'super'] },
   ];
 
   const filteredNavigation = navigation.filter(item => {
@@ -101,11 +107,12 @@ export const Layout = ({ children }: LayoutProps) => {
     }
 
     return true;
+    return item;
   });
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login', { replace: true });
   };
 
   return (
@@ -113,13 +120,19 @@ export const Layout = ({ children }: LayoutProps) => {
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex flex-col w-64 bg-white dark:bg-[#111111] border-r border-gray-200 dark:border-white/5 sticky top-0 h-screen">
         <div className="p-6 flex items-center gap-3">
-          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">
-            E
-          </div>
-          <span className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">ElitePG</span>
+          {pgConfig?.logoUrl ? (
+            <img src={pgConfig.logoUrl} alt="Logo" className="w-10 h-10 rounded-xl object-cover" />
+          ) : (
+            <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl" style={{ background: pgConfig?.primaryColor || '#4f46e5' }}>
+              {pgConfig?.pgName?.charAt(0) || 'E'}
+            </div>
+          )}
+          <span className="text-xl font-bold text-gray-900 dark:text-white tracking-tight truncate">
+            {pgConfig?.pgName || 'ElitePG'}
+          </span>
         </div>
 
-        <nav className="flex-1 px-4 space-y-1 mt-4">
+        <nav className="flex-1 px-4 space-y-1 mt-4 overflow-y-auto custom-scrollbar pb-4">
           {filteredNavigation.map((item) => {
             const isActive = location.pathname === item.href;
             return (
@@ -132,8 +145,15 @@ export const Layout = ({ children }: LayoutProps) => {
                     ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 shadow-sm"
                     : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 hover:text-gray-900 dark:hover:text-white"
                 )}
+                style={isActive && pgConfig?.primaryColor ? { 
+                  background: pgConfig.primaryColor.includes('gradient') ? pgConfig.primaryColor : `${pgConfig.primaryColor}15`, 
+                  color: pgConfig.primaryColor.includes('gradient') ? '#fff' : pgConfig.primaryColor 
+                } : {}}
               >
-                <item.icon className={cn("w-5 h-5", isActive ? "text-indigo-600 dark:text-indigo-400" : "text-gray-400 dark:text-gray-500")} />
+                <item.icon 
+                  className={cn("w-5 h-5", isActive ? "text-indigo-600 dark:text-indigo-400" : "text-gray-400 dark:text-gray-500")} 
+                  style={isActive && pgConfig?.primaryColor ? { color: pgConfig.primaryColor.includes('gradient') ? '#fff' : pgConfig.primaryColor } : {}}
+                />
                 {item.name}
                 {isActive && (
                   <motion.div
@@ -158,7 +178,8 @@ export const Layout = ({ children }: LayoutProps) => {
                 : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 hover:text-gray-900 dark:hover:text-white"
             )}
           >
-            <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs overflow-hidden">
+            <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs overflow-hidden" 
+                 style={{ background: !user?.avatar ? (pgConfig?.primaryColor?.includes('gradient') ? pgConfig.primaryColor : `${pgConfig?.primaryColor}20`) : undefined, color: pgConfig?.primaryColor?.includes('gradient') ? '#fff' : pgConfig?.primaryColor }}>
               {user?.avatar ? (
                 <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               ) : (
@@ -208,13 +229,19 @@ export const Layout = ({ children }: LayoutProps) => {
               className="fixed inset-y-0 left-0 w-72 bg-white dark:bg-[#111111] z-50 lg:hidden flex flex-col shadow-2xl"
             >
               <div className="p-6 flex items-center gap-3">
-                <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">
-                  E
-                </div>
-                <span className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">ElitePG</span>
+                {pgConfig?.logoUrl ? (
+                  <img src={pgConfig.logoUrl} alt="Logo" className="w-10 h-10 rounded-xl object-cover" />
+                ) : (
+                  <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl" style={{ background: pgConfig?.primaryColor || '#4f46e5' }}>
+                    {pgConfig?.pgName?.charAt(0) || 'E'}
+                  </div>
+                )}
+                <span className="text-xl font-bold text-gray-900 dark:text-white tracking-tight truncate">
+                  {pgConfig?.pgName || 'ElitePG'}
+                </span>
               </div>
 
-              <nav className="flex-1 px-4 space-y-1 mt-4">
+              <nav className="flex-1 px-4 space-y-1 mt-4 overflow-y-auto custom-scrollbar pb-4">
                 {filteredNavigation.map((item) => {
                   const isActive = location.pathname === item.href;
                   return (
@@ -228,8 +255,15 @@ export const Layout = ({ children }: LayoutProps) => {
                           ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 shadow-sm"
                           : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 hover:text-gray-900 dark:hover:text-white"
                       )}
+                      style={isActive && pgConfig?.primaryColor ? { 
+                        background: pgConfig.primaryColor.includes('gradient') ? pgConfig.primaryColor : `${pgConfig.primaryColor}15`, 
+                        color: pgConfig.primaryColor.includes('gradient') ? '#fff' : pgConfig.primaryColor 
+                      } : {}}
                     >
-                      <item.icon className={cn("w-5 h-5", isActive ? "text-indigo-600 dark:text-indigo-400" : "text-gray-400 dark:text-gray-500")} />
+                      <item.icon 
+                        className={cn("w-5 h-5", isActive ? "text-indigo-600 dark:text-indigo-400" : "text-gray-400 dark:text-gray-500")} 
+                        style={isActive && pgConfig?.primaryColor ? { color: pgConfig.primaryColor.includes('gradient') ? '#fff' : pgConfig.primaryColor } : {}}
+                      />
                       {item.name}
                     </Link>
                   );
@@ -289,7 +323,8 @@ export const Layout = ({ children }: LayoutProps) => {
               to="/profile"
               className="flex items-center gap-2 sm:gap-3 p-1.5 pr-3 hover:bg-gray-100 dark:hover:bg-white/5 rounded-2xl transition-all"
             >
-              <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-sm overflow-hidden">
+              <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-sm overflow-hidden"
+                   style={{ background: !user?.avatar ? (pgConfig?.primaryColor?.includes('gradient') ? pgConfig.primaryColor : `${pgConfig?.primaryColor}20`) : undefined, color: pgConfig?.primaryColor?.includes('gradient') ? '#fff' : pgConfig?.primaryColor }}>
                 {user?.avatar ? (
                   <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 ) : (

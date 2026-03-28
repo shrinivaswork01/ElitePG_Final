@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import toast from 'react-hot-toast';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { 
@@ -34,7 +35,8 @@ export const SuperAdminPage = () => {
     addSubscriptionPlan, 
     updateSubscriptionPlan, 
     deleteSubscriptionPlan,
-    updateBranchSubscription 
+    updateBranchSubscription,
+    userInvites
   } = useApp();
   const { users, register, deleteUser, updateUser } = useAuth();
   const [activeTab, setActiveTab] = useState<'branches' | 'admins' | 'subscriptions'>('branches');
@@ -60,10 +62,12 @@ export const SuperAdminPage = () => {
   const [planForm, setPlanForm] = useState<Omit<SubscriptionPlan, 'id'>>({
     name: '',
     price: 0,
+    annualPrice: 0,
     features: ['tenants', 'rooms', 'payments', 'complaints'],
     maxTenants: 20,
     maxRooms: 10,
-    billingCycle: 'monthly'
+    razorpayMonthlyPlanId: '',
+    razorpayAnnualPlanId: ''
   });
 
   // Assign Plan Form State
@@ -198,7 +202,9 @@ export const SuperAdminPage = () => {
                   features: ['tenants', 'rooms', 'payments', 'complaints'],
                   maxTenants: 20,
                   maxRooms: 10,
-                  billingCycle: 'monthly'
+                  annualPrice: 0,
+                  razorpayMonthlyPlanId: '',
+                  razorpayAnnualPlanId: ''
                 });
                 setIsAddingPlan(true);
               }}
@@ -301,6 +307,27 @@ export const SuperAdminPage = () => {
                   </div>
                 </div>
                 <div className="mt-6 pt-6 border-t border-gray-100 dark:border-white/5 flex flex-col gap-4">
+                  <div className="flex justify-between items-center text-xs text-indigo-400">
+                    <span className="text-gray-400">Invite Code</span>
+                    <div className="flex items-center gap-1 bg-white/5 px-2 py-1 rounded-md">
+                      <span className="font-mono tracking-wider font-bold">
+                        {userInvites?.find(i => i.branchId === branch.id)?.inviteCode || 'N/A'}
+                      </span>
+                      <button 
+                        onClick={() => {
+                          const code = userInvites?.find(i => i.branchId === branch.id)?.inviteCode;
+                          if (code) {
+                            navigator.clipboard.writeText(`${window.location.origin}/signup?invite=${code}`);
+                            toast.success('Invite link copied!');
+                          }
+                        }}
+                        className="p-1 hover:bg-white/10 rounded ml-1 transition-colors"
+                        title="Copy Invite Link"
+                      >
+                        <UserPlus className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
                   <div className="flex justify-between items-center">
                     <span className="text-xs text-gray-400">Subscription</span>
                     <button 
@@ -451,9 +478,18 @@ export const SuperAdminPage = () => {
                 </div>
 
                 <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-1">{plan.name}</h3>
-                <div className="flex items-baseline gap-1 mb-6">
+                <div className="flex items-baseline gap-2 mb-1">
                   <span className="text-3xl font-black text-gray-900 dark:text-white">₹{plan.price}</span>
-                  <span className="text-sm text-gray-500">/{plan.billingCycle}</span>
+                  <span className="text-sm text-gray-500">/month</span>
+                </div>
+                <div className="flex items-baseline gap-2 mb-6">
+                  <span className="text-lg font-bold text-indigo-600 dark:text-indigo-400">₹{plan.annualPrice}</span>
+                  <span className="text-xs text-gray-500">/year</span>
+                  {plan.annualPrice > 0 && (
+                    <span className="text-[10px] font-black px-1.5 py-0.5 bg-green-100 dark:bg-green-500/10 text-green-600 dark:text-green-400 rounded-full">
+                      {Math.round((1 - (plan.annualPrice / (plan.price * 12))) * 100)}% off
+                    </span>
+                  )}
                 </div>
 
                 <div className="space-y-4 mb-8">
@@ -513,13 +549,24 @@ export const SuperAdminPage = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Price (₹)</label>
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Monthly Price (₹)</label>
                     <input
                       required
                       type="number"
                       value={planForm.price}
                       onChange={(e) => setPlanForm({ ...planForm, price: Number(e.target.value) })}
                       className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                      placeholder="e.g. 499"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Annual Price (₹) <span className="text-indigo-400 normal-case font-normal">(total billed yearly)</span></label>
+                    <input
+                      type="number"
+                      value={planForm.annualPrice}
+                      onChange={(e) => setPlanForm({ ...planForm, annualPrice: Number(e.target.value) })}
+                      className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                      placeholder="e.g. 4999"
                     />
                   </div>
                   <div className="space-y-2">
@@ -540,6 +587,26 @@ export const SuperAdminPage = () => {
                       value={planForm.maxRooms}
                       onChange={(e) => setPlanForm({ ...planForm, maxRooms: Number(e.target.value) })}
                       className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Razorpay Monthly Plan ID</label>
+                    <input
+                      type="text"
+                      value={planForm.razorpayMonthlyPlanId || ''}
+                      onChange={(e) => setPlanForm({ ...planForm, razorpayMonthlyPlanId: e.target.value })}
+                      className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                      placeholder="plan_XXXXXXXXX (monthly)"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Razorpay Annual Plan ID</label>
+                    <input
+                      type="text"
+                      value={planForm.razorpayAnnualPlanId || ''}
+                      onChange={(e) => setPlanForm({ ...planForm, razorpayAnnualPlanId: e.target.value })}
+                      className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                      placeholder="plan_XXXXXXXXX (annual)"
                     />
                   </div>
                 </div>
@@ -726,8 +793,11 @@ export const SuperAdminPage = () => {
                   <input
                     required
                     type="tel"
+                    pattern="[0-9]{10}"
+                    maxLength={10}
+                    title="Please enter a valid 10-digit mobile number"
                     value={branchForm.phone}
-                    onChange={(e) => setBranchForm({ ...branchForm, phone: e.target.value })}
+                    onChange={(e) => setBranchForm({ ...branchForm, phone: e.target.value.replace(/\D/g, '') })}
                     className="w-full px-4 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
                     placeholder="Contact number"
                   />

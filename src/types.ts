@@ -3,18 +3,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export type UserRole = 'super' | 'admin' | 'manager' | 'caretaker' | 'tenant' | 'cleaner' | 'security' | 'none';
+export type UserRole = 'super' | 'admin' | 'manager' | 'caretaker' | 'tenant' | 'cleaner' | 'security' | 'none' | (string & {});
 
 export type AppFeature = 'tenants' | 'rooms' | 'payments' | 'complaints' | 'kyc' | 'employees' | 'broadcast' | 'analytics' | 'whatsapp' | 'reports' | 'multi-branch';
 
 export interface SubscriptionPlan {
   id: string;
   name: string;
-  price: number;
+  price: number;         // Monthly price (e.g. 499)
+  annualPrice: number;   // Annual total price (e.g. 4999)
   features: AppFeature[];
   maxTenants: number;
   maxRooms: number;
-  billingCycle: 'monthly' | 'yearly';
+  razorpayMonthlyPlanId?: string; // Razorpay plan ID for monthly billing
+  razorpayAnnualPlanId?: string;  // Razorpay plan ID for annual billing
 }
 
 export interface PGBranch {
@@ -27,6 +29,9 @@ export interface PGBranch {
   planId: string;
   subscriptionStatus: 'active' | 'expired' | 'trial';
   subscriptionEndDate: string;
+  razorpayCustomerId?: string;
+  razorpaySubscriptionId?: string;
+  officialSignatureUrl?: string; // New: Official signature for all receipts
 }
 
 export interface RolePermissions {
@@ -44,8 +49,22 @@ export interface User {
   avatar?: string;
   seenAnnouncements?: string[]; // Array of announcement IDs
   isAuthorized: boolean;
+  requiresPasswordChange?: boolean;
   password?: string;
   branchId?: string; // Optional for super admin, required for others
+  provider?: 'local' | 'google';
+  google_id?: string;
+  signatureUrl?: string;
+}
+
+export interface UserInvite {
+  id: string;
+  inviteCode: string;
+  email?: string;
+  branchId: string;
+  role: UserRole;
+  status: 'pending' | 'accepted';
+  createdAt: string;
 }
 
 export type KYCStatus = 'unsubmitted' | 'pending' | 'verified' | 'rejected';
@@ -81,7 +100,17 @@ export interface Tenant {
   status: TenantStatus;
   kycStatus: KYCStatus;
   rentAgreementUrl?: string;
+  inviteCode?: string;
   branchId: string;
+  isAcUser?: boolean; // Whether tenant uses AC (for electricity split)
+}
+
+export interface MeterGroup {
+  id: string;
+  name: string;
+  floor: number;
+  branchId: string;
+  createdAt: string;
 }
 
 export interface Room {
@@ -93,6 +122,10 @@ export interface Room {
   type: 'AC' | 'Non-AC';
   price: number;
   branchId: string;
+  description?: string;
+  amenities?: string[];
+  meterGroupId?: string; // Links room to a MeterGroup (Flat)
+  meterGroup?: MeterGroup; // Embedded optional joined object
 }
 
 export interface Payment {
@@ -108,6 +141,33 @@ export interface Payment {
   transactionId?: string;
   receiptUrl?: string;
   branchId: string;
+  createdBy?: string; // User ID
+  electricityAmount?: number; // Per-tenant electricity share
+  electricityBillId?: string; // FK to electricity_bills
+  proofUrl?: string; // Tenant uploaded payment proof (screenshot)
+}
+
+export interface ElectricityBill {
+  id: string;
+  meterGroupId: string; // The primary link now
+  branchId: string;
+  month: string; // e.g., '2026-03'
+  totalAmount: number;
+  actualAmount: number;
+  acAmount: number;
+  actualBillUrl?: string;
+  acBillUrl?: string;
+  createdAt: string;
+  roomId?: string; // Kept for legacy compatibility if needed
+}
+
+export interface ElectricityShare {
+  tenantId: string;
+  tenantName: string;
+  baseShare: number;
+  acShare: number;
+  total: number;
+  isAcUser: boolean;
 }
 
 export interface SalaryPayment {
@@ -125,6 +185,7 @@ export interface SalaryPayment {
 export interface Task {
   id: string;
   employeeId: string;
+  complaintId?: string; // Link to complaint
   title: string;
   description: string;
   status: 'pending' | 'completed';
@@ -132,8 +193,11 @@ export interface Task {
   dueDate: string;
   createdAt: string;
   completedAt?: string;
+  completionComment?: string;
+  completionImages?: string[];
   branchId: string;
 }
+
 
 export type ComplaintStatus = 'open' | 'assigned' | 'resolved';
 export type ComplaintPriority = 'low' | 'medium' | 'high';
@@ -143,13 +207,16 @@ export interface Complaint {
   tenantId: string;
   title: string;
   description: string;
-  category: 'Plumbing' | 'Electrical' | 'Internet' | 'Cleaning' | 'Other';
+  category: string;
   priority: ComplaintPriority;
   status: ComplaintStatus;
   createdAt: string;
   assignedTo?: string; // Employee ID
   resolvedAt?: string;
+  images?: string[];
   branchId: string;
+  resolutionComment?: string;
+  resolutionImages?: string[];
 }
 
 export interface Announcement {
@@ -165,7 +232,7 @@ export interface Announcement {
 export interface Employee {
   id: string;
   name: string;
-  role: 'manager' | 'caretaker' | 'cleaner' | 'security' | 'none';
+  role: string;
   email: string;
   phone: string;
   salary: number;
@@ -173,10 +240,20 @@ export interface Employee {
   userId?: string;
   kycStatus: KYCStatus;
   branchId: string;
+  signatureUrl?: string;
 }
 
 export interface PGConfig {
   rules: string[];
   rolePermissions: RolePermissions[];
   branchId: string;
+  complaintCategories: string[];
+  customRoles?: string[];
+  logoUrl?: string;
+  pgName?: string;
+  primaryColor?: string;
+  theme?: 'light' | 'dark' | 'system';
+  defaultPaymentDueDate?: number;
+  defaultLateFeeDay?: number;
+  lateFeeAmount?: number;
 }

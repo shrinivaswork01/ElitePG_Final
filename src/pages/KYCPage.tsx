@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { KYCData, KYCStatus } from '../types';
+import toast from 'react-hot-toast';
 import {
   ShieldCheck,
   ShieldAlert,
@@ -12,14 +13,15 @@ import {
   ExternalLink,
   Search,
   Filter,
-  FileText
+  FileText,
+  Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../utils';
 import { Navigate } from 'react-router-dom';
 
 export const KYCPage = () => {
-  const { kycs, tenants, employees, updateKYC, updateTenant, updateEmployee } = useApp();
+  const { kycs, tenants, employees, updateKYC, deleteKYC, updateTenant, updateEmployee } = useApp();
   const { user, authorizeUser } = useAuth();
 
   if (user?.role === 'tenant') {
@@ -27,6 +29,7 @@ export const KYCPage = () => {
   }
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<KYCStatus | 'all'>('all');
+  const [personFilter, setPersonFilter] = useState<'all' | 'tenant' | 'employee'>('all');
   const [selectedKYC, setSelectedKYC] = useState<KYCData | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
 
@@ -38,7 +41,10 @@ export const KYCPage = () => {
     const matchesSearch = person?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       person?.email.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = filterStatus === 'all' || k.status === filterStatus;
-    return matchesSearch && matchesStatus;
+    const matchesPersonType = personFilter === 'all' || 
+      (personFilter === 'tenant' && !!k.tenantId) || 
+      (personFilter === 'employee' && !!k.employeeId);
+    return matchesSearch && matchesStatus && matchesPersonType;
   });
 
   // Add "virtual" KYC records for tenants/employees who are pending but have no record in kycs
@@ -81,7 +87,10 @@ export const KYCPage = () => {
       const matchesSearch = person?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         person?.email.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesStatus = filterStatus === 'all' || filterStatus === 'pending';
-      return matchesSearch && matchesStatus;
+      const matchesPersonType = personFilter === 'all' || 
+        (personFilter === 'tenant' && !!k.tenantId) || 
+        (personFilter === 'employee' && !!k.employeeId);
+      return matchesSearch && matchesStatus && matchesPersonType;
     }
     return true;
   });
@@ -98,6 +107,20 @@ export const KYCPage = () => {
       if (kyc) {
         personId = kyc.tenantId || kyc.employeeId || '';
         isTenant = !!kyc.tenantId;
+      }
+    }
+
+    const isTenantKYC = !!kycs.find(k => k.id === id)?.tenantId || id.startsWith('virtual-t-');
+
+    if (isTenantKYC) {
+      if (!['super', 'admin', 'manager'].includes(user?.role || '')) {
+        toast.error('You do not have permission to verify tenant KYC');
+        return;
+      }
+    } else {
+      if (!['super', 'admin'].includes(user?.role || '')) {
+        toast.error('Only admins can verify staff KYC');
+        return;
       }
     }
 
@@ -119,6 +142,19 @@ export const KYCPage = () => {
   };
 
   const handleReject = (id: string) => {
+    const isTenantKYC = !!kycs.find(k => k.id === id)?.tenantId;
+    if (isTenantKYC) {
+      if (!['super', 'admin', 'manager'].includes(user?.role || '')) {
+        toast.error('You do not have permission to reject tenant KYC');
+        return;
+      }
+    } else {
+      if (!['super', 'admin'].includes(user?.role || '')) {
+        toast.error('Only admins can reject staff KYC');
+        return;
+      }
+    }
+
     if (!rejectionReason) return;
     updateKYC(id, {
       status: 'rejected',
@@ -128,6 +164,12 @@ export const KYCPage = () => {
     });
     setSelectedKYC(null);
     setRejectionReason('');
+  };
+
+  const handleDelete = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this KYC record?')) {
+      await deleteKYC(id);
+    }
   };
 
   return (
@@ -149,6 +191,22 @@ export const KYCPage = () => {
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
           />
+        </div>
+        <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0 border-r border-gray-100 dark:border-white/5 pr-4 mr-4">
+          {(['all', 'tenant', 'employee'] as const).map((type) => (
+            <button
+              key={type}
+              onClick={() => setPersonFilter(type)}
+              className={cn(
+                "px-4 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all",
+                personFilter === type
+                  ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
+                  : "bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10"
+              )}
+            >
+              {type === 'all' ? 'All Roles' : type.charAt(0).toUpperCase() + type.slice(1) + 's'}
+            </button>
+          ))}
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0">
           {['all', 'pending', 'verified', 'rejected'].map((status) => (
@@ -205,7 +263,7 @@ export const KYCPage = () => {
 
                 <div className="relative aspect-video bg-gray-100 dark:bg-white/5 rounded-2xl overflow-hidden mb-4 group-hover:ring-2 ring-indigo-500/20 transition-all">
                   {kyc.documentUrl ? (
-                    kyc.documentUrl.startsWith('data:application/pdf') ? (
+                    kyc.documentUrl.startsWith('data:application/pdf') || kyc.documentUrl.toLowerCase().endsWith('.pdf') ? (
                       <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50 dark:bg-white/5 text-gray-400 dark:text-gray-500">
                         <FileText className="w-12 h-12 mb-2" />
                         <span className="text-xs font-bold uppercase tracking-widest">PDF Document</span>
@@ -247,6 +305,15 @@ export const KYCPage = () => {
                       className="text-[10px] font-bold text-rose-500 hover:underline"
                     >
                       Reset Status
+                    </button>
+                  )}
+                  {kyc.status === 'rejected' && (
+                    <button
+                      onClick={() => handleDelete(kyc.id)}
+                      className="p-2 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-colors"
+                      title="Delete Rejected KYC"
+                    >
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   )}
                   {kyc.status === 'pending' && kyc.documentUrl && (
@@ -294,7 +361,7 @@ export const KYCPage = () => {
               <div className="flex flex-col lg:flex-row min-h-[50vh] lg:h-[80vh]">
                 <div className="flex-1 bg-gray-100 dark:bg-white/5 p-4 flex flex-col items-center justify-center overflow-hidden min-h-[400px] lg:min-h-0">
                   <div className="w-full h-full flex items-center justify-center relative group/doc">
-                    {selectedKYC.documentUrl.startsWith('data:application/pdf') ? (
+                    {selectedKYC.documentUrl.startsWith('data:application/pdf') || selectedKYC.documentUrl.toLowerCase().endsWith('.pdf') ? (
                       <div className="w-full h-full flex flex-col items-center justify-center">
                         <object
                           data={selectedKYC.documentUrl}
@@ -402,6 +469,18 @@ export const KYCPage = () => {
                             <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase mb-1">Reason</p>
                             <p className="text-sm text-gray-600 dark:text-gray-400">{selectedKYC.rejectionReason}</p>
                           </div>
+                        )}
+                        {selectedKYC.status === 'rejected' && (
+                          <button
+                            onClick={() => {
+                              handleDelete(selectedKYC.id);
+                              setSelectedKYC(null);
+                            }}
+                            className="w-full mt-4 flex items-center justify-center gap-2 px-4 py-2.5 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 text-sm font-bold rounded-xl border border-rose-200 dark:border-rose-500/20 hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-all"
+                          >
+                            <XCircle className="w-4 h-4" />
+                            Delete Rejected Record
+                          </button>
                         )}
                       </div>
                     )}

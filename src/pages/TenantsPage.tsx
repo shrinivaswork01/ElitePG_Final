@@ -7,13 +7,8 @@ import { format, parseISO } from 'date-fns';
 import {
   Search,
   Plus,
-  MoreVertical,
   Filter,
   Download,
-  UserPlus,
-  Mail,
-  Phone,
-  Calendar,
   Shield,
   Trash2,
   Edit2,
@@ -21,16 +16,23 @@ import {
   FileText,
   History,
   FileCheck,
-  MessageCircle
+  MessageCircle,
+  Calendar
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { usePaginatedData } from '../hooks/usePaginatedData';
+import { DataGrid, ColumnDef } from '../components/DataGrid';
+import { DropdownMenu, DropdownItem } from '../components/DropdownMenu';
+import { TenantDetailPanel } from '../components/TenantDetailPanel';
+import { TenantMobileList } from '../components/TenantMobileList';
 import { cn } from '../utils';
+import { getTenantElectricityShare } from '../utils/electricityUtils';
 import toast from 'react-hot-toast';
 
 export const TenantsPage = () => {
-  const { user, users, register, updateUser } = useAuth();
+  const { user, users, register, updateUser, authorizeUser } = useAuth();
   const location = useLocation();
-  const { tenants, rooms, addTenant, updateTenant, deleteTenant, checkFeatureAccess, currentPlan } = useApp();
+  const { tenants, rooms, addTenant, updateTenant, deleteTenant, checkFeatureAccess, currentPlan, uploadVerifiedKYC, kycs, userInvites, pgConfig } = useApp();
   const canSendWhatsApp = checkFeatureAccess('whatsapp');
 
   const currentTenantsCount = tenants.length;
@@ -56,32 +58,148 @@ export const TenantsPage = () => {
   const [viewingAgreement, setViewingAgreement] = useState<Tenant | null>(null);
   const [tenantForLogin, setTenantForLogin] = useState<Tenant | null>(null);
   const [createUsername, setCreateUsername] = useState('');
-  const [loginPassword, setLoginPassword] = useState('123456');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [tenantToDelete, setTenantToDelete] = useState<Tenant | null>(null);
+  const [kycUploadTenant, setKycUploadTenant] = useState<Tenant | null>(null);
+  const [menuTenant, setMenuTenant] = useState<Tenant | null>(null);
+  const [adminKycFile, setAdminKycFile] = useState<{ type: string; file?: File; url?: string; fileName: string } | null>(null);
+  const [adminKycType, setAdminKycType] = useState('Aadhar Card');
+  const [detailTenant, setDetailTenant] = useState<any | null>(null);
+  const [tenantElectricityShare, setTenantElectricityShare] = useState<{ baseShare: number; acShare: number; total: number; month: string; billUrl?: string } | null>(null);
   const { payments } = useApp();
 
-  const filteredTenants = tenants.filter(t => {
-    const matchesSearch = t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = filterStatus === 'all' || t.status === filterStatus;
-    return matchesSearch && matchesStatus;
+  // Server-side paginated hook — fetches ONLY 10 records at a time
+  const { data: paginatedTenants, totalCount, isLoading, page, setPage, limit, refetch } = usePaginatedData<any>({
+    table: 'tenants',
+    select: '*, rooms!tenants_room_id_fkey(room_number), kyc_documents!kyc_documents_tenant_id_fkey(document_url, status)',
+    ilikeFilters: searchTerm ? { name: searchTerm, email: searchTerm } : undefined,
+    filters: filterStatus !== 'all' ? { status: filterStatus } : undefined
   });
 
+  const columns: ColumnDef<any>[] = [
+    {
+      header: 'Tenant',
+      accessorKey: 'name',
+      cell: (t) => (
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-black text-base shadow-lg shadow-indigo-500/20 uppercase shrink-0">
+            {t.name?.charAt(0) || '?'}
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{t.name}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{t.email}</p>
+          </div>
+        </div>
+      )
+    },
+    {
+      header: 'Room',
+      accessorKey: 'room_id',
+      cell: (t) => {
+        const roomNumber = t.rooms?.room_number;
+        return (
+          <div className="flex flex-col">
+            <span className="text-sm font-semibold text-gray-900 dark:text-white">Room {roomNumber || 'N/A'}</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">Bed {t.bed_number}</span>
+          </div>
+        );
+      }
+    },
+    {
+      header: 'KYC',
+      accessorKey: 'kyc_status',
+      className: 'hidden sm:table-cell',
+      cell: (t) => {
+        const s = t.kyc_status;
+        const map: Record<string, string> = {
+          verified: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+          pending: 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400',
+          unsubmitted: 'bg-gray-100 dark:bg-white/5 text-gray-400',
+          rejected: 'bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400'
+        };
+        return (
+          <span className={cn('inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold', map[s] || map.unsubmitted)}>
+            <Shield className="w-3 h-3" />
+            {s?.charAt(0).toUpperCase() + s?.slice(1)}
+          </span>
+        );
+      }
+    },
+    {
+      header: 'Rent',
+      accessorKey: 'rent_amount',
+      className: 'hidden md:table-cell',
+      cell: (t) => (
+        <div>
+          <p className="text-sm font-bold text-gray-900 dark:text-white">₹{Number(t.rent_amount).toLocaleString()}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Due {t.payment_due_date}th</p>
+        </div>
+      )
+    },
+    {
+      header: 'Status',
+      accessorKey: 'status',
+      cell: (t) => {
+        const map: Record<string, string> = {
+          active: 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400',
+          vacating: 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400',
+          vacated: 'bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-gray-400',
+          blacklisted: 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400'
+        };
+        return (
+          <span className={cn('px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider', map[t.status] || map.vacated)}>
+            {t.status}
+          </span>
+        );
+      }
+    },
+    {
+      header: '',
+      accessorKey: 'id',
+      className: 'w-[60px]',
+      cell: (t) => (
+        <div className="flex justify-end">
+          <DropdownMenu>
+            {/* Edit first */}
+            {['admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '') && (
+              <DropdownItem icon={<Edit2 className="w-4 h-4" />} label="Edit Tenant" onClick={() => handleEditClick(t)} />
+            )}
+            <DropdownItem icon={<History className="w-4 h-4" />} label="Payment History" onClick={() => setViewingPayments(t)} />
+            {(t.rent_agreement_url || t.rentAgreementUrl) && (
+              <DropdownItem icon={<FileCheck className="w-4 h-4" />} label="View Agreement" onClick={() => setViewingAgreement(t)} />
+            )}
+            {t.kyc_documents && t.kyc_documents.length > 0 && t.kyc_status === 'verified' && (
+              <DropdownItem icon={<FileText className="w-4 h-4" />} label="View KYC" onClick={() => setViewingKyc(t)} />
+            )}
+            {canSendWhatsApp && (
+              <DropdownItem icon={<MessageCircle className="w-4 h-4" />} label="WhatsApp Reminder" onClick={() => handleSendWhatsAppReminder(t)} />
+            )}
+            {['admin', 'manager', 'receptionist'].includes(user?.role || '') && (
+              <DropdownItem icon={<Shield className="w-4 h-4" />} label="Upload KYC" onClick={() => { setKycUploadTenant(t); setAdminKycFile(null); setAdminKycType('Aadhar Card'); }} />
+            )}
+            {['admin', 'manager'].includes(user?.role || '') && (
+              <DropdownItem icon={<Trash2 className="w-4 h-4" />} label="Delete Tenant" onClick={() => setTenantToDelete(t)} danger />
+            )}
+          </DropdownMenu>
+        </div>
+      )
+    }
+  ];
+
+
   const handleDownload = () => {
-    const data = filteredTenants.map(t => {
-      const room = rooms.find(r => r.id === t.roomId);
-      return {
-        Name: t.name,
-        Email: t.email,
-        Phone: t.phone,
-        Room: room?.roomNumber || 'N/A',
-        Bed: t.bedNumber,
-        Rent: t.rentAmount,
-        KYC: t.kycStatus,
-        Status: t.status
-      };
-    });
+    const csvRows = paginatedTenants.map((t: any) => ({
+      Name: t.name,
+      Email: t.email,
+      Phone: t.phone,
+      Room: t.rooms?.room_number || 'N/A',
+      Bed: t.bed_number,
+      Rent: t.rent_amount,
+      KYC: t.kyc_status,
+      Status: t.status
+    }));
     const csvContent = "data:text/csv;charset=utf-8,"
-      + ["Name,Email,Phone,Room,Bed,Rent,KYC,Status", ...data.map(r => Object.values(r).join(","))].join("\n");
+      + ["Name,Email,Phone,Room,Bed,Rent,KYC,Status", ...csvRows.map((r: any) => Object.values(r).join(","))].join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -102,30 +220,99 @@ export const TenantsPage = () => {
     joiningDate: new Date().toISOString().split('T')[0],
     paymentDueDate: 5,
     status: 'active',
-    kycStatus: 'unsubmitted'
+    kycStatus: 'unsubmitted',
+    inviteCode: ''
   });
 
-  const [kycDoc, setKycDoc] = useState<{ type: string, url: string, fileName: string }>({
+  // Effect to set default invite code when modal opens
+  useEffect(() => {
+    if (isAddModalOpen && !editingTenant) {
+      const branchInvite = userInvites.find(i => i.branchId === user?.branchId && i.role === 'tenant' && i.status === 'pending');
+      if (branchInvite) {
+        setFormData(prev => ({ ...prev, inviteCode: branchInvite.inviteCode }));
+      }
+    }
+  }, [isAddModalOpen, editingTenant, userInvites, user?.branchId]);
+
+  const [kycDoc, setKycDoc] = useState<{ type: string, file?: File, url?: string, fileName: string }>({
     type: 'Aadhar Card',
-    url: '',
     fileName: ''
   });
 
-  const [rentAgreement, setRentAgreement] = useState<{ url: string, fileName: string }>({
-    url: '',
+  const [rentAgreement, setRentAgreement] = useState<{ file?: File, url?: string, fileName: string }>({
     fileName: ''
   });
+  const [viewingKyc, setViewingKyc] = useState<any | null>(null);
 
-  const handleSendWhatsAppReminder = (tenant: Tenant) => {
-    const message = `*Rent Reminder*\n\nHi ${tenant.name}, this is a friendly reminder that your rent of ₹${tenant.rentAmount} is due. Please ignore if already paid.`;
+  const handleSendWhatsAppReminder = (tenant: any) => {
+    const rentAmount = tenant.rent_amount ?? tenant.rentAmount;
+    const message = `*Rent Reminder*\n\nHi ${tenant.name}, this is a friendly reminder that your rent of ₹${rentAmount} is due. Please ignore if already paid.`;
     const encodedMessage = encodeURIComponent(message);
     const whatsappUrl = `https://wa.me/${tenant.phone}?text=${encodedMessage}`;
     window.open(whatsappUrl, '_blank');
   };
 
-  const handleEditClick = (tenant: Tenant) => {
-    setEditingTenant(tenant);
-    setFormData(tenant);
+  useEffect(() => {
+    if (detailTenant) {
+      const currentMonth = format(new Date(), 'yyyy-MM');
+      
+      // Find the room to get the meterGroupId
+      const room = rooms.find(r => r.id === (detailTenant.roomId || detailTenant.room_id));
+      if (!room?.meterGroupId) {
+        setTenantElectricityShare(null);
+        return;
+      }
+
+      // Get ALL active tenants in ALL rooms belonging to this Flat
+      const flatTenants = tenants.filter(t => {
+        const r = rooms.find(rm => rm.id === t.roomId || rm.id === (t as any).room_id);
+        return r?.meterGroupId === room.meterGroupId && t.status === 'active';
+      }).map(t => ({
+        id: t.id, 
+        name: t.name, 
+        is_ac_user: (t as any).isAcUser || (t as any).is_ac_user || false
+      }));
+
+      getTenantElectricityShare(room.meterGroupId, currentMonth, flatTenants, detailTenant.id)
+        .then(share => {
+          if (share) {
+            setTenantElectricityShare({
+              baseShare: share.baseShare,
+              acShare: share.acShare,
+              total: share.total,
+              month: currentMonth,
+              // we don't fetch billUrl in the share object directly, but we can if we want. For now just show amount.
+            });
+          } else {
+            setTenantElectricityShare(null);
+          }
+        });
+    } else {
+      setTenantElectricityShare(null);
+    }
+  }, [detailTenant, tenants, rooms]);
+
+  const handleEditClick = (tenant: any) => {
+    // Normalize data from DB (snake_case) or context (camelCase) to the form's camelCase shape
+    const normalized = {
+      name: tenant.name || '',
+      email: tenant.email || '',
+      phone: tenant.phone || '',
+      roomId: tenant.roomId || tenant.room_id || '',
+      bedNumber: tenant.bedNumber ?? tenant.bed_number ?? 1,
+      rentAmount: tenant.rentAmount ?? tenant.rent_amount ?? 0,
+      depositAmount: tenant.depositAmount ?? tenant.deposit_amount ?? 0,
+      joiningDate: tenant.joiningDate || tenant.joining_date || new Date().toISOString().split('T')[0],
+      paymentDueDate: tenant.paymentDueDate ?? tenant.payment_due_date ?? 5,
+      status: tenant.status || 'active',
+      kycStatus: tenant.kycStatus || tenant.kyc_status || 'unsubmitted',
+      userId: tenant.userId || tenant.user_id || undefined,
+      rentAgreementUrl: tenant.rentAgreementUrl || tenant.rent_agreement_url || undefined,
+    };
+    // Auto-fill branch invite code
+    const branchInvite = userInvites.find(i => i.branchId === user?.branchId && i.role === 'tenant' && i.status === 'pending');
+    setEditingTenant({ ...tenant, id: tenant.id, branchId: tenant.branchId || tenant.branch_id });
+    setFormData({ ...normalized, inviteCode: branchInvite?.inviteCode || tenant.invite_code || tenant.inviteCode || '' });
     setIsAddModalOpen(true);
   };
 
@@ -143,28 +330,26 @@ export const TenantsPage = () => {
       joiningDate: new Date().toISOString().split('T')[0],
       paymentDueDate: 5,
       status: 'active',
-      kycStatus: 'unsubmitted'
+      kycStatus: 'unsubmitted',
+      isAcUser: false
     });
-    setKycDoc({ type: 'Aadhar Card', url: '', fileName: '' });
-    setRentAgreement({ url: '', fileName: '' });
+    setKycDoc({ type: 'Aadhar Card', fileName: '' });
+    setRentAgreement({ fileName: '' });
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 1.5 * 1024 * 1024) {
-        alert('File size too large! Please upload a file smaller than 1.5MB.');
+        toast.error('File size too large! Please upload a file smaller than 1.5MB.');
         return;
       }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setKycDoc({
-          ...kycDoc,
-          url: reader.result as string,
-          fileName: file.name
-        });
-      };
-      reader.readAsDataURL(file);
+      setKycDoc({
+        ...kycDoc,
+        file,
+        fileName: file.name,
+        url: URL.createObjectURL(file)
+      });
     }
   };
 
@@ -172,17 +357,14 @@ export const TenantsPage = () => {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 1.5 * 1024 * 1024) {
-        alert('File size too large! Please upload a file smaller than 1.5MB.');
+        toast.error('File size too large! Please upload a file smaller than 1.5MB.');
         return;
       }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setRentAgreement({
-          url: reader.result as string,
-          fileName: file.name
-        });
-      };
-      reader.readAsDataURL(file);
+      setRentAgreement({
+        file,
+        fileName: file.name,
+        url: URL.createObjectURL(file)
+      });
     }
   };
 
@@ -198,28 +380,34 @@ export const TenantsPage = () => {
       return;
     }
 
-    const newUser = await register({
+    const result = await register({
       username: finalUsername,
       name: tenantForLogin.name,
       email: tenantForLogin.email,
       role: 'tenant',
       phone: tenantForLogin.phone,
       branchId: tenantForLogin.branchId
-    }, loginPassword);
+    }, loginPassword || undefined);
 
-    if (newUser) {
-      updateTenant(tenantForLogin.id, { userId: newUser.id });
-      toast.success('Login created successfully. The tenant must be authorized by an admin before logging in.');
+    if (result.success && result.user) {
+      await updateTenant(tenantForLogin.id, { userId: result.user.id });
+      if (!loginPassword) {
+        toast.success('Login account created with default password "123456". Tenant will be prompted to set their own password on first login.');
+      } else {
+        toast.success('Login created successfully. The tenant must be authorized by an admin before logging in.');
+      }
       setTenantForLogin(null);
       setCreateUsername('');
-      setLoginPassword('123456');
+      setLoginPassword('');
+    } else {
+      toast.error(result.message || 'Failed to create login.');
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.roomId) {
-      alert('Please select a room for the tenant.');
+      toast.error('Please select a room for the tenant.');
       return;
     }
 
@@ -234,23 +422,56 @@ export const TenantsPage = () => {
 
     if (formData.name && formData.roomId) {
       if (editingTenant) {
-        updateTenant(
+        await updateTenant(
           editingTenant.id,
           formData,
-          kycDoc.url ? { type: kycDoc.type, url: kycDoc.url } : undefined,
-          rentAgreement.url ? { url: rentAgreement.url } : undefined
+          kycDoc.file || kycDoc.url ? { type: kycDoc.type, file: kycDoc.file, url: kycDoc.url } : undefined,
+          rentAgreement.file || rentAgreement.url ? { file: rentAgreement.file, url: rentAgreement.url } : undefined
         );
         if (editingTenant.userId) {
           updateUser(editingTenant.userId, { name: formData.name, email: formData.email, phone: formData.phone });
         }
       } else {
-        addTenant(
+        await addTenant(
           formData as Omit<Tenant, 'id'>,
-          kycDoc.url ? { type: kycDoc.type, url: kycDoc.url } : undefined,
-          rentAgreement.url ? { url: rentAgreement.url } : undefined
+          kycDoc.file || kycDoc.url ? { type: kycDoc.type, file: kycDoc.file, url: kycDoc.url } : undefined,
+          rentAgreement.file || rentAgreement.url ? { file: rentAgreement.file, url: rentAgreement.url } : undefined
         );
       }
       handleCloseModal();
+      refetch();
+    }
+  };
+
+  const handleBulkDelete = async (ids: string[]) => {
+    if (window.confirm(`Are you sure you want to delete ${ids.length} selected tenants?`)) {
+      for (const id of ids) {
+        await deleteTenant(id);
+      }
+      refetch();
+      toast.success(`${ids.length} tenants deleted.`);
+    }
+  };
+
+  const handleBulkWhatsApp = (ids: string[]) => {
+    const selectedTenants = paginatedTenants.filter((t: any) => ids.includes(t.id));
+    if (selectedTenants.length > 0) {
+      toast('Bulk WhatsApp info: Currently Web only supports opening one chat. Opening first.', { icon: 'ℹ️' });
+      handleSendWhatsAppReminder(selectedTenants[0]);
+    }
+  };
+
+  const handleShareDetails = (ids: string[]) => {
+    const selectedTenants = paginatedTenants.filter((t: any) => ids.includes(t.id));
+    const details = selectedTenants.map((t: any) => `${t.name} (Room ${t.rooms?.room_number || 'N/A'})\nPhone: ${t.phone}\nRent: ₹${t.rent_amount || t.rentAmount}\nStatus: ${t.status}`).join('\n\n');
+    if (navigator.share) {
+      navigator.share({
+        title: 'Tenant Details',
+        text: details
+      }).catch(console.error);
+    } else {
+      navigator.clipboard.writeText(details);
+      toast.success('Details copied to clipboard');
     }
   };
 
@@ -261,22 +482,25 @@ export const TenantsPage = () => {
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Tenants</h2>
           <p className="text-gray-500 dark:text-gray-400">Manage your residents and their details.</p>
         </div>
-        <button
-          onClick={() => {
-            if (isAtLimit) {
-              alert(`Limit reached! Your current plan (${currentPlan?.name}) allows only ${currentPlan?.maxTenants} tenants. Please upgrade your plan.`);
-              return;
-            }
-            setIsAddModalOpen(true);
-          }}
-          className={cn(
-            "flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all",
-            isAtLimit && "opacity-50 cursor-not-allowed"
-          )}
-        >
-          <Plus className="w-5 h-5" />
-          Add Tenant
-        </button>
+        {['admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '') && (
+          <button
+            onClick={() => {
+              if (isAtLimit) {
+                toast.error(`Limit reached! Your current plan (${currentPlan?.name}) allows only ${currentPlan?.maxTenants} tenants. Please upgrade your plan.`);
+                return;
+              }
+              setIsAddModalOpen(true);
+            }}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all",
+              isAtLimit && "opacity-50 cursor-not-allowed"
+            )}
+            style={{ background: pgConfig?.primaryColor || '#4f46e5' }}
+          >
+            <Plus className="w-5 h-5" />
+            Add Tenant
+          </button>
+        )}
       </div>
 
       {isNearLimit && (
@@ -347,139 +571,56 @@ export const TenantsPage = () => {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-100 dark:border-white/5">
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tenant</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Room</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">KYC Status</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Rent</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50 dark:divide-white/5">
-              {filteredTenants.map((tenant) => {
-                const room = rooms.find(r => r.id === tenant.roomId);
-                return (
-                  <tr key={tenant.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors group">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
-                          {tenant.name?.charAt(0) || '?'}
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-gray-900 dark:text-white">{tenant.name}</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">{tenant.email}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col">
-                        <span className="text-sm font-medium text-gray-900 dark:text-white">Room {room?.roomNumber || 'N/A'}</span>
-                        <span className="text-xs text-gray-500 dark:text-gray-400">Bed {tenant.bedNumber}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      {checkFeatureAccess('kyc') ? (
-                        <span className={cn(
-                          "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold",
-                          tenant.kycStatus === 'verified' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" :
-                            tenant.kycStatus === 'pending' ? "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400" :
-                              tenant.kycStatus === 'unsubmitted' ? "bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-gray-400" : "bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400"
-                        )}>
-                          <Shield className="w-3 h-3" />
-                          {tenant.kycStatus?.charAt(0).toUpperCase() + tenant.kycStatus?.slice(1)}
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-gray-100 dark:bg-white/5 text-gray-400">
-                          <Shield className="w-3 h-3" />
-                          Not Required
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      <p className="text-sm font-bold text-gray-900 dark:text-white">₹{tenant.rentAmount.toLocaleString()}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Due: {tenant.paymentDueDate}th</p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={cn(
-                        "px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider",
-                        tenant.status === 'active' ? "bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400" :
-                          tenant.status === 'vacating' ? "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400" :
-                            tenant.status === 'vacated' ? "bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-gray-400" : "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400"
-                      )}>
-                        {tenant.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={() => setViewingPayments(tenant)}
-                          title="Payment History"
-                          className="p-2 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-lg text-indigo-600 dark:text-indigo-400 transition-colors"
-                        >
-                          <History className="w-4 h-4" />
-                        </button>
-                        {canSendWhatsApp && (
-                          <button
-                            onClick={() => handleSendWhatsAppReminder(tenant)}
-                            title="Send WhatsApp Reminder"
-                            className="p-2 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-lg text-emerald-600 dark:text-emerald-400 transition-colors"
-                          >
-                            <MessageCircle className="w-4 h-4" />
-                          </button>
-                        )}
-                        {tenant.rentAgreementUrl && (
-                          <button
-                            onClick={() => setViewingAgreement(tenant)}
-                            title="View Rent Agreement"
-                            className="p-2 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-lg text-emerald-600 dark:text-emerald-400 transition-colors"
-                          >
-                            <FileCheck className="w-4 h-4" />
-                          </button>
-                        )}
-                        {!tenant.userId && (
-                          <button
-                            onClick={() => setTenantForLogin(tenant)}
-                            title="Create User Login"
-                            className="p-2 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-lg text-blue-600 dark:text-blue-400 transition-colors"
-                          >
-                            <UserPlus className="w-4 h-4" />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleEditClick(tenant)}
-                          title="Edit Tenant"
-                          className="p-2 hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg text-gray-500 dark:text-gray-400 transition-colors"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => deleteTenant(tenant.id)}
-                          title="Delete Tenant"
-                          className="p-2 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg text-red-500 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          {filteredTenants.length === 0 && (
-            <div className="p-12 text-center text-gray-500 dark:text-gray-400">No tenants found</div>
-          )}
-        </div>
+      <div className="hidden md:block">
+        <DataGrid 
+          columns={columns}
+          data={paginatedTenants}
+          isLoading={isLoading}
+          keyExtractor={(t: any) => t.id}
+          totalCount={totalCount}
+          page={page}
+          onPageChange={setPage}
+          limit={limit}
+          emptyStateMessage="No tenants found matching your criteria"
+          onRowClick={(t) => setDetailTenant(t)}
+        />
       </div>
 
-      {/* Add Tenant Modal */}
+      <div className="block md:hidden">
+        <TenantMobileList
+          tenants={paginatedTenants}
+          onManage={(t) => setDetailTenant(t)}
+          onEdit={handleEditClick}
+          onPaymentHistory={(t) => setViewingPayments(t)}
+          onViewAgreement={(t) => setViewingAgreement(t)}
+          onWhatsAppReminder={handleSendWhatsAppReminder}
+          onDelete={(t) => setTenantToDelete(t)}
+          onBulkDelete={handleBulkDelete}
+          onBulkWhatsApp={handleBulkWhatsApp}
+          onShareDetails={handleShareDetails}
+        />
+      </div>
+
+      {/* Tenant Detail Panel */}
+      <TenantDetailPanel
+        tenant={detailTenant}
+        onClose={() => setDetailTenant(null)}
+        onEdit={handleEditClick}
+        onDelete={(t) => setTenantToDelete(t)}
+        onViewAgreement={(t) => setViewingAgreement(t)}
+        onViewPayments={(t) => setViewingPayments(t)}
+        onAuthorize={async (uid) => {
+          await authorizeUser(uid);
+          toast.success('Tenant login authorized successfully!');
+          setDetailTenant(null);
+        }}
+        electricityShare={tenantElectricityShare}
+        canEdit={['admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '')}
+        canDelete={['admin', 'manager'].includes(user?.role || '')}
+      />
+
       <AnimatePresence>
-        {isAddModalOpen && (
+      {isAddModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0 }}
@@ -531,11 +672,25 @@ export const TenantsPage = () => {
                     <input
                       required
                       type="tel"
+                      pattern="[0-9]{10}"
+                      maxLength={10}
+                      title="Please enter a valid 10-digit mobile number"
                       value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '') })}
                       className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                       placeholder="9876543210"
                     />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Branch Invite Code</label>
+                    <input
+                      readOnly
+                      type="text"
+                      value={(formData as any).inviteCode || ''}
+                      className="w-full px-4 py-2.5 bg-gray-100 dark:bg-white/10 border-none rounded-xl text-gray-500 dark:text-gray-400 cursor-not-allowed font-medium"
+                      placeholder="No active invite code"
+                    />
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500 italic">This code is autofilled based on your branch settings.</p>
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Select Room</label>
@@ -568,6 +723,34 @@ export const TenantsPage = () => {
                     </select>
                   </div>
                   <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Bed Number</label>
+                    <select
+                      required
+                      value={formData.bedNumber}
+                      onChange={(e) => setFormData({ ...formData, bedNumber: Number(e.target.value) })}
+                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                    >
+                      {(() => {
+                        const room = rooms.find(r => r.id === formData.roomId);
+                        if (!room) return <option value="">Select room first</option>;
+                        const beds = Array.from({ length: room.totalBeds }, (_, i) => i + 1);
+                        return beds.map(bed => {
+                          const isOccupied = tenants.some(t => 
+                            t.roomId === room.id && 
+                            t.bedNumber === bed && 
+                            t.status === 'active' &&
+                            t.id !== editingTenant?.id
+                          );
+                          return (
+                            <option key={bed} value={bed} disabled={isOccupied}>
+                              Bed {bed} {isOccupied ? '(Occupied)' : ''}
+                            </option>
+                          );
+                        });
+                      })()}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Rent Amount (₹)</label>
                     <input
                       required
@@ -577,6 +760,22 @@ export const TenantsPage = () => {
                       className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                     />
                   </div>
+
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="flex items-center gap-3 p-4 bg-amber-50 dark:bg-amber-500/10 rounded-2xl cursor-pointer border border-amber-100 dark:border-amber-500/20 hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={(formData as any).isAcUser || false}
+                        onChange={(e) => setFormData({ ...formData, isAcUser: e.target.checked } as any)}
+                        className="w-5 h-5 rounded text-amber-500 focus:ring-amber-500/20 bg-white dark:bg-black border-amber-200 dark:border-amber-500/30"
+                      />
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-amber-700 dark:text-amber-400">Uses AC (Air Conditioning)</span>
+                        <span className="text-xs text-amber-600/70 dark:text-amber-400/70">Check this if the tenant shares the room's AC electricity bill.</span>
+                      </div>
+                    </label>
+                  </div>
+
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Deposit Amount (₹)</label>
                     <input
@@ -655,9 +854,10 @@ export const TenantsPage = () => {
                             className={cn(
                               "flex-1 py-2.5 rounded-xl text-[10px] font-bold transition-all",
                               formData.status === s
-                                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
+                                ? "text-white shadow-lg"
                                 : "bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10"
                             )}
+                            style={formData.status === s ? { background: pgConfig?.primaryColor || '#4f46e5', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` } : {}}
                           >
                             {s?.toUpperCase()}
                           </button>
@@ -676,7 +876,8 @@ export const TenantsPage = () => {
                   </button>
                   <button
                     type="submit"
-                    className="px-6 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
+                    className="px-8 py-3 bg-indigo-600 text-white font-bold rounded-2xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
+                    style={{ background: pgConfig?.primaryColor || '#4f46e5' }}
                   >
                     {editingTenant ? 'Update Tenant' : 'Add Tenant'}
                   </button>
@@ -788,14 +989,15 @@ export const TenantsPage = () => {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Set Password</label>
+                  <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Set Password (Optional)</label>
                   <input
                     type="password"
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
                     className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                    placeholder="Enter password"
+                    placeholder="Leave blank for tenant to set"
                   />
+                  <p className="text-[10px] text-gray-500">If left blank, the tenant must set their password during their first login.</p>
                 </div>
                 <div className="flex justify-end gap-3 pt-4">
                   <button
@@ -841,8 +1043,10 @@ export const TenantsPage = () => {
                 </div>
                 <div className="flex gap-2">
                   <a
-                    href={viewingAgreement.rentAgreementUrl}
+                    href={viewingAgreement.rentAgreementUrl || (viewingAgreement as any).rent_agreement_url}
                     download={`Agreement_${viewingAgreement.name}.pdf`}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors text-gray-400"
                   >
                     <Download className="w-6 h-6" />
@@ -853,22 +1057,172 @@ export const TenantsPage = () => {
                 </div>
               </div>
               <div className="flex-1 overflow-hidden p-4 sm:p-8 bg-gray-100 dark:bg-black/20">
-                {viewingAgreement.rentAgreementUrl?.startsWith('data:application/pdf') ? (
+                {String(viewingAgreement.rentAgreementUrl || (viewingAgreement as any).rent_agreement_url)?.startsWith('data:application/pdf') || String(viewingAgreement.rentAgreementUrl || (viewingAgreement as any).rent_agreement_url)?.toLowerCase().endsWith('.pdf') ? (
                   <iframe
-                    src={viewingAgreement.rentAgreementUrl}
+                    src={viewingAgreement.rentAgreementUrl || (viewingAgreement as any).rent_agreement_url}
                     className="w-full h-full rounded-xl border-none"
                     title="Rent Agreement PDF"
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center overflow-auto">
                     <img
-                      src={viewingAgreement.rentAgreementUrl}
+                      src={viewingAgreement.rentAgreementUrl || (viewingAgreement as any).rent_agreement_url}
                       alt="Rent Agreement"
                       className="max-w-full max-h-full object-contain rounded-xl shadow-lg"
                     />
                   </div>
                 )}
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* View KYC Modal */}
+      <AnimatePresence>
+        {viewingKyc && viewingKyc.kyc_documents?.[0] && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setViewingKyc(null)}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-4xl bg-white dark:bg-[#111111] rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col border border-white/5"
+            >
+              <div className="p-6 sm:p-8 border-b border-gray-100 dark:border-white/5 flex items-center justify-between bg-white dark:bg-[#111111]">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">Tenant KYC Document</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">{viewingKyc.kyc_documents[0].document_type}</p>
+                </div>
+                <div className="flex gap-2">
+                  <a
+                    href={viewingKyc.kyc_documents[0].document_url}
+                    download={`KYC_${viewingKyc.name}.pdf`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors text-gray-400"
+                  >
+                    <Download className="w-6 h-6" />
+                  </a>
+                  <button onClick={() => setViewingKyc(null)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors">
+                    <Plus className="w-6 h-6 rotate-45 text-gray-400" />
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-hidden p-4 sm:p-8 bg-gray-100 dark:bg-black/20">
+                {viewingKyc.kyc_documents[0].document_url?.startsWith('data:application/pdf') || viewingKyc.kyc_documents[0].document_url?.toLowerCase().endsWith('.pdf') ? (
+                  <iframe
+                    src={viewingKyc.kyc_documents[0].document_url}
+                    className="w-full h-full rounded-xl border-none"
+                    title="KYC Document PDF"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center overflow-auto">
+                    <img
+                      src={viewingKyc.kyc_documents[0].document_url}
+                      alt="KYC Document"
+                      className="max-w-full max-h-full object-contain rounded-xl shadow-lg"
+                    />
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Admin Upload KYC Modal */}
+      <AnimatePresence>
+        {kycUploadTenant && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => { setKycUploadTenant(null); setAdminKycFile(null); }}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-md bg-white dark:bg-[#111111] rounded-3xl shadow-2xl overflow-hidden border border-white/5"
+            >
+              <div className="p-6 border-b border-gray-100 dark:border-white/5 flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">Admin Upload KYC</h3>
+                  <p className="text-sm text-gray-500">For {kycUploadTenant.name}</p>
+                </div>
+                <button onClick={() => { setKycUploadTenant(null); setAdminKycFile(null); }} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors">
+                  <Plus className="w-6 h-6 rotate-45 text-gray-400" />
+                </button>
+              </div>
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                if (kycUploadTenant && adminKycFile?.file) {
+                  await uploadVerifiedKYC(kycUploadTenant.id, adminKycType, adminKycFile.file);
+                  setKycUploadTenant(null);
+                  setAdminKycFile(null);
+                  refetch();
+                }
+              }} className="p-6 space-y-6">
+                <div className="space-y-4">
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Upload a valid identity document (Aadhar Card, PAN Card, etc.) to verify this tenant's identity.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <select
+                      value={adminKycType}
+                      onChange={(e) => setAdminKycType(e.target.value)}
+                      className="px-4 py-3 bg-gray-50 dark:bg-white/5 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                    >
+                      <option value="Aadhar Card">Aadhar Card</option>
+                      <option value="PAN Card">PAN Card</option>
+                      <option value="Voter ID">Voter ID</option>
+                      <option value="Passport">Passport</option>
+                      <option value="Driving License">Driving License</option>
+                    </select>
+                    <div className="relative">
+                      <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-200 dark:border-white/10 rounded-2xl hover:border-indigo-500/50 transition-colors cursor-pointer bg-gray-50/50 dark:bg-white/[0.02]">
+                        <Upload className="w-8 h-8 text-gray-400 mb-2" />
+                        <span className="text-sm font-medium text-gray-500 dark:text-gray-400 text-center px-2">
+                          {adminKycFile ? 'Document Selected' : 'Upload New KYC'}
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*,.pdf"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              if (file.size > 5 * 1024 * 1024) {
+                                toast.error('File size must be less than 5MB');
+                                return;
+                              }
+                              setAdminKycFile({ type: adminKycType, file, fileName: file.name, url: URL.createObjectURL(file) });
+                            }
+                          }}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+                {adminKycFile && (
+                  <button
+                    type="submit"
+                    className="w-full py-4 text-white rounded-2xl font-bold shadow-lg transition-all"
+                    style={{ background: pgConfig?.primaryColor || '#4f46e5', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
+                  >
+                    Upload & Verify Document
+                  </button>
+                )}
+              </form>
             </motion.div>
           </div>
         )}

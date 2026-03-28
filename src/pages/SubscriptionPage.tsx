@@ -1,21 +1,24 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
-import { Zap, Check, Star, CreditCard, ShieldCheck, X, Loader2 } from 'lucide-react';
+import { Zap, Check, Star, CreditCard, ShieldCheck, X, Loader2, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../utils';
 import { SubscriptionPlan } from '../types';
 import { format, addMonths } from 'date-fns';
-import { loadRazorpayScript } from '../utils/razorpay';
 import toast from 'react-hot-toast';
+import { loadRazorpayScript } from '../utils/razorpay';
+import { generateSubscriptionReceiptPDF } from '../utils/generateReceipt';
 
 export const SubscriptionPage = () => {
-  const { subscriptionPlans, currentBranch, currentPlan, updateBranchSubscription } = useApp();
-  const { user } = useAuth();
+   const { subscriptionPlans, currentBranch, currentPlan, updateBranchSubscription, pgConfig, tenants, branches, superSignatureUrl } = useApp();
+  const { user, users } = useAuth();
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [expandedPlanId, setExpandedPlanId] = useState<string | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
+  const [activeBilling, setActiveBilling] = useState<'monthly' | 'annual'>('monthly');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
   if (user?.role !== 'admin') {
     return (
@@ -25,52 +28,150 @@ export const SubscriptionPage = () => {
     );
   }
 
-  const handleDirectUpgrade = async (plan: SubscriptionPlan) => {
-    setIsProcessing(true);
-
-    if (currentBranch && user) {
-      const res = await loadRazorpayScript();
-
-      if (!res) {
-        toast.error('Razorpay SDK failed to load. Are you online?');
-        setIsProcessing(false);
-        return;
-      }
-
-      const options = {
-        key: 'rzp_test_SP0eWvOa0JBuER',
-        amount: plan.price * 100, // Amount in paise
-        currency: 'INR',
-        name: 'ElitePG',
-        description: `Upgrade to ${plan.name} Plan`,
-        image: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&q=80&w=150&h=150', // Replace with your logo
-        handler: function (response: any) {
-          const nextMonth = format(addMonths(new Date(), 1), 'yyyy-MM-dd');
-          updateBranchSubscription(currentBranch.id, plan.id, 'active', nextMonth);
-          setIsProcessing(false);
-          toast.success(`Payment Successful via Razorpay! Your plan has been upgraded to ${plan.name}. Transaction ID: ${response.razorpay_payment_id}`);
-        },
-        prefill: {
-          name: user.name,
-          email: user.email,
-          contact: user.phone || '9999999999',
-        },
-        theme: {
-          color: '#4F46E5', // indigo-600
-        },
-        modal: {
-          ondismiss: function () {
-            setIsProcessing(false);
-          }
-        }
-      };
-
-      const paymentObject = new (window as any).Razorpay(options);
-      paymentObject.open();
-    } else {
-      setIsProcessing(false);
+  const handleDownloadReceipt = async (paymentId: string, plan: SubscriptionPlan, billing: 'monthly' | 'annual') => {
+    const amount = billing === 'annual' ? plan.annualPrice : plan.price;
+    setIsGeneratingPDF(true);
+    try {
+      await generateSubscriptionReceiptPDF({
+        paymentId,
+        paymentDate: format(new Date(), 'yyyy-MM-dd'),
+        planName: plan.name,
+        billing,
+        amount,
+        adminName: user?.name || 'Admin',
+        adminEmail: user?.email,
+        branchName: currentBranch?.name,
+        branchPhone: currentBranch?.phone,
+        branchAddress: currentBranch?.address,
+        pgName: pgConfig?.pgName || currentBranch?.name,
+        logoUrl: pgConfig?.logoUrl,
+        signatureUrl: superSignatureUrl || users.find(u => u.role === 'super')?.signatureUrl || user?.signatureUrl
+      });
+      toast.success('Subscription receipt downloaded!');
+    } catch (err) {
+      console.error('PDF generation failed:', err);
+      toast.error('Failed to generate receipt PDF. Please try again.');
+    } finally {
+      setIsGeneratingPDF(false);
     }
   };
+
+  const handleDirectUpgrade = async (plan: SubscriptionPlan) => {
+    if (!currentBranch || !user) return;
+    setIsProcessing(true);
+
+    const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY || 'rzp_test_SPuhgTcTc6kl88';
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+
+    const scriptLoaded = await loadRazorpayScript();
+    if (!scriptLoaded) {
+      toast.error('Razorpay SDK failed to load. Check your internet connection.');
+      setIsProcessing(false);
+      return;
+    }
+
+    const razorpayPlanId = activeBilling === 'annual' ? plan.razorpayAnnualPlanId : plan.razorpayMonthlyPlanId;
+    const useSubscriptionFlow = !!razorpayPlanId && !!supabaseUrl;
+
+    console.log('Subscription Flow Check:', { 
+      activeBilling, 
+      razorpayPlanId, 
+      supabaseUrl: !!supabaseUrl, 
+      useSubscriptionFlow 
+    });
+
+    if (useSubscriptionFlow) {
+      // ── RECURRING SUBSCRIPTION FLOW ──
+      console.log('Initiating Recurring Subscription flow...');
+      try {
+        const res = await fetch(`${supabaseUrl}/functions/v1/create-razorpay-subscription`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            razorpayPlanId,
+            customerName: user.name,
+            customerEmail: user.email,
+            totalCount: activeBilling === 'annual' ? 12 : 120, // 1y annual or 10y monthly
+          }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || !data.subscriptionId) {
+          console.error('Edge Function Error:', data);
+          const errorMsg = data.error || 'Failed to create subscription.';
+          if (errorMsg.includes('invalid') || errorMsg.includes('found')) {
+            toast.error(`Invalid Razorpay Plan ID. Please verify the IDs in Super Admin → Subscriptions for this plan.`, { duration: 6000 });
+          } else {
+            toast.error(errorMsg);
+          }
+          setIsProcessing(false);
+          return;
+        }
+
+        const options = {
+          key: razorpayKey,
+          subscription_id: data.subscriptionId,
+          name: 'ElitePG',
+          description: `${plan.name} Plan — ${activeBilling === 'annual' ? 'Annual' : 'Monthly'} Subscription`,
+          image: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&q=80&w=150&h=150',
+          handler: function (response: any) {
+            const months = activeBilling === 'annual' ? 12 : 1;
+            const endDate = format(addMonths(new Date(), months), 'yyyy-MM-dd');
+            updateBranchSubscription(currentBranch.id, plan.id, 'active', endDate, undefined, response.razorpay_subscription_id);
+            setIsProcessing(false);
+            toast.success(`🎉 ${plan.name} subscription activated!`);
+            handleDownloadReceipt(response.razorpay_subscription_id, plan, activeBilling);
+          },
+          prefill: { name: user.name || 'Admin', email: user.email || '', contact: '' },
+          notes: { plan_id: plan.id, branch_id: currentBranch.id },
+          theme: { color: '#4F46E5' },
+          modal: {
+            ondismiss: () => { setIsProcessing(false); toast('Payment cancelled.', { icon: 'ℹ️' }); },
+          },
+        };
+        const rzp = new (window as any).Razorpay(options);
+        rzp.on('payment.failed', (r: any) => { setIsProcessing(false); toast.error(`Payment failed: ${r.error.description}`); });
+        rzp.open();
+      } catch (err: any) {
+        toast.error('Failed to connect to subscription service.');
+        setIsProcessing(false);
+      }
+    } else {
+      // ── ONE-TIME PAYMENT FALLBACK ──
+      const amount = activeBilling === 'annual' ? plan.annualPrice : plan.price;
+      const options = {
+        key: razorpayKey,
+        amount: amount * 100,
+        currency: 'INR',
+        name: 'ElitePG',
+        description: `${plan.name} Plan (${activeBilling}) — One-time`,
+        image: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&q=80&w=150&h=150',
+        handler: function (response: any) {
+          const months = activeBilling === 'annual' ? 12 : 1;
+          const endDate = format(addMonths(new Date(), months), 'yyyy-MM-dd');
+          updateBranchSubscription(currentBranch.id, plan.id, 'active', endDate, response.razorpay_payment_id);
+          setIsProcessing(false);
+          toast.success(`🎉 Plan upgraded to ${plan.name}!`);
+          handleDownloadReceipt(response.razorpay_payment_id, plan, activeBilling);
+        },
+        prefill: { name: user.name || 'Admin', email: user.email || '', contact: '' },
+        notes: { plan_id: plan.id, branch_id: currentBranch.id },
+        theme: { color: '#4F46E5' },
+        modal: {
+          ondismiss: () => { setIsProcessing(false); toast('Payment cancelled.', { icon: 'ℹ️' }); },
+        },
+      };
+      const rzp = new (window as any).Razorpay(options);
+      rzp.on('payment.failed', (r: any) => { setIsProcessing(false); toast.error(`Payment failed: ${r.error.description}`); });
+      rzp.open();
+    }
+  };
+
 
   return (
     <div className="space-y-8 pb-20">
@@ -123,85 +224,168 @@ export const SubscriptionPage = () => {
         </div>
 
         {/* Available Plans */}
-        <div>
-          <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6">Available Plans</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {subscriptionPlans.map((plan) => {
+        <div className="pt-8 border-t border-gray-100 dark:border-white/5 mt-8">
+          <div className="flex flex-col items-center justify-center mb-12">
+            <h3 className="text-3xl font-black text-gray-900 dark:text-white mb-6">Choose Your Plan</h3>
+            <div className="flex items-center gap-2 bg-gray-100 dark:bg-white/5 p-1.5 rounded-full relative">
+              <button
+                onClick={() => setActiveBilling('monthly')}
+                className={cn(
+                  "relative z-10 px-8 py-2.5 rounded-full text-sm font-bold transition-all duration-300",
+                  activeBilling === 'monthly'
+                    ? "text-gray-900 dark:text-gray-900"
+                    : "text-gray-500 hover:text-gray-900 dark:hover:text-white"
+                )}
+              >
+                Monthly
+                {activeBilling === 'monthly' && (
+                  <motion.div layoutId="billingToggle" className="absolute inset-0 bg-white rounded-full -z-10 shadow-sm" />
+                )}
+              </button>
+              <button
+                onClick={() => setActiveBilling('annual')}
+                className={cn(
+                  "relative z-10 px-6 py-2.5 rounded-full text-sm font-bold transition-all duration-300 flex items-center gap-2",
+                  activeBilling === 'annual'
+                    ? "text-gray-900 dark:text-gray-900"
+                    : "text-gray-500 hover:text-gray-900 dark:hover:text-white"
+                )}
+              >
+                Annual 
+                <span className="px-2 py-0.5 bg-rose-500 text-white text-[10px] font-black rounded-full leading-none tracking-widest whitespace-nowrap shadow-sm shadow-rose-500/20">25% OFF</span>
+                {activeBilling === 'annual' && (
+                  <motion.div layoutId="billingToggle" className="absolute inset-0 bg-white rounded-full -z-10 shadow-sm" />
+                )}
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
+            {[...subscriptionPlans]
+              .sort((a, b) => a.price - b.price)
+              .map((plan, i) => {
               const isCurrent = plan.id === currentPlan?.id;
+              
+              // Apply dynamic styling simulating the requested design
+              const isPopular = i === 1; // 2nd plan is popular
+              const isBestValue = i === 2; // 3rd plan is Elite
+              
+              let cardClasses = "bg-white dark:bg-[#1a1a1a] border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20";
+              let titleColor = "text-gray-900 dark:text-white";
+              let priceColor = "text-gray-900 dark:text-white";
+              let buttonClasses = "bg-white text-gray-900 hover:bg-gray-100 border border-gray-200";
+              let badgeText = null;
+              let badgeClasses = "";
+
+              if (isPopular) {
+                cardClasses = "bg-white dark:bg-[#1a2310] border-[#cdff00] ring-1 ring-[#cdff00]";
+                buttonClasses = "bg-[#cdff00] text-black hover:bg-[#b5e000] border-transparent shadow-[#cdff00]/20";
+                badgeText = "◆ MOST POPULAR";
+                badgeClasses = "bg-[#cdff00] text-black";
+              } else if (isBestValue) {
+                cardClasses = "bg-white dark:bg-[#2a0e1c] border-[#ff0066] ring-1 ring-[#ff0066]";
+                buttonClasses = "bg-[#ff0066] text-white hover:bg-[#e0005a] border-transparent shadow-[#ff0066]/20";
+                badgeText = "✦ BEST VALUE";
+                badgeClasses = "bg-[#ff0066] text-white";
+              }
+
+              if (isCurrent) {
+                cardClasses += " opacity-50";
+                buttonClasses = "bg-gray-100 dark:bg-white/5 text-gray-400 border-transparent cursor-not-allowed";
+              }
+
               return (
                 <div
                   key={plan.id}
                   className={cn(
-                    "bg-white dark:bg-[#111111] p-6 rounded-3xl border transition-all flex flex-col",
-                    isCurrent
-                      ? "border-indigo-600 ring-2 ring-indigo-600/20"
-                      : "border-gray-200 dark:border-white/5 hover:border-indigo-500/50"
+                    "p-8 rounded-[32px] border-2 transition-all flex flex-col relative pt-12",
+                    cardClasses
                   )}
                 >
-                  <h4 className="text-lg font-bold text-gray-900 dark:text-white mb-1">{plan.name}</h4>
-                  <div className="flex items-baseline gap-1 mb-6">
-                    <span className="text-2xl font-black text-gray-900 dark:text-white">₹{plan.price}</span>
-                    <span className="text-xs text-gray-500">/mo</span>
-                  </div>
+                  {badgeText && (
+                    <div className={cn("absolute top-0 left-0 right-0 py-2 text-center text-[10px] font-black uppercase tracking-widest rounded-t-[30px]", badgeClasses)}>
+                      {badgeText}
+                    </div>
+                  )}
 
-                  <div className="space-y-3 mb-8 flex-1">
-                    <div className="flex items-center gap-2 text-xs font-bold text-gray-600 dark:text-gray-400">
-                      <Check className="w-3 h-3 text-green-500" />
-                      {plan.maxTenants >= 9999 ? 'Unlimited' : `${plan.maxTenants}`} Tenants
-                    </div>
-                    <div className="flex items-center gap-2 text-xs font-bold text-gray-600 dark:text-gray-400">
-                      <Check className="w-3 h-3 text-green-500" />
-                      {plan.maxRooms >= 9999 ? 'Unlimited' : `${plan.maxRooms}`} Rooms
-                    </div>
-                    <div className="pt-2 border-t border-gray-100 dark:border-white/5">
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Features</p>
-                      <div className="flex flex-wrap gap-1">
-                        {(expandedPlanId === plan.id ? plan.features : plan.features.slice(0, 4)).map(f => (
-                          <span key={f} className="px-1.5 py-0.5 bg-gray-100 dark:bg-white/5 rounded text-[9px] font-bold text-gray-500 uppercase">
-                            {f}
-                          </span>
-                        ))}
-                        {plan.features.length > 4 && expandedPlanId !== plan.id && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setExpandedPlanId(plan.id); }}
-                            className="text-[9px] font-bold text-indigo-500 hover:text-indigo-600 transition-colors"
-                          >
-                            +{plan.features.length - 4} more
-                          </button>
-                        )}
-                        {expandedPlanId === plan.id && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setExpandedPlanId(null); }}
-                            className="text-[9px] font-bold text-gray-400 hover:text-gray-500 transition-colors"
-                          >
-                            Hide
-                          </button>
-                        )}
-                      </div>
-                    </div>
+                  <h4 className={cn("text-2xl font-black mb-2", titleColor)}>{plan.name}</h4>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-6 font-medium">For managing PG branches efficiently</p>
+                  
+                  <div className="flex items-baseline gap-1 mb-2">
+                    {activeBilling === 'annual' && plan.annualPrice > 0 && (
+                       <span className="text-xl font-bold text-gray-400 line-through mr-2">
+                         ₹{Math.round((plan.price * 12) / 12)}
+                       </span>
+                    )}
+                    <span className={cn("text-5xl font-black tracking-tight", priceColor)}>
+                      ₹{activeBilling === 'annual' && plan.annualPrice > 0 ? Math.round(plan.annualPrice / 12) : plan.price}
+                    </span>
+                    <span className="text-sm font-medium text-gray-500">/month</span>
                   </div>
+                  {activeBilling === 'annual' && plan.annualPrice > 0 && (
+                    <p className="text-xs text-gray-500 mb-6 font-medium">Billed ₹{plan.annualPrice} for 12 months</p>
+                  )}
+                  {(activeBilling === 'monthly' || !plan.annualPrice) && (
+                    <p className="text-xs text-gray-500 mb-6 font-medium">Billed monthly</p>
+                  )}
 
                   <button
                     onClick={() => {
-                      if (currentBranch) {
+                      if (currentBranch && !isCurrent) {
                         setSelectedPlan(plan);
-                        if (isCurrent) {
-                          setIsPaymentModalOpen(true);
-                        } else {
-                          handleDirectUpgrade(plan);
-                        }
+                        handleDirectUpgrade(plan);
                       }
                     }}
-                    disabled={isProcessing}
+                    disabled={isProcessing || isCurrent}
                     className={cn(
-                      "w-full py-3 rounded-2xl text-sm font-black transition-all",
-                      isCurrent
-                        ? "bg-gray-100 dark:bg-white/5 text-gray-500 hover:bg-gray-200 dark:hover:bg-white/10"
-                        : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-600/20"
+                      "w-full py-4 rounded-2xl text-sm font-black transition-all shadow-sm mb-8",
+                      buttonClasses
                     )}
                   >
-                    {isCurrent ? 'View Details' : 'Upgrade Now'}
+                    {isCurrent ? 'Current Plan' : 'Select Plan'}
                   </button>
+
+                  <div className="space-y-4 mb-4 flex-1">
+                    <div className="flex items-start gap-3 text-sm font-bold text-gray-700 dark:text-gray-300">
+                      <Check className="w-5 h-5 text-gray-400 shrink-0" />
+                      <div>
+                        {plan.maxTenants >= 9999 ? 'Unlimited' : `${plan.maxTenants}`} Tenants Limit
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3 text-sm font-bold text-gray-700 dark:text-gray-300">
+                      <Check className="w-5 h-5 text-gray-400 shrink-0" />
+                      <div>
+                        {plan.maxRooms >= 9999 ? 'Unlimited' : `${plan.maxRooms}`} Rooms Limit
+                      </div>
+                    </div>
+                    <div className="pt-6 mt-6 border-t border-gray-100 dark:border-white/10">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4">Features Included</p>
+                      <ul className="space-y-3">
+                        {(expandedPlanId === plan.id ? plan.features : plan.features.slice(0, 5)).map(f => (
+                          <li key={f} className="flex items-center gap-3 text-xs font-bold text-gray-600 dark:text-gray-400">
+                             <Check className="w-3.5 h-3.5 text-gray-400" />
+                             <span className="uppercase tracking-wider">{f}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      {plan.features.length > 5 && expandedPlanId !== plan.id && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setExpandedPlanId(plan.id); }}
+                          className="mt-4 text-xs font-bold text-indigo-500 hover:text-indigo-600 dark:text-indigo-400 transition-colors"
+                        >
+                          + View All {plan.features.length} Features
+                        </button>
+                      )}
+                      {expandedPlanId === plan.id && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setExpandedPlanId(null); }}
+                          className="mt-4 text-xs font-bold text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+                        >
+                          Show Less
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               );
             })}

@@ -17,6 +17,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../utils';
 import { Navigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 
 export const BroadcastPage = () => {
   const { user } = useAuth();
@@ -96,7 +97,7 @@ export const BroadcastPage = () => {
 
     const tenant = tenants.find(t => t.id === quickBroadcast.tenantId);
     if (!tenant || !quickBroadcast.message) {
-      alert('Please select a tenant or "All Tenants" and enter a message.');
+      toast.error('Please select a tenant or "All Tenants" and enter a message.');
       return;
     }
     sendWhatsApp(tenant.phone, quickBroadcast.message);
