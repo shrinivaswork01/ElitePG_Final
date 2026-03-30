@@ -639,7 +639,7 @@ export const PaymentsPage = () => {
             <button
               onClick={() => setIsAddModalOpen(true)}
               className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
-              style={{ background: pgConfig?.primaryColor || '#4f46e5' }}
+              style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
             >
               <Plus className="w-5 h-5" />
               Record Payment
@@ -1523,7 +1523,7 @@ export const PaymentsPage = () => {
                     <p className="text-[10px] text-gray-400">Amount charged per day past grace period.</p>
                   </div>
                 </div>
-                <button type="submit" className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all" style={{ background: pgConfig?.primaryColor || '#4f46e5' }}>
+                <button type="submit" className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all" style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}>
                   Save Policies
                 </button>
               </form>
@@ -1547,3 +1547,4 @@ export const PaymentsPage = () => {
     </div>
   );
 };
+

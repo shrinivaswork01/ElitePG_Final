@@ -145,3 +145,4 @@ export const RoomDetailPanel: React.FC<RoomDetailPanelProps> = ({
     </AnimatePresence>
   );
 };
+

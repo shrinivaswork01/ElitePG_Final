@@ -925,3 +925,4 @@ export const SuperAdminPage = () => {
     </div>
   );
 };
+

@@ -123,7 +123,7 @@ export const Layout = ({ children }: LayoutProps) => {
           {pgConfig?.logoUrl ? (
             <img src={pgConfig.logoUrl} alt="Logo" className="w-10 h-10 rounded-xl object-cover" />
           ) : (
-            <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl" style={{ background: pgConfig?.primaryColor || '#4f46e5' }}>
+            <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl" style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}>
               {pgConfig?.pgName?.charAt(0) || 'E'}
             </div>
           )}
@@ -232,7 +232,7 @@ export const Layout = ({ children }: LayoutProps) => {
                 {pgConfig?.logoUrl ? (
                   <img src={pgConfig.logoUrl} alt="Logo" className="w-10 h-10 rounded-xl object-cover" />
                 ) : (
-                  <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl" style={{ background: pgConfig?.primaryColor || '#4f46e5' }}>
+                  <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl" style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}>
                     {pgConfig?.pgName?.charAt(0) || 'E'}
                   </div>
                 )}
@@ -379,3 +379,4 @@ export const Layout = ({ children }: LayoutProps) => {
     </div>
   );
 };
+

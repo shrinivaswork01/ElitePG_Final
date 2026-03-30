@@ -83,7 +83,7 @@ export const UnifiedStaffTasksPage = () => {
               "px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2",
               activeTab === 'tasks' ? "bg-indigo-600 text-white shadow-lg" : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5"
             )}
-            style={activeTab === 'tasks' ? { backgroundColor: pgConfig?.primaryColor } : {}}
+            style={activeTab === 'tasks' ? { background: pgConfig?.primaryColor } : {}}
           >
             <ClipboardList className="w-4 h-4" />
             Tasks ({employeeTasks.filter(t => t.status === 'pending').length})
@@ -94,7 +94,7 @@ export const UnifiedStaffTasksPage = () => {
               "px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2",
               activeTab === 'complaints' ? "bg-indigo-600 text-white shadow-lg" : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5"
             )}
-            style={activeTab === 'complaints' ? { backgroundColor: pgConfig?.primaryColor } : {}}
+            style={activeTab === 'complaints' ? { background: pgConfig?.primaryColor } : {}}
           >
             <MessageSquare className="w-4 h-4" />
             Complaints ({employeeComplaints.filter(c => c.status === 'assigned').length})
@@ -193,7 +193,7 @@ export const UnifiedStaffTasksPage = () => {
                   <button
                     onClick={() => setCompletingTask(task)}
                     className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all font-outfit"
-                    style={{ backgroundColor: pgConfig?.primaryColor }}
+                    style={{ background: pgConfig?.primaryColor }}
                   >
                     Mark as Completed
                   </button>
@@ -249,7 +249,7 @@ export const UnifiedStaffTasksPage = () => {
                   <button
                     onClick={() => setCompletingComplaint(complaint)}
                     className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
-                    style={{ backgroundColor: pgConfig?.primaryColor }}
+                    style={{ background: pgConfig?.primaryColor }}
                   >
                     Mark Resolved
                   </button>
@@ -350,7 +350,7 @@ export const UnifiedStaffTasksPage = () => {
                     toast.success('Task marked as completed!');
                   }}
                   className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all font-outfit"
-                  style={{ backgroundColor: pgConfig?.primaryColor }}
+                  style={{ background: pgConfig?.primaryColor }}
                 >
                   Verify & Complete Task
                 </button>
@@ -419,7 +419,7 @@ export const UnifiedStaffTasksPage = () => {
                     toast.success('Complaint marked as resolved!');
                   }}
                   className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all font-outfit"
-                  style={{ backgroundColor: pgConfig?.primaryColor }}
+                  style={{ background: pgConfig?.primaryColor }}
                 >
                   Verify & Resolve
                 </button>
@@ -464,3 +464,4 @@ export const UnifiedStaffTasksPage = () => {
     </div>
   );
 };
+

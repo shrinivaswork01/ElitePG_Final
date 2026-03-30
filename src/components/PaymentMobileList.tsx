@@ -290,3 +290,4 @@ export const PaymentMobileList: React.FC<PaymentMobileListProps> = ({
     </div>
   );
 };
+

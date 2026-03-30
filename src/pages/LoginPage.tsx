@@ -554,3 +554,4 @@ export const LoginPage = ({ isSignUp = false }: LoginPageProps) => {
     </div>
   );
 };
+

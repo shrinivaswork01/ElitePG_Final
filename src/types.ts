@@ -55,6 +55,7 @@ export interface User {
   provider?: 'local' | 'google';
   google_id?: string;
   signatureUrl?: string;
+  permissions?: string[]; // Array of allowed routing tabs (PBAC)
 }
 
 export interface UserInvite {
@@ -100,6 +101,7 @@ export interface Tenant {
   status: TenantStatus;
   kycStatus: KYCStatus;
   rentAgreementUrl?: string;
+  signatureUrl?: string;
   inviteCode?: string;
   branchId: string;
   isAcUser?: boolean; // Whether tenant uses AC (for electricity split)

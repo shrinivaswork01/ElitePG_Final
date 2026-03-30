@@ -4,6 +4,8 @@ import { AuthProvider } from './context/AuthContext';
 import { AppProvider } from './context/AppContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { RoleGuard } from './components/RoleGuard';
+import { PermissionGuard } from './components/PermissionGuard';
 import { Layout } from './components/Layout';
 import { Toaster } from 'react-hot-toast';
 import { LoginPage } from './pages/LoginPage';
@@ -55,90 +57,126 @@ export default function App() {
               } />
 
               <Route path="/tenants" element={
-                <ProtectedRoute allowedRoles={['admin', 'manager', 'caretaker']}>
-                  <Layout>
-                    <TenantsPage />
-                  </Layout>
+                <ProtectedRoute>
+                  <RoleGuard requiredLevel={2}>
+                    <PermissionGuard requiredPermission="tenants">
+                      <Layout>
+                        <TenantsPage />
+                      </Layout>
+                    </PermissionGuard>
+                  </RoleGuard>
                 </ProtectedRoute>
               } />
 
               <Route path="/rooms" element={
-                <ProtectedRoute allowedRoles={['admin', 'manager', 'caretaker']}>
-                  <Layout>
-                    <RoomsPage />
-                  </Layout>
+                <ProtectedRoute>
+                  <RoleGuard requiredLevel={2}>
+                    <PermissionGuard requiredPermission="rooms">
+                      <Layout>
+                        <RoomsPage />
+                      </Layout>
+                    </PermissionGuard>
+                  </RoleGuard>
                 </ProtectedRoute>
               } />
 
               <Route path="/payments" element={
-                <ProtectedRoute allowedRoles={['admin', 'manager', 'tenant']}>
-                  <Layout>
-                    <PaymentsPage />
-                  </Layout>
+                <ProtectedRoute>
+                  <RoleGuard requiredLevel={1}>
+                    <PermissionGuard requiredPermission="payments">
+                      <Layout>
+                        <PaymentsPage />
+                      </Layout>
+                    </PermissionGuard>
+                  </RoleGuard>
                 </ProtectedRoute>
               } />
 
               <Route path="/complaints" element={
                 <ProtectedRoute>
-                  <Layout>
-                    <ComplaintsPage />
-                  </Layout>
+                  <RoleGuard requiredLevel={1}>
+                    <PermissionGuard requiredPermission="complaints">
+                      <Layout>
+                        <ComplaintsPage />
+                      </Layout>
+                    </PermissionGuard>
+                  </RoleGuard>
                 </ProtectedRoute>
               } />
 
               <Route path="/kyc" element={
-                <ProtectedRoute allowedRoles={['admin', 'manager', 'caretaker']}>
-                  <Layout>
-                    <KYCPage />
-                  </Layout>
+                <ProtectedRoute>
+                  <RoleGuard requiredLevel={2}>
+                    <PermissionGuard requiredPermission="kyc">
+                      <Layout>
+                        <KYCPage />
+                      </Layout>
+                    </PermissionGuard>
+                  </RoleGuard>
                 </ProtectedRoute>
               } />
 
               <Route path="/employees" element={
-                <ProtectedRoute allowedRoles={['admin', 'manager', 'caretaker']}>
-                  <Layout>
-                    <EmployeesPage />
-                  </Layout>
+                <ProtectedRoute>
+                  <RoleGuard requiredLevel={2}>
+                    <PermissionGuard requiredPermission="employees">
+                      <Layout>
+                        <EmployeesPage />
+                      </Layout>
+                    </PermissionGuard>
+                  </RoleGuard>
                 </ProtectedRoute>
               } />
 
               <Route path="/broadcast" element={
-                <ProtectedRoute allowedRoles={['admin']}>
-                  <Layout>
-                    <BroadcastPage />
-                  </Layout>
+                <ProtectedRoute>
+                  <RoleGuard requiredLevel={3}>
+                    <Layout>
+                      <BroadcastPage />
+                    </Layout>
+                  </RoleGuard>
                 </ProtectedRoute>
               } />
 
               <Route path="/reports" element={
-                <ProtectedRoute allowedRoles={['admin', 'manager']}>
-                  <Layout>
-                    <ReportsPage />
-                  </Layout>
+                <ProtectedRoute>
+                  <RoleGuard requiredLevel={2}>
+                    <PermissionGuard requiredPermission="reports">
+                      <Layout>
+                        <ReportsPage />
+                      </Layout>
+                    </PermissionGuard>
+                  </RoleGuard>
                 </ProtectedRoute>
               } />
 
               <Route path="/settings" element={
-                <ProtectedRoute allowedRoles={['admin']}>
-                  <Layout>
-                    <SettingsPage />
-                  </Layout>
+                <ProtectedRoute>
+                  <RoleGuard requiredLevel={3}>
+                    <Layout>
+                      <SettingsPage />
+                    </Layout>
+                  </RoleGuard>
                 </ProtectedRoute>
               } />
 
               <Route path="/subscription" element={
-                <ProtectedRoute allowedRoles={['admin']}>
-                  <Layout>
-                    <SubscriptionPage />
-                  </Layout>
+                <ProtectedRoute>
+                  <RoleGuard requiredLevel={3}>
+                    <Layout>
+                      <SubscriptionPage />
+                    </Layout>
+                  </RoleGuard>
                 </ProtectedRoute>
               } />
 
               <Route path="/branches" element={
-                <ProtectedRoute allowedRoles={['super']}>
-                  <Layout>
-                    <SuperAdminPage />
-                  </Layout>
+                <ProtectedRoute>
+                  <RoleGuard requiredLevel={4}>
+                    <Layout>
+                      <SuperAdminPage />
+                    </Layout>
+                  </RoleGuard>
                 </ProtectedRoute>
               } />
 
@@ -160,9 +198,13 @@ export default function App() {
 
               <Route path="/tasks" element={
                 <ProtectedRoute>
-                  <Layout>
-                    <TasksPage />
-                  </Layout>
+                  <RoleGuard requiredLevel={2}>
+                    <PermissionGuard requiredPermission="tasks">
+                      <Layout>
+                        <TasksPage />
+                      </Layout>
+                    </PermissionGuard>
+                  </RoleGuard>
                 </ProtectedRoute>
               } />
 

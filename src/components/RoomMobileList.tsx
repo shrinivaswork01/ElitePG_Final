@@ -280,3 +280,4 @@ export const RoomMobileList = ({
     </div>
   );
 };
+

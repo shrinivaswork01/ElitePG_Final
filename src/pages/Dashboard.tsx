@@ -269,7 +269,7 @@ export const Dashboard = () => {
             {user?.avatar ? (
               <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
             ) : (
-              <div className="w-full h-full flex items-center justify-center font-bold text-white" style={{ backgroundColor: pgConfig?.primaryColor || '#4f46e5' }}>
+              <div className="w-full h-full flex items-center justify-center font-bold text-white" style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}>
                 {user?.name?.charAt(0) || '?'}
               </div>
             )}
@@ -298,7 +298,7 @@ export const Dashboard = () => {
             <button
               onClick={handleDownloadReport}
               className="px-4 py-2 text-white rounded-xl text-sm font-medium shadow-lg hover:brightness-110 transition-all"
-              style={{ background: pgConfig?.primaryColor || '#4f46e5', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
+              style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
             >
               Download Report
             </button>
@@ -779,3 +779,4 @@ export const Dashboard = () => {
     </div>
   );
 };
+

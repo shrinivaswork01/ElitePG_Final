@@ -454,6 +454,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.kycStatus !== undefined) dbUpdates.kyc_status = updates.kycStatus;
     if (updates.userId !== undefined) dbUpdates.user_id = updates.userId;
     if ((updates as any).inviteCode !== undefined) dbUpdates.invite_code = (updates as any).inviteCode;
+    if (updates.signatureUrl !== undefined) dbUpdates.signature_url = updates.signatureUrl;
+    if (updates.rentAgreementUrl !== undefined) dbUpdates.rent_agreement_url = updates.rentAgreementUrl;
     if (finalRentAgreementUrl !== undefined) dbUpdates.rent_agreement_url = finalRentAgreementUrl;
     if (kycDoc) dbUpdates.kyc_status = newKycStatus;
 

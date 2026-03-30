@@ -326,6 +326,56 @@ export const ProfilePage = () => {
         </form>
       </motion.div>
 
+      {/* Rent Agreement Section — visible only to tenants */}
+      {isTenant && tenantData && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
+          className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden"
+        >
+          <div className="p-6 sm:p-8">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center">
+                <FileText className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Rent Agreement</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Your signed PG agreement document</p>
+              </div>
+            </div>
+
+            {(tenantData as any).rent_agreement_url || (tenantData as any).rentAgreementUrl ? (
+              <div className="flex flex-col sm:flex-row gap-3">
+                <a
+                  href={(tenantData as any).rent_agreement_url || (tenantData as any).rentAgreementUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 flex items-center justify-center gap-2 py-3 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-2xl font-bold text-sm hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors"
+                >
+                  <Eye className="w-4 h-4" />
+                  View Agreement
+                </a>
+                <a
+                  href={(tenantData as any).rent_agreement_url || (tenantData as any).rentAgreementUrl}
+                  download
+                  className="flex-1 flex items-center justify-center gap-2 py-3 bg-gray-100 dark:bg-white/5 text-gray-700 dark:text-gray-300 rounded-2xl font-bold text-sm hover:bg-gray-200 dark:hover:bg-white/10 transition-colors"
+                >
+                  <Upload className="w-4 h-4 rotate-180" />
+                  Download PDF
+                </a>
+              </div>
+            ) : (
+              <div className="text-center py-6 text-gray-400 dark:text-gray-500">
+                <FileText className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                <p className="text-sm font-medium">Agreement not generated yet</p>
+                <p className="text-xs mt-1">Your PG admin will generate your agreement.</p>
+              </div>
+            )}
+          </div>
+        </motion.div>
+      )}
+
       {user?.role === 'admin' && currentPlan && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -650,3 +700,4 @@ export const ProfilePage = () => {
     </div>
   );
 };
+

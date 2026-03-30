@@ -160,7 +160,7 @@ export const ComplaintsPage = () => {
           <button
             onClick={() => setIsAddModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2.5 text-white rounded-xl font-semibold shadow-lg transition-all"
-            style={{ background: pgConfig?.primaryColor || '#4f46e5', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
+            style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
           >
             <Plus className="w-5 h-5" />
             Raise Complaint
@@ -202,7 +202,7 @@ export const ComplaintsPage = () => {
                   ? "text-white shadow-lg"
                   : "bg-white dark:bg-[#111111] text-gray-500 dark:text-gray-400 border border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5"
               )}
-              style={filterStatus === status ? { background: pgConfig?.primaryColor || '#4f46e5', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` } : {}}
+              style={filterStatus === status ? { background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` } : {}}
             >
               {status?.charAt(0).toUpperCase() + status?.slice(1)}
             </button>
@@ -535,7 +535,7 @@ export const ComplaintsPage = () => {
                   type="submit"
                   form="complaintForm"
                   className="w-full py-4 text-white rounded-2xl font-bold shadow-lg transition-all font-outfit"
-                  style={{ background: pgConfig?.primaryColor || '#4f46e5', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
+                  style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
                 >
                   {editingComplaint ? 'Update Complaint' : 'Submit Complaint'}
                 </button>
@@ -601,7 +601,7 @@ export const ComplaintsPage = () => {
                         setNewCategory('');
                       }}
                       className="px-4 py-2.5 text-white rounded-xl text-sm font-bold shadow-lg transition-all"
-                      style={{ background: pgConfig?.primaryColor || '#4f46e5', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
+                      style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
                     >
                       Add
                     </button>
@@ -670,7 +670,7 @@ export const ComplaintsPage = () => {
                       toast.success('Complaint marked as resolved!');
                     }}
                     className="w-full py-4 text-white rounded-2xl font-bold shadow-lg transition-all font-outfit"
-                    style={{ background: pgConfig?.primaryColor || '#4f46e5', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
+                    style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
                   >
                     Verify & Resolve
                   </button>
@@ -715,3 +715,4 @@ export const ComplaintsPage = () => {
     </div>
   );
 };
+

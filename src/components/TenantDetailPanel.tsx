@@ -1,8 +1,13 @@
-import React from 'react';
+import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Home, Phone, Mail, Calendar, CreditCard, Shield, FileCheck, MessageCircle, Edit2, Trash2, Zap } from 'lucide-react';
+import { X, Home, Phone, Mail, Calendar, CreditCard, Shield, FileCheck, MessageCircle, Edit2, Trash2, Zap, FileText, ExternalLink, Upload, Download } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { cn } from '../utils';
+import { useAuth } from '../context/AuthContext';
+import { useApp } from '../context/AppContext';
+import { RentAgreementGeneratorModal } from './RentAgreementGeneratorModal';
+import { uploadToSupabase } from '../utils/storage';
+import toast from 'react-hot-toast';
 
 interface TenantDetailPanelProps {
   tenant: any | null;
@@ -40,6 +45,49 @@ const statusColor: Record<string, string> = {
 export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
   tenant, onClose, onEdit, onDelete, onViewAgreement, onViewPayments, canEdit, canDelete, onAuthorize, electricityShare
 }) => {
+  const { user } = useAuth();
+  const { pgConfig, branches, updateTenant, tenants } = useApp();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const uploadAgreementRef = useRef<HTMLInputElement>(null);
+
+  // Override the static prop with the live context object so the panel updates instantly without a refresh
+  tenant = tenants.find((t: any) => t.id === tenant?.id) || tenant;
+
+  const agreementUrl = tenant?.rent_agreement_url || tenant?.rentAgreementUrl;
+  const hasAgreement = !!agreementUrl;
+
+  const handleDeleteAgreement = async () => {
+    if (!tenant) return;
+    try {
+      await updateTenant(tenant.id, { rentAgreementUrl: '' });
+      // Also clear local optimistic state
+      tenant.rent_agreement_url = null;
+      tenant.rentAgreementUrl = null;
+      setShowDeleteConfirm(false);
+      toast.success('Agreement removed');
+    } catch (err) {
+      toast.error('Failed to remove agreement');
+    }
+  };
+
+  const handleUploadAgreement = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !tenant) return;
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('File must be less than 10MB');
+      return;
+    }
+    try {
+      const path = `tenant_${tenant.id}/agreement_${Date.now()}_${file.name}`;
+      const url = await uploadToSupabase('agreements', path, file);
+      await updateTenant(tenant.id, { rentAgreementUrl: url });
+      toast.success('Agreement uploaded successfully!');
+    } catch (err) {
+      toast.error('Failed to upload agreement');
+    }
+  };
+
   return (
     <AnimatePresence>
       {tenant && (
@@ -148,16 +196,64 @@ export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
                  </div>
               )}
 
-              {/* Rent Agreement */}
-              {(tenant.rent_agreement_url || tenant.rentAgreementUrl) && (
-                <button
-                  onClick={() => onViewAgreement?.(tenant)}
-                  className="w-full flex items-center gap-3 p-4 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors"
-                >
-                  <FileCheck className="w-5 h-5 shrink-0" />
-                  <span className="text-sm font-bold">View Rent Agreement</span>
-                </button>
+              {/* Rent Agreement Section */}
+              {user && (
+                hasAgreement ? (
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Rent Agreement</p>
+                    <div className="flex gap-2">
+                      <a
+                        href={agreementUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 flex items-center justify-center gap-2 py-3 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl font-bold text-xs hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors"
+                      >
+                        <FileCheck className="w-4 h-4" />
+                        View
+                      </a>
+                      <a
+                        href={agreementUrl}
+                        download
+                        className="flex-1 flex items-center justify-center gap-2 py-3 bg-gray-100 dark:bg-white/5 text-gray-700 dark:text-gray-300 rounded-xl font-bold text-xs hover:bg-gray-200 dark:hover:bg-white/10 transition-colors"
+                      >
+                        <Download className="w-4 h-4" />
+                        Download
+                      </a>
+                      <button
+                        onClick={() => setShowDeleteConfirm(true)}
+                        className="flex items-center justify-center gap-2 py-3 px-4 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-xl font-bold text-xs hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => setIsModalOpen(true)}
+                      className="w-full flex items-center gap-3 p-4 rounded-2xl transition-colors bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-500/20"
+                    >
+                      <FileText className="w-5 h-5 shrink-0" />
+                      <span className="text-sm font-bold">Generate Agreement PDF</span>
+                    </button>
+                    <button
+                      onClick={() => uploadAgreementRef.current?.click()}
+                      className="w-full flex items-center gap-3 p-3 rounded-2xl transition-colors bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 border border-dashed border-gray-200 dark:border-white/10"
+                    >
+                      <Upload className="w-4 h-4 shrink-0" />
+                      <span className="text-xs font-bold">Or Upload Existing Agreement</span>
+                    </button>
+                    <input
+                      type="file"
+                      ref={uploadAgreementRef}
+                      hidden
+                      accept=".pdf,image/*"
+                      onChange={handleUploadAgreement}
+                    />
+                  </div>
+                )
               )}
+
 
               {/* Electricity Share */}
               {electricityShare && electricityShare.total > 0 && (
@@ -218,13 +314,56 @@ export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
                   onClick={() => { onClose(); onDelete(tenant); }}
                   className="p-3 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-2xl hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-colors"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Trash2 className="w-5 h-5" />
                 </button>
               )}
             </div>
           </motion.div>
+          
+          <RentAgreementGeneratorModal 
+             isOpen={isModalOpen}
+             onClose={() => setIsModalOpen(false)}
+             tenant={tenant}
+             user={user}
+             branch={branches.find((b: any) => b.id === (tenant.branchId || user.branchId))}
+             pgConfig={pgConfig}
+          />
+
+          {/* Delete Agreement Confirmation Modal */}
+          {showDeleteConfirm && (
+            <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="w-full max-w-sm bg-white dark:bg-gray-900 rounded-3xl shadow-2xl p-6 space-y-4"
+              >
+                <div className="text-center space-y-2">
+                  <div className="w-14 h-14 bg-rose-50 dark:bg-rose-500/10 rounded-full flex items-center justify-center mx-auto">
+                    <Trash2 className="w-7 h-7 text-rose-500" />
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">Delete Agreement?</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">This will remove the agreement from the tenant's profile. You can generate or upload a new one later.</p>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="flex-1 py-3 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-xl font-bold text-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleDeleteAgreement}
+                    className="flex-1 py-3 bg-rose-600 text-white rounded-xl font-bold text-sm hover:bg-rose-700 transition-colors"
+                  >
+                    Yes, Delete
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
         </>
       )}
     </AnimatePresence>
   );
 };
+

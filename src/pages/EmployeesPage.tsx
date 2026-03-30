@@ -310,7 +310,7 @@ export const EmployeesPage = () => {
               <button
                 onClick={() => setIsAddModalOpen(true)}
                 className="flex items-center gap-2 px-4 py-2.5 text-white rounded-xl font-semibold shadow-lg transition-all"
-                style={{ background: pgConfig?.primaryColor || '#4f46e5', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
+                style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
               >
                 <Plus className="w-5 h-5" />
                 Add Employee
@@ -708,7 +708,7 @@ export const EmployeesPage = () => {
                   <button
                     type="submit"
                     className="px-6 py-2.5 text-white text-sm font-semibold rounded-xl shadow-lg transition-all"
-                    style={{ background: pgConfig?.primaryColor || '#4f46e5', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
+                    style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
                   >
                     {editingEmployee ? 'Update Employee' : 'Add Employee'}
                   </button>
@@ -1284,7 +1284,7 @@ export const EmployeesPage = () => {
                       toast.success('Role added');
                     }}
                     className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all"
-                    style={{ backgroundColor: pgConfig?.primaryColor }}
+                    style={{ background: pgConfig?.primaryColor }}
                   >
                     Add
                   </button>
@@ -1416,7 +1416,7 @@ export const EmployeesPage = () => {
                                   isVisible ? "bg-indigo-600" : "bg-gray-200 dark:bg-white/10",
                                   isDashboard && "opacity-50 cursor-not-allowed"
                                 )}
-                                style={isVisible && !isDashboard ? { backgroundColor: pgConfig?.primaryColor } : {}}
+                                style={isVisible && !isDashboard ? { background: pgConfig?.primaryColor } : {}}
                               >
                                 <motion.div
                                   animate={{ x: isVisible ? 18 : 4 }}
@@ -1435,7 +1435,7 @@ export const EmployeesPage = () => {
                 <button
                   onClick={() => setIsVisibilityModalOpen(false)}
                   className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
-                  style={{ backgroundColor: pgConfig?.primaryColor }}
+                  style={{ background: pgConfig?.primaryColor }}
                 >
                   Done
                 </button>
@@ -1533,3 +1533,4 @@ export const EmployeesPage = () => {
     </div>
   );
 };
+

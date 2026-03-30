@@ -347,3 +347,4 @@ export const ElectricityBillModal: React.FC<ElectricityBillModalProps> = ({
     </AnimatePresence>
   );
 };
+

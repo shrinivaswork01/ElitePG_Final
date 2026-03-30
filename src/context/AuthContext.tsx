@@ -65,13 +65,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (currentUser) {
       const refreshedUser = mappedUsers.find(mu => mu.id === currentUser.id);
       if (refreshedUser) {
-        // Admins/supers are always authorized regardless of the DB `is_authorized` flag
-        const authorizedUser: User = {
-          ...refreshedUser,
-          isAuthorized: (refreshedUser.role === 'admin' || refreshedUser.role === 'super') ? true : refreshedUser.isAuthorized
-        };
-        setUser(authorizedUser);
-        localStorage.setItem('elite_pg_user', JSON.stringify(authorizedUser));
+        await setActiveUser(refreshedUser);
       }
     }
     setIsInitializing(false);
@@ -79,6 +73,41 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const [googleAuthStatus, setGoogleAuthStatus] = useState<'user_not_found' | 'user_already_exists' | null>(null);
   const clearGoogleAuthStatus = () => setGoogleAuthStatus(null);
+
+  // Helper to accurately set user state and resolve PBAC permissions for employees
+  const setActiveUser = async (baseUser: User) => {
+    let permissions: string[] | undefined = undefined;
+    const employeeRoles = ['manager', 'caretaker', 'cleaner', 'security'];
+    
+    if (employeeRoles.includes(baseUser.role) && baseUser.branchId) {
+      try {
+        const { data: config } = await supabase.from('pg_configs')
+          .select('role_permissions')
+          .eq('branch_id', baseUser.branchId)
+          .maybeSingle();
+
+        if (config?.role_permissions) {
+          const permissionsArray = Array.isArray(config.role_permissions) ? config.role_permissions : [];
+          const roleSettings = permissionsArray.find((rp: any) => rp.role === baseUser.role);
+          if (roleSettings) {
+            permissions = (roleSettings.visibleTabs || []).map((t: string) => t.replace(/^\//, ''));
+          }
+        }
+      } catch (err) {
+        console.error('Failed to resolve PBAC permissions', err);
+      }
+    }
+    
+    const isSuperOrAdmin = baseUser.role === 'admin' || baseUser.role === 'super';
+    const finalUser: User = {
+      ...baseUser,
+      isAuthorized: isSuperOrAdmin ? true : baseUser.isAuthorized,
+      permissions
+    };
+    
+    setUser(finalUser);
+    localStorage.setItem('elite_pg_user', JSON.stringify(finalUser));
+  };
 
   // Helper: creates a new user + tenant record for an OAuth or manually created backend user
   const provisionNewUser = async (session: any, provider: 'local' | 'google', overrideBranchId?: string, isAuthorizedOverride?: boolean, roleOverride?: UserRole) => {
@@ -156,8 +185,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       isAuthorized: newDbUser.is_authorized, password: null, branchId: finalBranchId,
       provider: provider, google_id: newDbUser.google_id, seenAnnouncements: []
     };
-    setUser(mappedUser);
-    localStorage.setItem('elite_pg_user', JSON.stringify(mappedUser));
+    await setActiveUser(mappedUser);
   };
 
   useEffect(() => {
@@ -373,8 +401,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       seenAnnouncements: data.seen_announcements || []
     };
 
-    setUser(mappedUser);
-    localStorage.setItem('elite_pg_user', JSON.stringify(mappedUser));
+    await setActiveUser(mappedUser);
     return { success: true };
   };
 

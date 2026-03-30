@@ -293,3 +293,4 @@ export const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
     </AnimatePresence>
   );
 };
+

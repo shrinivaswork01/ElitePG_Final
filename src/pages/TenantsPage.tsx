@@ -495,7 +495,7 @@ export const TenantsPage = () => {
               "flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all",
               isAtLimit && "opacity-50 cursor-not-allowed"
             )}
-            style={{ background: pgConfig?.primaryColor || '#4f46e5' }}
+            style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
           >
             <Plus className="w-5 h-5" />
             Add Tenant
@@ -857,7 +857,7 @@ export const TenantsPage = () => {
                                 ? "text-white shadow-lg"
                                 : "bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10"
                             )}
-                            style={formData.status === s ? { background: pgConfig?.primaryColor || '#4f46e5', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` } : {}}
+                            style={formData.status === s ? { background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` } : {}}
                           >
                             {s?.toUpperCase()}
                           </button>
@@ -877,7 +877,7 @@ export const TenantsPage = () => {
                   <button
                     type="submit"
                     className="px-8 py-3 bg-indigo-600 text-white font-bold rounded-2xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
-                    style={{ background: pgConfig?.primaryColor || '#4f46e5' }}
+                    style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
                   >
                     {editingTenant ? 'Update Tenant' : 'Add Tenant'}
                   </button>
@@ -988,16 +988,12 @@ export const TenantsPage = () => {
                     className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-gray-500 dark:text-gray-400"
                   />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Set Password (Optional)</label>
-                  <input
-                    type="password"
-                    value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                    placeholder="Leave blank for tenant to set"
-                  />
-                  <p className="text-[10px] text-gray-500">If left blank, the tenant must set their password during their first login.</p>
+                
+                <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-700/20 p-4 rounded-xl flex gap-3 text-amber-700 dark:text-amber-400">
+                  <Shield className="w-5 h-5 shrink-0" />
+                  <p className="text-xs font-medium">
+                    The tenant will be assigned a default password of <strong>123456</strong>. They will be forced to set a new password during their first login.
+                  </p>
                 </div>
                 <div className="flex justify-end gap-3 pt-4">
                   <button
@@ -1217,7 +1213,7 @@ export const TenantsPage = () => {
                   <button
                     type="submit"
                     className="w-full py-4 text-white rounded-2xl font-bold shadow-lg transition-all"
-                    style={{ background: pgConfig?.primaryColor || '#4f46e5', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
+                    style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
                   >
                     Upload & Verify Document
                   </button>
@@ -1230,3 +1226,4 @@ export const TenantsPage = () => {
     </div>
   );
 };
+

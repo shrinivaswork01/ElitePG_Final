@@ -154,7 +154,7 @@ export const TasksPage = () => {
             <button
               onClick={() => setIsModalOpen(true)}
               className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
-              style={{ backgroundColor: pgConfig?.primaryColor }}
+              style={{ background: pgConfig?.primaryColor }}
             >
               <Plus className="w-5 h-5" />
               Assign Task
@@ -188,7 +188,7 @@ export const TasksPage = () => {
                   ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20" 
                   : "bg-white dark:bg-[#111111] text-gray-500 dark:text-gray-400 border border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5"
               )}
-              style={filter === f ? { backgroundColor: pgConfig?.primaryColor } : {}}
+              style={filter === f ? { background: pgConfig?.primaryColor } : {}}
             >
               {f}
             </button>
@@ -265,7 +265,7 @@ export const TasksPage = () => {
                         <button
                           onClick={() => setCompletingTask(task)}
                           className="px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all flex-1 sm:flex-none"
-                          style={{ backgroundColor: pgConfig?.primaryColor }}
+                          style={{ background: pgConfig?.primaryColor }}
                         >
                           Mark Completed
                         </button>
@@ -423,7 +423,7 @@ export const TasksPage = () => {
                 <button
                   type="submit"
                   className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all font-outfit"
-                  style={{ backgroundColor: pgConfig?.primaryColor }}
+                  style={{ background: pgConfig?.primaryColor }}
                 >
                   {editingTask ? 'Update Task' : 'Assign Task'}
                 </button>
@@ -492,7 +492,7 @@ export const TasksPage = () => {
                     toast.success('Task marked as completed!');
                   }}
                   className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all font-outfit"
-                  style={{ backgroundColor: pgConfig?.primaryColor }}
+                  style={{ background: pgConfig?.primaryColor }}
                 >
                   Verify & Complete Task
                 </button>
@@ -537,3 +537,4 @@ export const TasksPage = () => {
     </div>
   );
 };
+

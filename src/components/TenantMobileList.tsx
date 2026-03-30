@@ -229,3 +229,4 @@ export const TenantMobileList: React.FC<TenantMobileListProps> = ({
     </div>
   );
 };
+

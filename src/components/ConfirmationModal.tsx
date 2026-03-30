@@ -86,3 +86,4 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
     </AnimatePresence>
   );
 };
+

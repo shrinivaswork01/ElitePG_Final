@@ -11,10 +11,12 @@ export const SettingsPage = () => {
   const { pgConfig, updatePGConfig, currentPlan } = useApp();
   const { user } = useAuth();
   
+  const GRADIENT_THEME = 'linear-gradient(to right, #4f46e5, #7c3aed)';
+
   const [settingsForm, setSettingsForm] = useState<Partial<PGConfig>>({
     pgName: '',
     logoUrl: '',
-    primaryColor: '#4f46e5',
+    primaryColor: GRADIENT_THEME,
     customRoles: [],
     rolePermissions: [],
     defaultPaymentDueDate: 1,
@@ -29,7 +31,7 @@ export const SettingsPage = () => {
       setSettingsForm({
         pgName: pgConfig.pgName || '',
         logoUrl: pgConfig.logoUrl || '',
-        primaryColor: pgConfig.primaryColor || '#4f46e5',
+        primaryColor: pgConfig.primaryColor || GRADIENT_THEME,
         customRoles: pgConfig.customRoles || [],
         rolePermissions: pgConfig.rolePermissions || [],
         defaultPaymentDueDate: pgConfig.defaultPaymentDueDate || 1,
@@ -42,7 +44,7 @@ export const SettingsPage = () => {
   const hasChanges = pgConfig && (
     settingsForm.pgName !== (pgConfig.pgName || '') ||
     settingsForm.logoUrl !== (pgConfig.logoUrl || '') ||
-    settingsForm.primaryColor !== (pgConfig.primaryColor || '#4f46e5') ||
+    settingsForm.primaryColor !== (pgConfig.primaryColor || GRADIENT_THEME) ||
     settingsForm.defaultPaymentDueDate !== (pgConfig.defaultPaymentDueDate || 1) ||
     settingsForm.defaultLateFeeDay !== (pgConfig.defaultLateFeeDay || 5) ||
     settingsForm.lateFeeAmount !== (pgConfig.lateFeeAmount || 50)
@@ -104,7 +106,7 @@ export const SettingsPage = () => {
                 ...prev,
                 pgName: 'ElitePG',
                 logoUrl: '',
-                primaryColor: 'linear-gradient(135deg, #1e3a8a 0%, #312e81 100%)'
+                primaryColor: GRADIENT_THEME
               }));
             }}
             className="px-6 py-2.5 bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-300 rounded-xl font-bold hover:bg-gray-200 dark:hover:bg-white/20 transition-all flex items-center gap-2"
@@ -196,7 +198,7 @@ export const SettingsPage = () => {
                 <div className="flex-1 flex items-center gap-2">
                   <input
                     type="color"
-                    value={settingsForm.primaryColor?.startsWith('linear') ? '#4f46e5' : settingsForm.primaryColor}
+                    value={settingsForm.primaryColor?.startsWith('linear') ? 'linear-gradient(to right, #4f46e5, #7c3aed)' : settingsForm.primaryColor}
                     onChange={(e) => setSettingsForm({ ...settingsForm, primaryColor: e.target.value })}
                     className="w-10 h-10 rounded-lg border-none cursor-pointer bg-transparent shrink-0"
                   />
@@ -267,3 +269,4 @@ export const SettingsPage = () => {
     </div>
   );
 };
+
