@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, DoorOpen, Users, MapPin, Hash, Trash2, Edit2 } from 'lucide-react';
+import { X, DoorOpen, Users, MapPin, Hash, Trash2, Edit2, Zap } from 'lucide-react';
 import { MeterGroup, Room, Tenant } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../utils';
@@ -12,6 +12,7 @@ interface FlatDetailPanelProps {
   onEdit: (flat: MeterGroup) => void;
   onDelete: (flat: MeterGroup) => void;
   onViewRoom: (room: Room) => void;
+  onManageElectricity?: (flat: MeterGroup) => void;
 }
 
 export const FlatDetailPanel = ({
@@ -21,7 +22,8 @@ export const FlatDetailPanel = ({
   onClose,
   onEdit,
   onDelete,
-  onViewRoom
+  onViewRoom,
+  onManageElectricity
 }: FlatDetailPanelProps) => {
   const linkedRooms = rooms.filter(r => r.meterGroupId === flat.id);
   const totalBeds = linkedRooms.reduce((sum, r) => sum + (r.totalBeds || 0), 0);
@@ -103,6 +105,27 @@ export const FlatDetailPanel = ({
               </div>
             </div>
           </div>
+
+          {/* Electricity Management Action */}
+          {onManageElectricity && (
+            <div className="p-5 rounded-3xl bg-amber-50 dark:bg-amber-500/5 border border-amber-200/50 dark:border-amber-500/20 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-lg shadow-amber-500/20">
+                  <Zap className="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-gray-900 dark:text-white">Electricity Bill</h4>
+                  <p className="text-xs text-gray-500 font-medium">Manage & split monthly bill for this flat</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => onManageElectricity(flat)}
+                className="px-4 py-2 bg-amber-500 text-white text-xs font-black uppercase tracking-widest rounded-xl hover:bg-amber-600 transition-all shadow-md shadow-amber-500/20"
+              >
+                Manage Bill
+              </button>
+            </div>
+          )}
 
           {/* Linked Rooms List */}
           <div>

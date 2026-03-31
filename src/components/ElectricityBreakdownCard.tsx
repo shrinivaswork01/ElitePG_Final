@@ -1,14 +1,16 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Zap, ChevronDown, FileText, Camera, Info, DollarSign } from 'lucide-react';
+import { Zap, ChevronDown, FileText, Info, DollarSign, Gauge } from 'lucide-react';
 import { cn } from '../utils';
 
 interface ElectricityBreakdownCardProps {
   baseAmount: number;
   acAmount: number;
   totalAmount: number;
+  costPerUnit?: number;
+  unitsConsumed?: number;
   billUrl?: string | null;
-  acReadingUrl?: string | null;
+  acBillUrl?: string | null;
   onViewDoc: (url: string, title: string) => void;
 }
 
@@ -16,11 +18,14 @@ export const ElectricityBreakdownCard = ({
   baseAmount,
   acAmount,
   totalAmount,
+  costPerUnit,
+  unitsConsumed,
   billUrl,
-  acReadingUrl,
+  acBillUrl,
   onViewDoc
 }: ElectricityBreakdownCardProps) => {
   const [isExpanded, setIsExpanded] = React.useState(false);
+  const isUnitBased = costPerUnit != null && costPerUnit > 0;
 
   return (
     <div className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden transition-all duration-300">
@@ -31,7 +36,9 @@ export const ElectricityBreakdownCard = ({
           </div>
           <div>
             <h3 className="text-lg font-bold text-gray-900 dark:text-white">Electricity Status</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400">Current month sharing breakdown</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              {isUnitBased ? 'Unit-based split' : 'Current month sharing breakdown'}
+            </p>
           </div>
         </div>
         <button
@@ -67,18 +74,33 @@ export const ElectricityBreakdownCard = ({
               className="overflow-hidden"
             >
               <div className="pt-2 space-y-4">
+                {/* Cost per unit badge */}
+                {isUnitBased && (
+                  <div className="flex items-center gap-2 p-3 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl border border-indigo-100 dark:border-indigo-500/20">
+                    <Gauge className="w-4 h-4 text-indigo-500" />
+                    <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300">
+                      Rate: ₹{costPerUnit?.toFixed(2)}/unit
+                    </span>
+                    {unitsConsumed != null && unitsConsumed > 0 && (
+                      <span className="text-xs text-indigo-500 ml-auto">
+                        Your AC: {unitsConsumed} units
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-4">
                   <div className="p-4 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/5">
                     <div className="flex items-center gap-2 mb-1">
                       <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                      <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Base Amount</p>
+                      <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Base Share</p>
                     </div>
                     <p className="text-lg font-bold text-gray-900 dark:text-white">₹{(baseAmount || 0).toLocaleString()}</p>
                   </div>
                   <div className="p-4 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/5">
                     <div className="flex items-center gap-2 mb-1">
                       <div className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                      <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">AC Amount</p>
+                      <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">AC Share</p>
                     </div>
                     <p className="text-lg font-bold text-gray-900 dark:text-white">₹{(acAmount || 0).toLocaleString()}</p>
                   </div>
@@ -88,7 +110,10 @@ export const ElectricityBreakdownCard = ({
                   <div className="flex items-start gap-3">
                     <Info className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
                     <p className="text-xs text-indigo-700 dark:text-indigo-300 leading-relaxed">
-                      Base amount is shared equally among residents. AC amount is shared only among AC-enabled residents based on respective meter sub-readings.
+                      {isUnitBased
+                        ? 'Base amount is shared equally among all residents. AC cost is computed from sub-meter readings and split among AC room occupants.'
+                        : 'Base amount is shared equally among residents. AC amount is shared only among AC-enabled residents.'
+                      }
                     </p>
                   </div>
                 </div>
@@ -108,16 +133,16 @@ export const ElectricityBreakdownCard = ({
                     View Bill
                   </button>
                   <button
-                    disabled={!acReadingUrl}
-                    onClick={() => onViewDoc(acReadingUrl!, 'AC Reading Proof')}
+                    disabled={!acBillUrl}
+                    onClick={() => onViewDoc(acBillUrl!, 'AC Bill Proof')}
                     className={cn(
                       "flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all border",
-                      acReadingUrl 
+                      acBillUrl 
                         ? "bg-white dark:bg-white/5 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/10" 
                         : "bg-gray-50 dark:bg-white/5 text-gray-400 dark:text-gray-600 border-gray-100 dark:border-white/5 cursor-not-allowed"
                     )}
                   >
-                    <Camera className="w-4 h-4" />
+                    <FileText className="w-4 h-4" />
                     View AC Proof
                   </button>
                 </div>
@@ -136,10 +161,15 @@ export const ElectricityBreakdownCard = ({
               <div className="w-1.5 h-1.5 rounded-full bg-rose-500" />
               AC: ₹{acAmount.toLocaleString()}
             </span>
+            {isUnitBased && (
+              <span className="flex items-center gap-1.5 ml-auto">
+                <Gauge className="w-3 h-3" />
+                ₹{costPerUnit?.toFixed(2)}/u
+              </span>
+            )}
           </div>
         )}
       </div>
     </div>
   );
 };
-

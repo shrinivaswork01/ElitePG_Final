@@ -147,6 +147,13 @@ export interface Payment {
   electricityAmount?: number; // Per-tenant electricity share
   electricityBillId?: string; // FK to electricity_bills
   proofUrl?: string; // Tenant uploaded payment proof (screenshot)
+  // New Persistence Fields
+  baseShare?: number;
+  acShare?: number;
+  unitsConsumed?: number;
+  costPerUnit?: number;
+  actualBillUrl?: string;
+  acBillUrl?: string;
 }
 
 export interface ElectricityBill {
@@ -155,21 +162,41 @@ export interface ElectricityBill {
   branchId: string;
   month: string; // e.g., '2026-03'
   totalAmount: number;
-  actualAmount: number;
-  acAmount: number;
-  actualBillUrl?: string;
+  actualAmount: number; // Legacy: base bill amount. New: same as totalAmount
+  acAmount: number; // Legacy: manual AC amount. New: computed from readings
+  totalUnits?: number; // NEW: total meter units for unit-based billing
   acBillUrl?: string;
+  actualBillUrl?: string;
+  acReading?: number; // Legacy field
+  acReadingUrl?: string; // Legacy field
   createdAt: string;
-  roomId?: string; // Kept for legacy compatibility if needed
+  roomId?: string; // Kept for legacy compatibility
+}
+
+export interface RoomAcReading {
+  id?: string;
+  roomId: string;
+  roomNumber?: string; // For display
+  electricityBillId?: string;
+  branchId: string;
+  month: string;
+  previousReading: number;
+  currentReading: number;
+  unitsConsumed?: number; // Computed: current - previous
 }
 
 export interface ElectricityShare {
   tenantId: string;
   tenantName: string;
+  roomId?: string;
+  roomNumber?: string;
+  roomType?: 'AC' | 'Non-AC';
   baseShare: number;
   acShare: number;
   total: number;
   isAcUser: boolean;
+  unitsConsumed?: number; // AC units for this tenant's room
+  costPerUnit?: number;
 }
 
 export interface SalaryPayment {

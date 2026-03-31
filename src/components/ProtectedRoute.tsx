@@ -24,9 +24,15 @@ export const ProtectedRoute = ({ children, allowedRoles }: ProtectedRouteProps) 
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
+  // Force password change: if user needs to set a new password, redirect to login
+  // which handles the password setup flow. Admin/super are exempt.
+  const isAdminOrSuper = user?.role === 'admin' || user?.role === 'super';
+  if (user?.requiresPasswordChange && !isAdminOrSuper) {
+    return <Navigate to="/login" state={{ forcePasswordChange: true, from: location }} replace />;
+  }
+
   // Only check authorization after initialization is fully complete.
   // admin/super roles are always considered authorized regardless of DB flag.
-  const isAdminOrSuper = user?.role === 'admin' || user?.role === 'super';
   if (user && !user.isAuthorized && !isAdminOrSuper && location.pathname !== '/unauthorized') {
     return <Navigate to="/unauthorized" replace />;
   }
@@ -37,4 +43,3 @@ export const ProtectedRoute = ({ children, allowedRoles }: ProtectedRouteProps) 
 
   return <>{children}</>;
 };
-

@@ -19,7 +19,15 @@ interface TenantDetailPanelProps {
   canEdit?: boolean;
   canDelete?: boolean;
   onAuthorize?: (userId: string) => void;
-  electricityShare?: { baseShare: number; acShare: number; total: number; month: string; billUrl?: string } | null;
+  electricityShare?: { 
+    baseShare: number; 
+    acShare: number; 
+    total: number; 
+    month: string; 
+    billUrl?: string;
+    costPerUnit?: number;
+    unitsConsumed?: number;
+  } | null;
 }
 
 const Field = ({ label, value, className }: { label: string; value: React.ReactNode; className?: string }) => (
@@ -46,7 +54,7 @@ export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
   tenant, onClose, onEdit, onDelete, onViewAgreement, onViewPayments, canEdit, canDelete, onAuthorize, electricityShare
 }) => {
   const { user } = useAuth();
-  const { pgConfig, branches, updateTenant, tenants } = useApp();
+  const { pgConfig, branches, updateTenant, tenants, rooms } = useApp();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const uploadAgreementRef = useRef<HTMLInputElement>(null);
@@ -146,12 +154,12 @@ export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
               {/* Room & Rent */}
               <div className="bg-gray-50 dark:bg-white/3 rounded-2xl p-4 grid grid-cols-2 gap-4">
                 <p className="col-span-2 text-xs font-black uppercase tracking-widest text-gray-400">Room & Rent</p>
-                <Field label="Room" value={tenant.rooms?.room_number ? `Room ${tenant.rooms.room_number}` : (tenant.room_number ? `Room ${tenant.room_number}` : '—')} />
-                <Field label="Bed" value={tenant.bed_number ? `Bed ${tenant.bed_number}` : '—'} />
-                <Field label="Rent" value={tenant.rent_amount ? `₹${Number(tenant.rent_amount).toLocaleString()}/mo` : '—'} />
-                <Field label="Due Date" value={tenant.payment_due_date ? `${tenant.payment_due_date}th` : '—'} />
-                <Field label="Deposit" value={tenant.deposit_amount ? `₹${Number(tenant.deposit_amount).toLocaleString()}` : '—'} />
-                <Field label="Joining" value={tenant.joining_date ? format(parseISO(tenant.joining_date), 'dd MMM yyyy') : '—'} />
+                <Field label="Room" value={tenant.rooms?.room_number ? `Room ${tenant.rooms.room_number}` : (tenant.room_number ? `Room ${tenant.room_number}` : (tenant.roomId ? `Room ${rooms.find(r => r.id === tenant.roomId)?.roomNumber || '?'}` : '—'))} />
+                <Field label="Bed" value={tenant.bed_number || tenant.bedNumber ? `Bed ${tenant.bed_number || tenant.bedNumber}` : '—'} />
+                <Field label="Rent" value={tenant.rent_amount || tenant.rentAmount ? `₹${Number(tenant.rent_amount || tenant.rentAmount).toLocaleString()}/mo` : '—'} />
+                <Field label="Due Date" value={tenant.payment_due_date || tenant.paymentDueDate ? `${tenant.payment_due_date || tenant.paymentDueDate}th` : '—'} />
+                <Field label="Deposit" value={tenant.deposit_amount || tenant.depositAmount ? `₹${Number(tenant.deposit_amount || tenant.depositAmount).toLocaleString()}` : '—'} />
+                <Field label="Joining" value={tenant.joining_date || tenant.joiningDate ? format(parseISO(tenant.joining_date || tenant.joiningDate), 'dd MMM yyyy') : '—'} />
               </div>
 
               {/* KYC */}
@@ -272,8 +280,14 @@ export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
                     </div>
                     {electricityShare.acShare > 0 && (
                       <div className="flex justify-between text-xs">
-                        <span className="text-gray-500">AC Share</span>
+                        <span className="text-gray-500">AC Share {electricityShare.unitsConsumed ? `(${electricityShare.unitsConsumed} units)` : ''}</span>
                         <span className="font-semibold text-gray-700 dark:text-gray-300">₹{electricityShare.acShare.toLocaleString()}</span>
+                      </div>
+                    )}
+                    {electricityShare.costPerUnit && (
+                      <div className="flex justify-between text-[10px] text-indigo-500 font-bold mt-1">
+                        <span>Rate per Unit</span>
+                        <span>₹{electricityShare.costPerUnit.toFixed(2)}</span>
                       </div>
                     )}
                   </div>

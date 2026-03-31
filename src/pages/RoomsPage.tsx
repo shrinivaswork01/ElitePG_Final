@@ -15,7 +15,8 @@ import {
   Search,
   Layers,
   MapPin,
-  LayoutDashboard
+  LayoutDashboard,
+  Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePaginatedData } from '../hooks/usePaginatedData';
@@ -24,6 +25,7 @@ import { DropdownMenu, DropdownItem } from '../components/DropdownMenu';
 import { RoomDetailPanel } from '../components/RoomDetailPanel';
 import { FlatDetailPanel } from '../components/FlatDetailPanel';
 import { RoomMobileList } from '../components/RoomMobileList';
+import { FlatMobileList } from '../components/FlatMobileList';
 import { ElectricityBillModal } from '../components/ElectricityBillModal';
 import { cn } from '../utils';
 import toast from 'react-hot-toast';
@@ -33,7 +35,7 @@ export const RoomsPage = () => {
 const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroups, addMeterGroup, updateMeterGroup, deleteMeterGroup, pgConfig } = useApp();
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [roomToDelete, setRoomToDelete] = useState<Room | null>(null);
-  const [electricityRoom, setElectricityRoom] = useState<Room | null>(null);
+  const [electricityFlat, setElectricityFlat] = useState<MeterGroup | null>(null);
 
   const currentRoomsCount = rooms.length;
   const isAtLimit = currentPlan && currentRoomsCount >= currentPlan.maxRooms;
@@ -214,6 +216,7 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
       cell: (f) => (
         <div className="flex justify-end">
           <DropdownMenu>
+            <DropdownItem icon={<Zap className="w-4 h-4 text-amber-500" />} label="Manage Electricity" onClick={() => setElectricityFlat(f)} />
             <DropdownItem icon={<Edit2 className="w-4 h-4" />} label="Edit Group" onClick={() => handleEditFlat(f)} />
             <DropdownItem icon={<Trash2 className="w-4 h-4" />} label="Delete Group" onClick={() => deleteMeterGroup(f.id)} danger />
           </DropdownMenu>
@@ -234,11 +237,12 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
       type: room.type || 'Non-AC',
       price: room.price ?? 6000,
       description: room.description || '',
-      amenities: room.amenities || [],
-      meterGroupId: room.meterGroupId || room.meter_group_id || ''
     };
-    setEditingRoom({ id: room.id, branchId: room.branchId || room.branch_id, ...normalized });
-    setFormData(normalized);
+    const amenities = Array.isArray(room.amenities) ? room.amenities : 
+                     (typeof room.amenities === 'string' ? JSON.parse(room.amenities) : []);
+
+    setEditingRoom({ id: room.id, branchId: room.branchId || room.branch_id, ...normalized, amenities });
+    setFormData({ ...normalized, amenities });
     setIsAddModalOpen(true);
   };
 
@@ -478,8 +482,8 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
         </motion.div>
       )}
 
-      {/* Desktop View */}
-      <div className="hidden sm:block">
+      {/* Desktop/Tablet View (Unified Grid) */}
+      <div className="hidden md:block">
         {activeTab === 'rooms' ? (
           <DataGrid
             columns={roomColumns}
@@ -507,21 +511,37 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
         )}
       </div>
 
-      {/* Mobile View */}
-      <div className="sm:hidden -mx-4 -mt-2">
-        <RoomMobileList
-          rooms={roomsData}
-          onAdd={() => {
-            if (isAtLimit) {
-              toast.error(`Limit reached! Your current plan allows only ${currentPlan?.maxRooms} rooms.`);
-              return;
-            }
-            setIsAddModalOpen(true);
-          }}
-          onEdit={handleEditClick}
-          onDelete={(r) => { deleteRoom(r.id); refetch(); }}
-          onBulkDelete={handleBulkDelete}
-        />
+      {/* Mobile View (Below 768px) */}
+      <div className="md:hidden -mx-4 -mt-2">
+        {activeTab === 'rooms' ? (
+          <RoomMobileList
+            rooms={roomsData}
+            onAdd={() => {
+              if (isAtLimit) {
+                toast.error(`Limit reached! Your current plan allows only ${currentPlan?.maxRooms} rooms.`);
+                return;
+              }
+              setIsAddModalOpen(true);
+            }}
+            onEdit={handleEditClick}
+            onDelete={(r) => { deleteRoom(r.id); refetch(); }}
+            onBulkDelete={handleBulkDelete}
+          />
+        ) : (
+          <FlatMobileList
+            meterGroups={meterGroups}
+            rooms={rooms}
+            tenants={tenants}
+            onAdd={() => setIsAddFlatModalOpen(true)}
+            onEdit={handleEditFlat}
+            onDelete={(f) => { deleteMeterGroup(f.id); }}
+            onManageElectricity={(f) => { setElectricityFlat(f); }}
+            onBulkDelete={async (ids) => {
+              for (const id of ids) await deleteMeterGroup(id);
+              toast.success(`${ids.length} groups deleted`);
+            }}
+          />
+        )}
       </div>
 
       {/* Room Detail Panel */}
@@ -530,7 +550,6 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
         onClose={() => setDetailRoom(null)}
         onEdit={handleEditClick}
         onDelete={(r) => { setRoomToDelete(r); }}
-        onManageElectricity={(r) => { setDetailRoom(null); setElectricityRoom(r); }}
         canEdit={['admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '')}
       />
 
@@ -545,24 +564,28 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
             onEdit={handleEditFlat}
             onDelete={(f) => { deleteMeterGroup(f.id); setDetailFlat(null); }}
             onViewRoom={(r) => { setDetailFlat(null); setDetailRoom(r); }}
+            onManageElectricity={(f) => { setDetailFlat(null); setElectricityFlat(f); }}
           />
         )}
       </AnimatePresence>
 
       {/* Electricity Bill Modal */}
       <ElectricityBillModal
-        room={electricityRoom}
+        flat={electricityFlat}
         branchId={rooms[0]?.branchId || ''}
+        rooms={rooms}
         tenants={tenants.filter(t => {
           const room = rooms.find(r => r.id === t.roomId || r.id === (t as any).room_id);
-          return room?.meterGroupId === electricityRoom?.meterGroupId && t.status === 'active';
+          return room?.meterGroupId === electricityFlat?.id && t.status === 'active';
         }).map(t => ({ 
           id: t.id, 
-          name: t.name, 
-          is_ac_user: (t as any).isAcUser || (t as any).is_ac_user || false 
+          name: t.name,
+          roomId: t.roomId || (t as any).room_id || '',
+          is_ac_user: rooms.find(r => r.id === t.roomId)?.type === 'AC' || false,
+          isAcUser: rooms.find(r => r.id === t.roomId)?.type === 'AC' || false
         }))}
-        isOpen={!!electricityRoom}
-        onClose={() => setElectricityRoom(null)}
+        isOpen={!!electricityFlat}
+        onClose={() => setElectricityFlat(null)}
         onSaved={() => { /* AppContext handles data refresh automatically */ }}
       />
 

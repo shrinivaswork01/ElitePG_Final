@@ -238,16 +238,29 @@ export const Dashboard = () => {
 
   React.useEffect(() => {
     if (isTenant && tenantData && tenantRoom?.meterGroupId) {
-      import('../utils/electricityUtils').then(async ({ fetchElectricityBill, calculateElectricityShares }) => {
+      import('../utils/electricityUtils').then(async ({ fetchElectricityBill, calculateElectricityShares, fetchRoomAcReadings }) => {
         try {
           const currentMonth = new Date().toISOString().slice(0, 7);
           const bill = await fetchElectricityBill(tenantRoom.meterGroupId!, currentMonth);
           if (bill) {
+            const flatRooms = rooms.filter(r => r.meterGroupId === tenantRoom.meterGroupId);
             const flatTenants = tenants.filter(t => {
               const r = rooms.find(rm => rm.id === t.roomId);
               return r?.meterGroupId === tenantRoom.meterGroupId && t.status === 'active';
-            });
-            const shares = calculateElectricityShares(bill, flatTenants);
+            }).map(t => ({
+              id: t.id,
+              name: t.name,
+              roomId: t.roomId || (t as any).room_id || '',
+              is_ac_user: rooms.find(r => r.id === t.roomId)?.type === 'AC' || false,
+              isAcUser: rooms.find(r => r.id === t.roomId)?.type === 'AC' || false
+            }));
+
+            let acReadings: any[] = [];
+            if (bill.totalUnits && bill.totalUnits > 0) {
+              acReadings = await fetchRoomAcReadings(tenantRoom.meterGroupId!, currentMonth, rooms);
+            }
+
+            const shares = calculateElectricityShares(bill, flatTenants, flatRooms, acReadings);
             const myShare = shares.find(s => s.tenantId === tenantData.id);
             if (myShare) {
               setMyElectricityShare(myShare);
@@ -536,8 +549,10 @@ export const Dashboard = () => {
                 baseAmount={myElectricityShare?.baseShare || 0}
                 acAmount={myElectricityShare?.acShare || 0}
                 totalAmount={myElectricityShare?.total || 0}
+                costPerUnit={myElectricityShare?.costPerUnit}
+                unitsConsumed={myElectricityShare?.unitsConsumed}
                 billUrl={myElectricityBill?.actualBillUrl}
-                acReadingUrl={myElectricityBill?.acBillUrl}
+                acBillUrl={myElectricityBill?.acBillUrl}
                 onViewDoc={(url, title) => setViewerDoc({ url, title })}
               />
             </div>

@@ -41,6 +41,8 @@ export const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
   const acShare = (payment as any)?.acShare || (payment as any)?.ac_share || 0;
   const actualBillUrl = (payment as any)?.actualBillUrl || (payment as any)?.actual_bill_file_url;
   const acBillUrl = (payment as any)?.acBillUrl || (payment as any)?.ac_bill_file_url;
+  const unitsConsumed = (payment as any)?.unitsConsumed || (payment as any)?.units_consumed || 0;
+  const costPerUnit = (payment as any)?.costPerUnit || (payment as any)?.cost_per_unit || 0;
 
   return (
     <AnimatePresence>
@@ -129,7 +131,12 @@ export const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
                         </div>
                         <div className="flex justify-between items-center text-[11px]">
                           <span className="text-gray-500">AC Consumption Share</span>
-                          <span className="font-medium text-gray-700 dark:text-gray-300">₹{Number(acShare).toLocaleString()}</span>
+                          <div className="text-right">
+                            <span className="font-medium text-gray-700 dark:text-gray-300 block">₹{Number(acShare).toLocaleString()}</span>
+                            {unitsConsumed > 0 && (
+                              <span className="text-[9px] text-gray-400">({unitsConsumed}u × ₹{costPerUnit.toFixed(2)})</span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     )}
@@ -142,7 +149,7 @@ export const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
                             className="flex items-center justify-center gap-1.5 py-1.5 px-3 bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-lg text-[10px] font-bold hover:bg-amber-100 transition-colors border border-amber-200/50 dark:border-amber-500/20"
                           >
                             <FileText className="w-3 h-3" />
-                            View Bill
+                            Bill File
                           </button>
                         )}
                         {acBillUrl && (
@@ -151,7 +158,7 @@ export const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
                             className="flex items-center justify-center gap-1.5 py-1.5 px-3 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-lg text-[10px] font-bold hover:bg-indigo-100 transition-colors border border-indigo-200/50 dark:border-indigo-500/20"
                           >
                             <FileText className="w-3 h-3" />
-                            AC Proof
+                            AC Bill
                           </button>
                         )}
                       </div>

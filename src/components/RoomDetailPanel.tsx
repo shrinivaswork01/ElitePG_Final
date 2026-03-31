@@ -1,15 +1,15 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, DoorOpen, Users, LayoutGrid, Wind, Sun, Edit2, Trash2, Zap } from 'lucide-react';
-import { Room } from '../types';
+import { Room, Tenant } from '../types';
 import { cn } from '../utils';
+import { useApp } from '../context/AppContext';
 
 interface RoomDetailPanelProps {
   room: Room | null;
   onClose: () => void;
   onEdit?: (r: Room) => void;
   onDelete?: (r: Room) => void;
-  onManageElectricity?: (r: Room) => void;
   canEdit?: boolean;
 }
 
@@ -21,8 +21,11 @@ const Field = ({ label, value, className }: { label: string; value: React.ReactN
 );
 
 export const RoomDetailPanel: React.FC<RoomDetailPanelProps> = ({
-  room, onClose, onEdit, onDelete, onManageElectricity, canEdit
+  room, onClose, onEdit, onDelete, canEdit
 }) => {
+  const { tenants } = useApp();
+  const roomTenants = tenants.filter((t: Tenant) => t.roomId === room?.id && t.status === 'active');
+
   return (
     <AnimatePresence>
       {room && (
@@ -96,10 +99,11 @@ export const RoomDetailPanel: React.FC<RoomDetailPanelProps> = ({
                   <p className="text-xs font-black uppercase tracking-widest text-gray-400 mb-3">Amenities</p>
                   <div className="flex flex-wrap gap-2">
                     {room.amenities.map(a => (
-                      <span key={a} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 shadow-sm">
-                        {a === 'AC' && <Wind className="w-3 h-3 text-sky-500" />}
-                        {a === 'Attached Washroom' && <LayoutGrid className="w-3 h-3 text-indigo-500" />}
-                        {a === 'Balcony' && <Sun className="w-3 h-3 text-amber-500" />}
+                      <span key={a} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-100 dark:border-white/5 shadow-sm transition-all hover:scale-105">
+                        {a.toLowerCase().includes('wi-fi') && <Zap className="w-3.5 h-3.5 text-indigo-500" />}
+                        {a.toLowerCase().includes('ac') && !a.toLowerCase().includes('non') && <Wind className="w-3.5 h-3.5 text-sky-500" />}
+                        {a.toLowerCase().includes('attached') && <LayoutGrid className="w-3.5 h-3.5 text-emerald-500" />}
+                        {a.toLowerCase().includes('tv') && <Sun className="w-3.5 h-3.5 text-amber-500" />}
                         {a}
                       </span>
                     ))}
@@ -107,16 +111,28 @@ export const RoomDetailPanel: React.FC<RoomDetailPanelProps> = ({
                 </div>
               )}
 
-              {/* Electricity */}
-              {canEdit && onManageElectricity && (
-                <button
-                  onClick={() => onManageElectricity(room)}
-                  className="w-full flex items-center gap-3 p-4 bg-amber-50 dark:bg-amber-500/10 rounded-2xl text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-colors"
-                >
-                  <Zap className="w-5 h-5 shrink-0" />
-                  <span className="text-sm font-bold">⚡ Manage Electricity</span>
-                </button>
+              {/* Tenants inside */}
+              {roomTenants.length > 0 && (
+                <div className="bg-gray-50 dark:bg-white/3 rounded-2xl p-4 space-y-3">
+                  <p className="text-xs font-black uppercase tracking-widest text-gray-400">Occupants</p>
+                  <div className="space-y-2">
+                    {roomTenants.map((t: Tenant) => (
+                      <div key={t.id} className="flex items-center justify-between p-3 bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/5">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs uppercase">
+                            {t.name.charAt(0)}
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-gray-900 dark:text-white">{t.name}</p>
+                            <p className="text-xs text-gray-500">Bed {t.bedNumber}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
+
             </div>
 
             {/* Footer Actions */}

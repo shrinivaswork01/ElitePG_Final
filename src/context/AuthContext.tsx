@@ -6,9 +6,9 @@ import toast from 'react-hot-toast';
 interface AuthContextType {
   user: User | null;
   users: User[];
-  login: (username: string, password: string) => Promise<{ success: boolean, message?: string, needsPasswordSetup?: boolean }>;
+  login: (username: string, password: string) => Promise<{ success: boolean, message?: string, needsPasswordSetup?: boolean, userId?: string }>;
   loginWithGoogle: (intent: 'login' | 'signup') => Promise<void>;
-  setGoogleUserPassword: (email: string, password: string) => Promise<{ success: boolean, message?: string }>;
+  setGoogleUserPassword: (idOrLogin: string, password: string) => Promise<{ success: boolean, message?: string }>;
   register: (userData: Omit<User, 'id' | 'isAuthorized'> & { inviteCode?: string }, password?: string) => Promise<{ success: boolean, message?: string, existingUser?: boolean, user?: User | null }>;
   logout: () => Promise<void>;
   updateProfile: (updates: Partial<User>) => Promise<void>;
@@ -347,7 +347,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const login = async (username: string, password: string): Promise<{ success: boolean, message?: string, needsPasswordSetup?: boolean }> => {
+  const login = async (username: string, password: string): Promise<{ success: boolean, message?: string, needsPasswordSetup?: boolean, userId?: string }> => {
     const trimmedUsername = username.trim();
     console.log(`[Login Attempt] Username: "${trimmedUsername}"`);
 
@@ -374,10 +374,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const message = isGoogle
         ? 'This account was created using Google. Please set a password for future manual logins.'
         : 'Your account was created by an admin. Please set your password to continue.';
-      return { success: false, message, needsPasswordSetup: true };
+      return { success: false, message, needsPasswordSetup: true, userId: data.id };
     } else if (data.requires_password_change) {
       console.info(`[Login Info] User requires first-time password change: "${trimmedUsername}"`);
-      return { success: false, message: 'Your account was created by an admin. Please set a new password to continue.', needsPasswordSetup: true };
+      return { success: false, message: 'Your account was created by an admin. Please set a new password to continue.', needsPasswordSetup: true, userId: data.id };
     } else if (password && data.password !== password) {
       console.warn(`[Login Warning] Password mismatch for: "${trimmedUsername}"`);
       return { success: false, message: 'Invalid password' };
@@ -394,6 +394,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       phone: data.phone,
       avatar: data.avatar,
       isAuthorized: data.is_authorized,
+      requiresPasswordChange: data.requires_password_change || false,
       password: data.password,
       branchId: data.branch_id,
       provider: data.provider || 'local',
@@ -424,7 +425,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       return { success: false, message: 'Email already registered', existingUser: true };
     }
 
-    const newId = `u${Date.now()}`;
+    const newId = crypto.randomUUID();
     let newIsAuthorized = (userData.role === 'admin' || userData.requiresPasswordChange) ? true : false;
     let finalBranchId = userData.branchId;
     let finalRole = userData.role;
@@ -477,8 +478,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       return { success: false, message: error.message };
     }
 
-    // If the new user is a tenant, also create a tenant record so they appear in the Tenants tab
-    if (finalRole === 'tenant') {
+    // If the new user is a tenant AND this is NOT an admin-created flow,
+    // create a tenant record. When requiresPasswordChange is true, the calling
+    // code (addTenant in AppContext) handles tenant creation itself.
+    if (finalRole === 'tenant' && !userData.requiresPasswordChange) {
       if (!finalBranchId) {
         const { data: branches } = await supabase.from('pg_branches').select('id').limit(1);
         finalBranchId = branches?.[0]?.id || null;
@@ -530,16 +533,33 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const setGoogleUserPassword = async (loginId: string, password: string): Promise<{ success: boolean, message?: string }> => {
-    const { data: userData, error: fetchError } = await supabase
-      .from('users')
-      .select('id, provider')
-      .or(`username.ilike.${loginId},email.ilike.${loginId}`)
-      .maybeSingle();
+  const setGoogleUserPassword = async (idOrLogin: string, password: string): Promise<{ success: boolean, message?: string }> => {
+    const trimmedId = idOrLogin.trim();
+    console.log(`[Set Password] Attempting for ID/Login: "${trimmedId}"`);
+    
+    // First, try to find by ID (UUID or custom ID)
+    let query = supabase.from('users').select('id, provider, email, username');
+    
+    // Check if it looks like a custom ID or UUID (simple check)
+    if (trimmedId.startsWith('u') || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmedId)) {
+       query = query.eq('id', trimmedId);
+    } else {
+       query = query.or(`username.ilike.${trimmedId},email.ilike.${trimmedId}`);
+    }
 
-    if (fetchError || !userData) {
+    const { data: userData, error: fetchError } = await query.maybeSingle();
+
+    if (fetchError) {
+      console.error('[Set Password Error] Fetch failed:', fetchError);
+      return { success: false, message: 'Database error while finding user' };
+    }
+
+    if (!userData) {
+      console.warn(`[Set Password Warning] User not found for ID/Login: "${trimmedId}"`);
       return { success: false, message: 'User not found' };
     }
+
+    console.log('[Set Password] Found user:', userData.id);
 
     const { error: updateError } = await supabase
       .from('users')
@@ -550,6 +570,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       .eq('id', userData.id);
 
     if (updateError) {
+      console.error('[Set Password Error] Update failed:', updateError);
       return { success: false, message: updateError.message };
     }
 

@@ -51,7 +51,9 @@ export const LoginPage = ({ isSignUp = false }: LoginPageProps) => {
     password: ''
   });
   const [isSettingPassword, setIsSettingPassword] = useState(false);
+  const [setupUserId, setSetupUserId] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [setupInstructions, setSetupInstructions] = useState('');
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
@@ -184,6 +186,7 @@ export const LoginPage = ({ isSignUp = false }: LoginPageProps) => {
         } else if (result.needsPasswordSetup) {
           setError('');
           setSetupInstructions(result.message || '');
+          setSetupUserId(result.userId || null);
           setIsSettingPassword(true);
           toast.loading('Action required: Set your password.', { duration: 3000 });
         } else {
@@ -205,8 +208,21 @@ export const LoginPage = ({ isSignUp = false }: LoginPageProps) => {
     setIsLoading(true);
     setError('');
 
+    if (newPassword.length < 6) {
+      setError('Password must be at least 6 characters.');
+      setIsLoading(false);
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setError('Passwords do not match.');
+      toast.error('Passwords do not match.');
+      setIsLoading(false);
+      return;
+    }
+
     try {
-      const result = await setGoogleUserPassword(username, newPassword);
+      const result = await setGoogleUserPassword(setupUserId || username, newPassword);
       if (result.success) {
         toast.success('Password set successfully!');
         const loginResult = await login(username, newPassword);
@@ -268,6 +284,12 @@ export const LoginPage = ({ isSignUp = false }: LoginPageProps) => {
           <form onSubmit={isSettingPassword ? handleSetPassword : handleSubmit} className="space-y-4 shrink-0">
             {isSettingPassword ? (
               <div className="space-y-4">
+                <div className="flex items-start gap-3 p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl">
+                  <Shield className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+                  <p className="text-[11px] text-indigo-300 leading-relaxed">
+                    For your security, you need to set a new password before continuing. Choose a strong password with at least 6 characters.
+                  </p>
+                </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Account Email</label>
                   <input
@@ -284,9 +306,27 @@ export const LoginPage = ({ isSignUp = false }: LoginPageProps) => {
                     required
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Min 6 characters"
                     className="w-full bg-black/40 border border-white/5 rounded-2xl py-3 px-5 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 transition-all font-sans"
                     minLength={6}
                   />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Confirm Password</label>
+                  <input
+                    type="password"
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Re-enter password"
+                    className={`w-full bg-black/40 border rounded-2xl py-3 px-5 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 transition-all font-sans ${
+                      confirmPassword && confirmPassword !== newPassword ? 'border-rose-500/50' : 'border-white/5'
+                    }`}
+                    minLength={6}
+                  />
+                  {confirmPassword && confirmPassword !== newPassword && (
+                    <p className="text-[10px] text-rose-400 ml-1 font-semibold">Passwords do not match</p>
+                  )}
                 </div>
               </div>
             ) : isRegistering ? (

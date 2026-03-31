@@ -199,6 +199,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         })),
         rooms: (rooms || []).map(r => ({
           id: r.id, roomNumber: r.room_number, floor: r.floor, totalBeds: r.total_beds, occupiedBeds: r.occupied_beds, type: r.type, price: r.price, branchId: r.branch_id,
+          amenities: r.amenities || [],
           meterGroupId: r.meter_group_id,
           meterGroup: r.meter_groups ? {
             id: r.meter_groups.id, name: r.meter_groups.name, floor: r.meter_groups.floor, branchId: r.meter_groups.branch_id, createdAt: r.meter_groups.created_at
@@ -208,7 +209,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           id: m.id, name: m.name, floor: m.floor, branchId: m.branch_id, createdAt: m.created_at
         })),
         payments: (payments || []).map(p => ({
-          id: p.id, tenantId: p.tenant_id, amount: p.amount, lateFee: p.late_fee, totalAmount: p.total_amount, paymentDate: p.payment_date, month: p.month, status: p.status, method: p.method, transactionId: p.transaction_id, receiptUrl: p.receipt_url, branchId: p.branch_id
+          id: p.id, tenantId: p.tenant_id, amount: p.amount, lateFee: p.late_fee, totalAmount: p.total_amount, paymentDate: p.payment_date, month: p.month, status: p.status, method: p.method, transactionId: p.transaction_id, receiptUrl: p.receipt_url, branch_id: p.branch_id,
+          electricityAmount: p.electricity_amount, baseShare: p.base_share, acShare: p.ac_share, unitsConsumed: p.units_consumed, costPerUnit: p.cost_per_unit, actualBillUrl: p.actual_bill_file_url, acBillUrl: p.ac_bill_file_url
         })),
         complaints: (complaints || []).map(c => ({
           id: c.id, tenantId: c.tenant_id, title: c.title, description: c.description, category: c.category, priority: c.priority, status: c.status, assignedTo: c.assigned_to, resolvedAt: c.resolved_at, branchId: c.branch_id, createdAt: c.created_at,
@@ -361,11 +363,41 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const isAdmin = ['super', 'admin', 'manager'].includes(user?.role || '');
     const kycStatus: KYCStatus = kycDoc ? (isAdmin ? 'verified' : 'pending') : 'unsubmitted';
 
+    const room = data.rooms.find(r => r.id === tenant.roomId);
+    const isAcUser = room?.type === 'AC';
+
+    const username = tenant.email.split('@')[0] || `tenant${Date.now()}`;
+    const regResult = await register({
+      username,
+      name: tenant.name,
+      email: tenant.email,
+      role: 'tenant',
+      branchId,
+      requiresPasswordChange: true
+    }, '123456');
+
+    if (!regResult.success && !regResult.existingUser) {
+      toast.error(`Failed to create tenant login: ${regResult.message}`);
+      return;
+    }
+
+    let newUserId = regResult.user?.id || (regResult as any).existingUserId || (regResult as any).id;
+
+    // If user already existed, look up their ID from DB
+    if (regResult.existingUser && !newUserId) {
+      const { data: existingUser } = await supabase.from('users')
+        .select('id')
+        .ilike('email', tenant.email)
+        .maybeSingle();
+      newUserId = existingUser?.id || null;
+    }
+
     const { data: createdTenant, error } = await supabase.from('tenants').insert({
       name: tenant.name, email: tenant.email, phone: tenant.phone, room_id: tenant.roomId, bed_number: tenant.bedNumber,
       rent_amount: tenant.rentAmount, deposit_amount: tenant.depositAmount, joining_date: tenant.joiningDate,
       payment_due_date: tenant.paymentDueDate, status: tenant.status, kyc_status: kycStatus,
-      branch_id: branchId, user_id: tenant.userId || null, invite_code: (tenant as any).inviteCode || null
+      branch_id: branchId, user_id: newUserId || null, invite_code: (tenant as any).inviteCode || null,
+      is_ac_user: isAcUser
     }).select().single();
     if (error) { toast.error(error.message); return; }
 
@@ -399,7 +431,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     // Optimistically add new tenant to local state immediately
     const newTenant: Tenant = {
       ...tenant, id: createdTenant.id, branchId, kycStatus, userId: tenant.userId || undefined,
-      rentAgreementUrl: finalRentAgreementUrl || undefined
+      rentAgreementUrl: finalRentAgreementUrl || undefined,
+      isAcUser: (createdTenant as any).is_ac_user || false
     };
     applyOptimistic(prev => ({ ...prev, tenants: [...prev.tenants, newTenant] }));
 
@@ -444,9 +477,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.name !== undefined) dbUpdates.name = updates.name;
     if (updates.email !== undefined) dbUpdates.email = updates.email;
     if (updates.phone !== undefined) dbUpdates.phone = updates.phone;
-    if (updates.roomId !== undefined) dbUpdates.room_id = updates.roomId;
+    if (updates.roomId !== undefined) {
+      dbUpdates.room_id = updates.roomId;
+      const room = data.rooms.find(r => r.id === updates.roomId);
+      dbUpdates.is_ac_user = room?.type === 'AC';
+    }
     if (updates.bedNumber !== undefined) dbUpdates.bed_number = updates.bedNumber;
     if (updates.rentAmount !== undefined) dbUpdates.rent_amount = updates.rentAmount;
+    if (updates.isAcUser !== undefined && updates.roomId === undefined) dbUpdates.is_ac_user = updates.isAcUser;
     if (updates.depositAmount !== undefined) dbUpdates.deposit_amount = updates.depositAmount;
     if (updates.joiningDate !== undefined) dbUpdates.joining_date = updates.joiningDate;
     if (updates.paymentDueDate !== undefined) dbUpdates.payment_due_date = updates.paymentDueDate;
@@ -517,14 +555,29 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     } catch(e) { console.error('Error cleaning up storage files', e); }
 
     // Cascade-delete related records in background
+    const { data: tenantComplaints } = await supabase.from('complaints').select('id').eq('tenant_id', id);
+    if (tenantComplaints && tenantComplaints.length > 0) {
+      const complaintIds = tenantComplaints.map((c: any) => c.id);
+      await supabase.from('tasks').delete().in('complaint_id', complaintIds);
+    }
+    await supabase.from('complaints').delete().eq('tenant_id', id);
+    await supabase.from('payments').delete().eq('tenant_id', id);
+    await supabase.from('kycs').delete().eq('tenant_id', id);
+    await supabase.from('kyc_documents').delete().eq('tenant_id', id);
+    
+    // Delete tenant record FIRST
+    const { error } = await supabase.from('tenants').delete().eq('id', id);
+    if (error) { 
+      console.error('Failed to delete tenant:', error);
+      toast.error(`Delete failed: ${error.message}`); 
+      fetchData(); 
+      return;
+    }
+    
+    // Delete user record LAST (since tenants.user_id references users.id)
     if (targetTenant?.userId) {
       await supabase.from('users').delete().eq('id', targetTenant.userId);
     }
-    await supabase.from('payments').delete().eq('tenant_id', id);
-    await supabase.from('complaints').delete().eq('tenant_id', id);
-    await supabase.from('kyc_documents').delete().eq('tenant_id', id);
-    const { error } = await supabase.from('tenants').delete().eq('id', id);
-    if (error) { toast.error(`Delete failed: ${error.message}`); fetchData(); }
   };
 
   const addRoom = async (room: Omit<Room, 'id' | 'branchId'> & { branchId?: string }) => {
@@ -533,12 +586,33 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     applyOptimistic(prev => ({ ...prev, rooms: [...prev.rooms, { ...room, id: `temp-${Date.now()}`, branchId: targetBranch }] }));
     await refetch(supabase.from('rooms').insert({
       room_number: room.roomNumber, floor: room.floor, total_beds: room.totalBeds, occupied_beds: room.occupiedBeds,
-      type: room.type, price: room.price, branch_id: targetBranch, meter_group_id: room.meterGroupId || null
+      type: room.type, price: room.price, branch_id: targetBranch, meter_group_id: room.meterGroupId || null,
+      amenities: room.amenities || []
     }), 'Room added successfully');
   };
 
   const updateRoom = async (id: string, updates: Partial<Room>) => {
     applyOptimistic(prev => ({ ...prev, rooms: prev.rooms.map((r: any) => r.id === id ? { ...r, ...updates } : r) }));
+    
+    // If room type changes, update all tenants in this room
+    if (updates.type !== undefined) {
+      const isAcRoom = updates.type === 'AC';
+      const tenantsToUpdate = data.tenants.filter(t => t.roomId === id);
+      
+      if (tenantsToUpdate.length > 0) {
+        // Background DB update
+        supabase.from('tenants').update({ is_ac_user: isAcRoom }).eq('room_id', id).then(({ error }) => {
+          if (error) console.error('Failed to sync tenant AC status:', error);
+        });
+        
+        // Optimistic local update
+        applyOptimistic(prev => ({
+          ...prev,
+          tenants: prev.tenants.map((t: any) => t.roomId === id ? { ...t, isAcUser: isAcRoom } : t)
+        }));
+      }
+    }
+
     const dbUpdates: any = {};
     if (updates.roomNumber !== undefined) dbUpdates.room_number = updates.roomNumber;
     if (updates.floor !== undefined) dbUpdates.floor = updates.floor;
@@ -547,6 +621,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.type !== undefined) dbUpdates.type = updates.type;
     if (updates.price !== undefined) dbUpdates.price = updates.price;
     if (updates.meterGroupId !== undefined) dbUpdates.meter_group_id = updates.meterGroupId;
+    if (updates.amenities !== undefined) dbUpdates.amenities = updates.amenities;
     await refetch(supabase.from('rooms').update(dbUpdates).eq('id', id), 'Room updated successfully');
   };
 
@@ -583,7 +658,22 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const deleteMeterGroup = async (id: string) => { 
-    // Unassign rooms from this meter group first
+    // Cascade delete electricity bills and readings for this flat
+    const { data: bills } = await supabase.from('electricity_bills').select('id').eq('meter_group_id', id);
+    if (bills && bills.length > 0) {
+      const billIds = bills.map((b: any) => b.id);
+      
+      // Nullify references in payments first so we don't violate payments fk constraint
+      await supabase.from('payments').update({ electricity_bill_id: null }).in('electricity_bill_id', billIds);
+      
+      // Clear out the readings
+      await supabase.from('room_ac_readings').delete().in('electricity_bill_id', billIds);
+    }
+    
+    // Now electricity bills can safely be deleted
+    await supabase.from('electricity_bills').delete().eq('meter_group_id', id);
+
+    // Unassign rooms from this meter group
     const roomsInGroup = data.rooms.filter((r: any) => r.meterGroupId === id);
     if (roomsInGroup.length > 0) {
       applyOptimistic(prev => ({
@@ -594,7 +684,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
 
     applyOptimistic(prev => ({ ...prev, meterGroups: prev.meterGroups.filter((m: any) => m.id !== id) }));
-    await refetch(supabase.from('meter_groups').delete().eq('id', id), 'Flat / Meter Group deleted'); 
+    await refetch(supabase.from('meter_groups').delete().eq('id', id), 'Flat deleted'); 
   };
 
   const addPayment = async (payment: Omit<Payment, 'id' | 'branchId'> & { branchId?: string }) => {
@@ -606,7 +696,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       payment_date: payment.paymentDate, month: payment.month, status: payment.status, method: payment.method,
       transaction_id: payment.transactionId || null, receipt_url: payment.receiptUrl || null, branch_id: targetBranch,
       electricity_amount: payment.electricityAmount || 0,
-      electricity_bill_id: payment.electricityBillId || null
+      electricity_bill_id: payment.electricityBillId || null,
+      base_share: payment.baseShare || 0,
+      ac_share: payment.acShare || 0,
+      units_consumed: payment.unitsConsumed || 0,
+      cost_per_unit: payment.costPerUnit || 0,
+      actual_bill_file_url: payment.actualBillUrl || null,
+      ac_bill_file_url: payment.acBillUrl || null
     }), 'Payment recorded');
   };
 
@@ -625,6 +721,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.receiptUrl !== undefined) dbUpdates.receipt_url = updates.receiptUrl;
     if (updates.electricityAmount !== undefined) dbUpdates.electricity_amount = updates.electricityAmount;
     if (updates.electricityBillId !== undefined) dbUpdates.electricity_bill_id = updates.electricityBillId;
+    if (updates.baseShare !== undefined) dbUpdates.base_share = updates.baseShare;
+    if (updates.acShare !== undefined) dbUpdates.ac_share = updates.acShare;
+    if (updates.unitsConsumed !== undefined) dbUpdates.units_consumed = updates.unitsConsumed;
+    if (updates.costPerUnit !== undefined) dbUpdates.cost_per_unit = updates.costPerUnit;
+    if (updates.actualBillUrl !== undefined) dbUpdates.actual_bill_file_url = updates.actualBillUrl;
+    if (updates.acBillUrl !== undefined) dbUpdates.ac_bill_file_url = updates.acBillUrl;
     await refetch(supabase.from('payments').update(dbUpdates).eq('id', id), 'Payment updated');
   };
 

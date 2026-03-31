@@ -39,7 +39,7 @@ import { ConfirmationModal } from '../components/ConfirmationModal';
 import { loadRazorpayScript } from '../utils/razorpay';
 import { generateTenantReceiptPDF } from '../utils/generateReceipt';
 import { uploadToSupabase } from '../utils/storage';
-import { fetchElectricityBill, calculateElectricityShares, fetchElectricityBillById } from '../utils/electricityUtils';
+import { fetchElectricityBill, calculateElectricityShares, fetchElectricityBillById, fetchRoomAcReadings } from '../utils/electricityUtils';
 import { ElectricityBill, ElectricityShare } from '../types';
 import toast from 'react-hot-toast';
 
@@ -269,16 +269,25 @@ export const PaymentsPage = () => {
     setElectricityBillId(bill.id);
 
     // Get ALL active tenants in ALL rooms belonging to this Flat
+    const flatRooms = rooms.filter(r => r.meterGroupId === room.meterGroupId);
     const flatTenants = tenants.filter(t => {
       const r = rooms.find(rm => rm.id === t.roomId || rm.id === (t as any).room_id);
       return r?.meterGroupId === room.meterGroupId && t.status === 'active';
     }).map(t => ({
       id: t.id, 
-      name: t.name, 
-      is_ac_user: (t as any).isAcUser || (t as any).is_ac_user || false
+      name: t.name,
+      roomId: t.roomId || (t as any).room_id || '',
+      is_ac_user: rooms.find(r => r.id === (t.roomId || (t as any).room_id))?.type === 'AC' || false,
+      isAcUser: rooms.find(r => r.id === (t.roomId || (t as any).room_id))?.type === 'AC' || false
     }));
 
-    const shares = calculateElectricityShares(bill, flatTenants);
+    // Fetch AC readings if unit-based
+    let acReadings: any[] = [];
+    if (bill.totalUnits && bill.totalUnits > 0) {
+      acReadings = await fetchRoomAcReadings(room.meterGroupId, month, rooms);
+    }
+
+    const shares = calculateElectricityShares(bill, flatTenants, flatRooms, acReadings);
     const myShare = shares.find(s => s.tenantId === tenantId);
     const amount = myShare?.total || 0;
     setElectricityShare(amount);
@@ -433,11 +442,59 @@ export const PaymentsPage = () => {
         return;
       }
 
+      const tenant = tenants.find(t => t.id === newPayment.tenantId);
+      const room = rooms.find(r => r.id === tenant?.roomId || r.id === (tenant as any)?.room_id);
+      
+      let baseShare = 0;
+      let acShare = 0;
+      let unitsConsumed = 0;
+      let costPerUnit = 0;
+      let actualBillUrl = '';
+      let acBillUrl = '';
+
+      if (electricityBillData) {
+        const flatRooms = rooms.filter(r => r.meterGroupId === room?.meterGroupId);
+        const flatTenants = tenants.filter(t => {
+          const r = rooms.find(rm => rm.id === t.roomId || rm.id === (t as any).room_id);
+          return r?.meterGroupId === room?.meterGroupId && t.status === 'active';
+        }).map(t => ({
+          id: t.id, name: t.name, roomId: t.roomId || (t as any).room_id || '',
+          is_ac_user: rooms.find(r => r.id === (t.roomId || (t as any).room_id))?.type === 'AC' || false,
+          isAcUser: rooms.find(r => r.id === (t.roomId || (t as any).room_id))?.type === 'AC' || false
+        }));
+
+        let acReadings: any[] = [];
+        if (electricityBillData.totalUnits && electricityBillData.totalUnits > 0) {
+          try {
+            const { fetchRoomAcReadings } = await import('../utils/electricityUtils');
+            acReadings = await fetchRoomAcReadings(room?.meterGroupId!, newPayment.month, rooms);
+          } catch (err) { /* ignore */ }
+        }
+
+        const { calculateElectricityShares } = await import('../utils/electricityUtils');
+        const shares = calculateElectricityShares(electricityBillData, flatTenants, flatRooms, acReadings);
+        const myShare = shares.find(s => s.tenantId === newPayment.tenantId);
+        if (myShare) {
+          baseShare = myShare.baseShare;
+          acShare = myShare.acShare;
+          unitsConsumed = myShare.unitsConsumed || 0;
+          costPerUnit = myShare.costPerUnit || 0;
+          actualBillUrl = electricityBillData.actualBillUrl || '';
+          acBillUrl = electricityBillData.acBillUrl || '';
+        }
+      }
+
       await addPayment({
         ...newPayment,
         electricityAmount: electricityShare,
         electricityBillId: electricityBillId || undefined,
-        totalAmount: (newPayment.amount || 0) + electricityShare + (newPayment.lateFee || 0)
+        totalAmount: (newPayment.amount || 0) + electricityShare + (newPayment.lateFee || 0),
+        baseShare,
+        acShare,
+        unitsConsumed,
+        costPerUnit,
+        actualBillUrl,
+        acBillUrl
       } as Omit<Payment, 'id'>);
       setIsAddModalOpen(false);
       setNewPayment({

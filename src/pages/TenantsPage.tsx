@@ -25,6 +25,7 @@ import { DataGrid, ColumnDef } from '../components/DataGrid';
 import { DropdownMenu, DropdownItem } from '../components/DropdownMenu';
 import { TenantDetailPanel } from '../components/TenantDetailPanel';
 import { TenantMobileList } from '../components/TenantMobileList';
+import { RentAgreementGeneratorModal } from '../components/RentAgreementGeneratorModal';
 import { cn } from '../utils';
 import { getTenantElectricityShare } from '../utils/electricityUtils';
 import toast from 'react-hot-toast';
@@ -32,7 +33,7 @@ import toast from 'react-hot-toast';
 export const TenantsPage = () => {
   const { user, users, register, updateUser, authorizeUser } = useAuth();
   const location = useLocation();
-  const { tenants, rooms, addTenant, updateTenant, deleteTenant, checkFeatureAccess, currentPlan, uploadVerifiedKYC, kycs, userInvites, pgConfig } = useApp();
+  const { tenants, rooms, branches, addTenant, updateTenant, deleteTenant, checkFeatureAccess, currentPlan, uploadVerifiedKYC, kycs, userInvites, pgConfig } = useApp();
   const canSendWhatsApp = checkFeatureAccess('whatsapp');
 
   const currentTenantsCount = tenants.length;
@@ -52,6 +53,7 @@ export const TenantsPage = () => {
   }
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isAgreementGeneratorOpen, setIsAgreementGeneratorOpen] = useState(false);
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [filterStatus, setFilterStatus] = useState<TenantStatus | 'all'>('all');
   const [viewingPayments, setViewingPayments] = useState<Tenant | null>(null);
@@ -65,7 +67,15 @@ export const TenantsPage = () => {
   const [adminKycFile, setAdminKycFile] = useState<{ type: string; file?: File; url?: string; fileName: string } | null>(null);
   const [adminKycType, setAdminKycType] = useState('Aadhar Card');
   const [detailTenant, setDetailTenant] = useState<any | null>(null);
-  const [tenantElectricityShare, setTenantElectricityShare] = useState<{ baseShare: number; acShare: number; total: number; month: string; billUrl?: string } | null>(null);
+  const [tenantElectricityShare, setTenantElectricityShare] = useState<{ 
+    baseShare: number; 
+    acShare: number; 
+    total: number; 
+    month: string; 
+    billUrl?: string;
+    costPerUnit?: number;
+    unitsConsumed?: number;
+  } | null>(null);
   const { payments } = useApp();
 
   // Server-side paginated hook — fetches ONLY 10 records at a time
@@ -269,11 +279,13 @@ export const TenantsPage = () => {
         return r?.meterGroupId === room.meterGroupId && t.status === 'active';
       }).map(t => ({
         id: t.id, 
-        name: t.name, 
-        is_ac_user: (t as any).isAcUser || (t as any).is_ac_user || false
+        name: t.name,
+        roomId: t.roomId || (t as any).room_id || '',
+        is_ac_user: rooms.find(r => r.id === (t.roomId || (t as any).room_id))?.type === 'AC' || false,
+        isAcUser: rooms.find(r => r.id === (t.roomId || (t as any).room_id))?.type === 'AC' || false
       }));
 
-      getTenantElectricityShare(room.meterGroupId, currentMonth, flatTenants, detailTenant.id)
+      getTenantElectricityShare(room.meterGroupId, currentMonth, flatTenants, detailTenant.id, rooms)
         .then(share => {
           if (share) {
             setTenantElectricityShare({
@@ -281,7 +293,8 @@ export const TenantsPage = () => {
               acShare: share.acShare,
               total: share.total,
               month: currentMonth,
-              // we don't fetch billUrl in the share object directly, but we can if we want. For now just show amount.
+              costPerUnit: share.costPerUnit,
+              unitsConsumed: share.unitsConsumed,
             });
           } else {
             setTenantElectricityShare(null);
@@ -619,6 +632,62 @@ export const TenantsPage = () => {
         canDelete={['admin', 'manager'].includes(user?.role || '')}
       />
 
+      <RentAgreementGeneratorModal 
+         isOpen={isAgreementGeneratorOpen}
+         onClose={() => setIsAgreementGeneratorOpen(false)}
+         tenant={editingTenant || undefined}
+         user={user}
+         branch={branches.find((b: any) => b.id === (editingTenant?.branchId || user?.branchId))}
+         pgConfig={pgConfig}
+      />
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {tenantToDelete && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setTenantToDelete(null)}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-md bg-white dark:bg-[#111111] rounded-3xl shadow-2xl p-6 sm:p-8 text-center border border-white/5"
+            >
+              <div className="w-16 h-16 bg-rose-50 dark:bg-rose-500/10 rounded-[2rem] flex items-center justify-center mx-auto mb-6">
+                <Trash2 className="w-8 h-8 text-rose-500" />
+              </div>
+              <h3 className="text-2xl font-black text-gray-900 dark:text-white mb-2 tracking-tight">Delete Tenant?</h3>
+              <p className="text-gray-500 dark:text-gray-400 mb-8 leading-relaxed">
+                Are you sure you want to delete <span className="font-bold text-gray-900 dark:text-white">{tenantToDelete.name}</span>? This action cannot be undone and will permanently erase all associated data.
+              </p>
+              <div className="flex gap-4">
+                <button
+                  onClick={() => setTenantToDelete(null)}
+                  className="flex-1 py-4 bg-gray-50 dark:bg-white/5 text-gray-900 dark:text-white rounded-2xl font-bold hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    await deleteTenant(tenantToDelete.id);
+                    setTenantToDelete(null);
+                    refetch();
+                  }}
+                  className="flex-1 py-4 bg-rose-600 text-white rounded-2xl font-bold shadow-xl shadow-rose-600/20 hover:bg-rose-700 transition-all"
+                >
+                  Delete Tenant
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
       {isAddModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -726,9 +795,10 @@ export const TenantsPage = () => {
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Bed Number</label>
                     <select
                       required
+                      disabled={!formData.roomId}
                       value={formData.bedNumber}
                       onChange={(e) => setFormData({ ...formData, bedNumber: Number(e.target.value) })}
-                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white disabled:opacity-50"
                     >
                       {(() => {
                         const room = rooms.find(r => r.id === formData.roomId);
@@ -823,23 +893,35 @@ export const TenantsPage = () => {
 
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Rent Agreement</label>
-                    <div className="relative">
-                      <input
-                        type="file"
-                        accept=".pdf,image/*"
-                        onChange={handleAgreementChange}
-                        className="hidden"
-                        id="agreement-upload"
-                      />
-                      <label
-                        htmlFor="agreement-upload"
-                        className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-2 border-dashed border-gray-200 dark:border-white/10 rounded-xl cursor-pointer hover:bg-gray-100 dark:hover:bg-white/10 transition-all"
-                      >
-                        <FileText className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm text-gray-500 dark:text-gray-400 truncate">
-                          {rentAgreement.fileName || (editingTenant?.rentAgreementUrl ? 'Update Agreement' : 'Upload Agreement')}
-                        </span>
-                      </label>
+                    <div className="flex gap-2 relative">
+                      <div className="flex-1">
+                        <input
+                          type="file"
+                          accept=".pdf,image/*"
+                          onChange={handleAgreementChange}
+                          className="hidden"
+                          id="agreement-upload"
+                        />
+                        <label
+                          htmlFor="agreement-upload"
+                          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-2 border-dashed border-gray-200 dark:border-white/10 rounded-xl cursor-pointer hover:bg-gray-100 dark:hover:bg-white/10 transition-all"
+                        >
+                          <FileText className="w-4 h-4 text-gray-400" />
+                          <span className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                            {rentAgreement.fileName || (editingTenant?.rentAgreementUrl ? 'Update Agreement' : 'Upload Agreement')}
+                          </span>
+                        </label>
+                      </div>
+                      {editingTenant && (
+                        <button
+                          type="button"
+                          onClick={() => setIsAgreementGeneratorOpen(true)}
+                          className="px-4 py-2.5 bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-purple-100 dark:hover:bg-purple-500/20 transition-colors shrink-0"
+                        >
+                          <FileText className="w-4 h-4" />
+                          Generate
+                        </button>
+                      )}
                     </div>
                   </div>
                   {editingTenant && (
