@@ -57,6 +57,7 @@ export const PaymentsPage = () => {
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [detailPayment, setDetailPayment] = useState<any | null>(null);
   const [electricityShare, setElectricityShare] = useState<number>(0);
+  const [electricityDetails, setElectricityDetails] = useState<ElectricityShare | null>(null);
   const [electricityBillId, setElectricityBillId] = useState<string | null>(null);
   const [electricityBillData, setElectricityBillData] = useState<ElectricityBill | null>(null);
   const [viewerDoc, setViewerDoc] = useState<{ url: string, title: string } | null>(null);
@@ -242,6 +243,7 @@ export const PaymentsPage = () => {
   const fetchAndSetElectricity = useCallback(async (tenantId: string, month: string) => {
     if (!tenantId || !month) {
       setElectricityShare(0);
+      setElectricityDetails(null);
       setElectricityBillId(null);
       setElectricityBillData(null);
       return 0;
@@ -253,6 +255,7 @@ export const PaymentsPage = () => {
     const room = rooms.find(r => r.id === tenant.roomId || r.id === (tenant as any).room_id);
     if (!room?.meterGroupId) {
       setElectricityShare(0);
+      setElectricityDetails(null);
       setElectricityBillId(null);
       setElectricityBillData(null);
       return 0;
@@ -261,6 +264,7 @@ export const PaymentsPage = () => {
     const bill = await fetchElectricityBill(room.meterGroupId, month);
     if (!bill) {
       setElectricityShare(0);
+      setElectricityDetails(null);
       setElectricityBillId(null);
       setElectricityBillData(null);
       return 0;
@@ -291,6 +295,7 @@ export const PaymentsPage = () => {
     const myShare = shares.find(s => s.tenantId === tenantId);
     const amount = myShare?.total || 0;
     setElectricityShare(amount);
+    setElectricityDetails(myShare || null);
     return amount;
   }, [tenants, rooms]);
 
@@ -330,13 +335,20 @@ export const PaymentsPage = () => {
   const currentMonth = format(new Date(), 'yyyy-MM');
   const hasPaidCurrentMonth = payments.some(p => p.tenantId === tenantData?.id && p.month === currentMonth && p.status === 'paid');
 
-  const upcomingDues = isTenant && tenantData && !hasPaidCurrentMonth ? [{
+  const upcomingDues = isTenant && tenantData ? [{
     month: currentMonth,
     rentAmount: tenantData.rentAmount,
     electricityAmount: electricityShare || 0,
+    baseAmount: electricityDetails?.baseShare || 0,
+    acAmount: electricityDetails?.acShare || 0,
+    actualBillUrl: electricityBillData?.actualBillUrl,
+    acBillUrl: electricityBillData?.acBillUrl,
+    unitsConsumed: electricityDetails?.unitsConsumed || 0,
+    costPerUnit: electricityDetails?.costPerUnit || 0,
     amount: tenantData.rentAmount + (electricityShare || 0),
     dueDate: `${currentMonth}-${(tenantData.paymentDueDate || pgConfig?.defaultPaymentDueDate || 1).toString().padStart(2, '0')}`,
-    lateFee: calculateLateFee(tenantData.id, currentMonth)
+    lateFee: calculateLateFee(tenantData.id, currentMonth),
+    isPaid: hasPaidCurrentMonth
   }] : [];
 
   const handleOnlinePayment = async () => {
@@ -399,6 +411,7 @@ export const PaymentsPage = () => {
             };
             
             addPayment(paymentRecord);
+            refetchPayments();
             setIsPayModalOpen(false);
             toast.success(`Payment successful! Transaction ID: ${response.razorpay_payment_id}`);
 
@@ -666,7 +679,8 @@ export const PaymentsPage = () => {
     document.body.removeChild(link);
   };
 
-  const totalRevenue = filteredPayments
+  // Dashboard stats should be independent of the current search term to match Dashboard expectations
+  const totalRevenue = (isTenant ? payments.filter(p => p.tenantId === tenantData?.id) : payments)
     .filter(p => p.status === 'paid')
     .reduce((sum, p) => sum + p.totalAmount, 0);
 
@@ -709,17 +723,28 @@ export const PaymentsPage = () => {
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-indigo-600 rounded-[32px] p-8 sm:p-10 text-white shadow-2xl shadow-indigo-600/30 flex flex-col lg:flex-row items-center justify-between gap-8 relative overflow-hidden"
+          className={cn(
+            "rounded-[32px] p-8 sm:p-10 text-white shadow-2xl flex flex-col lg:flex-row items-center justify-between gap-8 relative overflow-hidden",
+            upcomingDues[0].isPaid ? "bg-emerald-600 shadow-emerald-600/20" : "bg-indigo-600 shadow-indigo-600/30"
+          )}
         >
           <div className="absolute top-0 right-0 p-12 opacity-10">
-            <CreditCard className="w-48 h-48" />
+            {upcomingDues[0].isPaid ? <CheckCircle2 className="w-48 h-48" /> : <CreditCard className="w-48 h-48" />}
           </div>
           <div className="relative z-10 flex flex-col sm:flex-row items-center gap-8">
-            <div className="w-20 h-20 bg-white/20 backdrop-blur-xl rounded-3xl flex items-center justify-center shadow-inner">
-              <CreditCard className="w-10 h-10 text-white" />
+            <div className={cn(
+               "w-20 h-20 bg-white/20 backdrop-blur-xl rounded-3xl flex items-center justify-center shadow-inner",
+               upcomingDues[0].isPaid && "bg-emerald-400/20"
+            )}>
+              {upcomingDues[0].isPaid ? <CheckCircle2 className="w-10 h-10 text-white" /> : <CreditCard className="w-10 h-10 text-white" />}
             </div>
             <div className="text-center sm:text-left">
-              <p className="text-indigo-100 text-sm font-bold uppercase tracking-widest">Rent Due for {format(parseISO(`${upcomingDues[0].month}-01`), 'MMMM yyyy')}</p>
+              <p className={cn(
+                "text-sm font-bold uppercase tracking-widest",
+                upcomingDues[0].isPaid ? "text-emerald-100" : "text-indigo-100"
+              )}>
+                {upcomingDues[0].isPaid ? `Rent for ${format(parseISO(`${upcomingDues[0].month}-01`), 'MMMM yyyy')} is PAID` : `Rent Due for ${format(parseISO(`${upcomingDues[0].month}-01`), 'MMMM yyyy')}`}
+              </p>
               <h3 className="text-5xl font-black mt-2 tracking-tighter">₹{(upcomingDues[0].amount + upcomingDues[0].lateFee).toLocaleString()}</h3>
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 mt-4">
                 <span className="px-3 py-1 bg-white/10 rounded-full text-xs font-bold flex items-center gap-2">
@@ -727,12 +752,15 @@ export const PaymentsPage = () => {
                   Rent: ₹{upcomingDues[0].rentAmount.toLocaleString()}
                 </span>
                 {upcomingDues[0].electricityAmount > 0 && (
-                  <span className="px-3 py-1 bg-white/10 rounded-full text-xs font-bold flex items-center gap-2 text-amber-300">
+                  <span className={cn(
+                    "px-3 py-1 bg-white/10 rounded-full text-xs font-bold flex items-center gap-2",
+                    upcomingDues[0].isPaid ? "text-emerald-100" : "text-amber-300"
+                  )}>
                     <TrendingUp className="w-3 h-3" />
                     Electricity: ₹{upcomingDues[0].electricityAmount.toLocaleString()}
                   </span>
                 )}
-                {upcomingDues[0].lateFee > 0 && (
+                {!upcomingDues[0].isPaid && upcomingDues[0].lateFee > 0 && (
                   <span className="px-3 py-1 bg-rose-500/20 text-rose-200 rounded-full text-xs font-bold flex items-center gap-2">
                     <Clock className="w-3 h-3" />
                     Late Fee: ₹{upcomingDues[0].lateFee}
@@ -740,18 +768,30 @@ export const PaymentsPage = () => {
                 )}
               </div>
               <div className="mt-4 border-t border-white/20 pt-4">
-                <span className="text-indigo-100 text-xs font-semibold flex items-center gap-2">
-                  <Clock className="w-4 h-4" />
-                  Pay by {upcomingDues[0].dueDate} to avoid additional late fees.
+                <span className={cn(
+                  "text-xs font-semibold flex items-center gap-2",
+                  upcomingDues[0].isPaid ? "text-emerald-100" : "text-indigo-100"
+                )}>
+                  {upcomingDues[0].isPaid ? (
+                    <><CheckCircle2 className="w-4 h-4" /> Thank you for your timely payment!</>
+                  ) : (
+                    <><Clock className="w-4 h-4" /> Pay by {upcomingDues[0].dueDate} to avoid additional late fees.</>
+                  )}
                 </span>
               </div>
             </div>
           </div>
           <button
-            onClick={() => setIsPayModalOpen(true)}
-            className="relative z-10 w-full lg:w-auto px-10 py-5 bg-white text-indigo-600 rounded-2xl font-black uppercase tracking-widest hover:bg-indigo-50 transition-all shadow-xl hover:scale-105 active:scale-95"
+            disabled={upcomingDues[0].isPaid}
+            onClick={() => !upcomingDues[0].isPaid && setIsPayModalOpen(true)}
+            className={cn(
+              "relative z-10 w-full lg:w-auto px-10 py-5 rounded-2xl font-black uppercase tracking-widest transition-all shadow-xl",
+              upcomingDues[0].isPaid 
+                ? "bg-emerald-500/30 text-white border border-white/20 cursor-default" 
+                : "bg-white text-indigo-600 hover:bg-indigo-50 hover:scale-105 active:scale-95"
+            )}
           >
-            Pay Now
+            {upcomingDues[0].isPaid ? 'Paid' : 'Pay Now'}
           </button>
         </motion.div>
       )}
@@ -1000,54 +1040,103 @@ export const PaymentsPage = () => {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-md bg-white dark:bg-[#111111] rounded-3xl shadow-2xl overflow-hidden border border-white/5"
+              className="relative w-full max-w-md bg-white dark:bg-[#111111] rounded-3xl shadow-2xl overflow-hidden border border-white/5 flex flex-col max-h-[90vh]"
             >
-              <div className="p-6 sm:p-8 border-b border-gray-100 dark:border-white/5 flex items-center justify-between">
+              <div className="p-6 sm:p-8 border-b border-gray-100 dark:border-white/5 flex items-center justify-between shrink-0">
                 <h3 className="text-xl font-bold text-gray-900 dark:text-white">Make Payment</h3>
                 <button onClick={() => setIsPayModalOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors">
                   <X className="w-6 h-6 text-gray-400" />
                 </button>
               </div>
-              <div className="p-6 sm:p-8 space-y-6">
-                <div className="p-4 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-bold text-indigo-400 uppercase tracking-wider">Total Payable</p>
-                    <p className="text-2xl font-black text-indigo-600 dark:text-indigo-400">₹{(upcomingDues[0].amount + upcomingDues[0].lateFee).toLocaleString()}</p>
+              <div className="p-6 sm:p-8 space-y-6 overflow-y-auto custom-scrollbar">
+                <div className="bg-gray-50 dark:bg-white/5 rounded-2xl p-6 space-y-4 border border-gray-100 dark:border-white/5">
+                  <div className="flex justify-between items-center pb-4 border-b border-gray-100 dark:border-white/5">
+                    <div>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Month</p>
+                      <p className="text-sm font-bold text-gray-900 dark:text-white">{format(parseISO(`${upcomingDues[0].month}-01`), 'MMMM yyyy')}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Due Date</p>
+                      <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400">{upcomingDues[0].dueDate}</p>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Month</p>
-                    <p className="text-sm font-bold text-gray-900 dark:text-white">{format(parseISO(`${upcomingDues[0].month}-01`), 'MMM yyyy')}</p>
+
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-gray-500 font-medium tracking-tight">Monthly Rent</span>
+                      <span className="font-bold text-gray-900 dark:text-white">₹{upcomingDues[0].rentAmount.toLocaleString()}</span>
+                    </div>
+
+                    {(upcomingDues[0] as any).baseAmount > 0 && (
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-gray-500 font-medium tracking-tight">Electricity (Base Share)</span>
+                        <span className="font-bold text-gray-900 dark:text-white">₹{(upcomingDues[0] as any).baseAmount.toLocaleString()}</span>
+                      </div>
+                    )}
+
+                    {(upcomingDues[0] as any).acAmount > 0 && (
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="flex flex-col">
+                          <span className="text-gray-500 font-medium tracking-tight">Electricity (AC Share)</span>
+                          {(upcomingDues[0] as any).unitsConsumed > 0 && (
+                            <span className="text-[10px] text-gray-400">{(upcomingDues[0] as any).unitsConsumed} units × ₹{(upcomingDues[0] as any).costPerUnit.toFixed(2)}</span>
+                          )}
+                        </span>
+                        <span className="font-bold text-gray-900 dark:text-white">₹{(upcomingDues[0] as any).acAmount.toLocaleString()}</span>
+                      </div>
+                    )}
+
+                    {upcomingDues[0].lateFee > 0 && (
+                      <div className="flex justify-between items-center text-sm p-3 bg-rose-50 dark:bg-rose-500/10 rounded-xl border border-rose-100 dark:border-rose-500/20 text-rose-600 dark:text-rose-400">
+                        <span className="font-bold flex items-center gap-2">
+                          <Clock className="w-4 h-4" />
+                          Late Fee Charged
+                        </span>
+                        <span className="font-black text-base">₹{upcomingDues[0].lateFee.toLocaleString()}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Documents Verification */}
+                  {((upcomingDues[0] as any).actualBillUrl || (upcomingDues[0] as any).acBillUrl) && (
+                    <div className="pt-4 border-t border-gray-100 dark:border-white/5 space-y-2">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center mb-2">Verify Bill Proofs</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {(upcomingDues[0] as any).actualBillUrl && (
+                          <button
+                            onClick={() => setViewerDoc({ url: (upcomingDues[0] as any).actualBillUrl, title: 'Electricity Bill' })}
+                            className="flex items-center justify-center gap-2 py-2 px-3 bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-xl text-xs font-bold hover:bg-amber-100 transition-colors border border-amber-200"
+                          >
+                            <FileText className="w-4 h-4" />
+                            View Bill
+                          </button>
+                        )}
+                        {(upcomingDues[0] as any).acBillUrl && (
+                          <button
+                            onClick={() => setViewerDoc({ url: (upcomingDues[0] as any).acBillUrl, title: 'AC Reading Proof' })}
+                            className="flex items-center justify-center gap-2 py-2 px-3 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-colors border border-indigo-200"
+                          >
+                            <FileText className="w-4 h-4" />
+                            View AC Reading
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="pt-4 mt-2 border-t border-gray-100 dark:border-white/5 flex items-center justify-between">
+                    <span className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-tight">Total Amount</span>
+                    <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400">₹{(upcomingDues[0].amount + upcomingDues[0].lateFee).toLocaleString()}</span>
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <label className="text-sm font-bold text-gray-700 dark:text-gray-300">Select Payment Method</label>
-                  <div className="grid grid-cols-1 gap-2">
-                    {(['Online', 'Offline'] as const).map((method) => (
-                      <button
-                        key={method}
-                        onClick={() => setPaymentMethod(method)}
-                        className={cn(
-                          "flex items-center justify-between p-4 rounded-2xl border-2 transition-all",
-                          paymentMethod === method
-                            ? "border-indigo-600 bg-indigo-50 dark:bg-indigo-500/10"
-                            : "border-gray-100 dark:border-white/5 hover:border-indigo-200"
-                        )}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className={cn(
-                            "w-5 h-5 rounded-full border-2 flex items-center justify-center",
-                            paymentMethod === method ? "border-indigo-600" : "border-gray-300"
-                          )}>
-                            {paymentMethod === method && <div className="w-2.5 h-2.5 bg-indigo-600 rounded-full" />}
-                          </div>
-                          <span className={cn("font-bold", paymentMethod === method ? "text-indigo-600 dark:text-indigo-400" : "text-gray-600 dark:text-gray-400")}>
-                            {method}
-                          </span>
-                        </div>
-                        {method === 'Offline' ? <Clock className={cn("w-5 h-5", paymentMethod === method ? "text-indigo-600" : "text-gray-400")} /> : <CreditCard className={cn("w-5 h-5", paymentMethod === method ? "text-indigo-600" : "text-gray-400")} />}
-                      </button>
-                    ))}
+                <div className="p-4 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center gap-4">
+                  <div className="w-12 h-12 bg-white dark:bg-white/10 rounded-xl flex items-center justify-center shadow-sm">
+                    <CreditCard className="w-6 h-6 text-indigo-600" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-gray-900 dark:text-white">Secure Online Payment</h4>
+                    <p className="text-[10px] text-gray-500 tracking-tight">Pay instantly via UPI, Card, or Netbanking</p>
                   </div>
                 </div>
 

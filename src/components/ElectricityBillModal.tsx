@@ -432,6 +432,28 @@ export const ElectricityBillModal: React.FC<ElectricityBillModalProps> = ({
                       );
                     })}
                   </div>
+                  
+                  {/* Upload AC Readings Proof */}
+                  <div className="space-y-2 pt-2">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center block">AC Consumption Proof (Optional)</label>
+                    <label className={cn(
+                      "flex items-center justify-center gap-2 py-2 px-4 rounded-xl border-2 border-dashed cursor-pointer transition-all",
+                      acFile
+                        ? "border-emerald-300 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600"
+                        : existingBill?.acBillUrl
+                          ? "border-indigo-300 dark:border-indigo-500/30 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600"
+                          : "border-gray-100 dark:border-white/10 hover:border-indigo-200 dark:hover:border-indigo-400/30 text-gray-500"
+                    )}>
+                      <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" className="hidden" onChange={(e) => setAcFile(e.target.files?.[0] || null)} />
+                      {acFile ? (
+                        <><FileText className="w-3.5 h-3.5" /><span className="text-xs font-semibold truncate">{acFile.name}</span></>
+                      ) : existingBill?.acBillUrl ? (
+                        <><FileText className="w-3.5 h-3.5" /><span className="text-xs font-semibold">Replace AC Reading Proof</span></>
+                      ) : (
+                        <><Upload className="w-3.5 h-3.5" /><span className="text-xs font-semibold">Upload AC Reading Proof</span></>
+                      )}
+                    </label>
+                  </div>
                 </div>
               )}
 

@@ -1,4 +1,5 @@
 import React from 'react';
+import { format } from 'date-fns';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
@@ -240,7 +241,7 @@ export const Dashboard = () => {
     if (isTenant && tenantData && tenantRoom?.meterGroupId) {
       import('../utils/electricityUtils').then(async ({ fetchElectricityBill, calculateElectricityShares, fetchRoomAcReadings }) => {
         try {
-          const currentMonth = new Date().toISOString().slice(0, 7);
+          const currentMonth = format(new Date(), 'yyyy-MM');
           const bill = await fetchElectricityBill(tenantRoom.meterGroupId!, currentMonth);
           if (bill) {
             const flatRooms = rooms.filter(r => r.meterGroupId === tenantRoom.meterGroupId);

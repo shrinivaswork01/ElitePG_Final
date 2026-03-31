@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useMemo, useCallback } from 'react';
+import { format } from 'date-fns';
 import { Tenant, Room, Payment, Complaint, Employee, KYCData, Announcement, SalaryPayment, Task, PGConfig, PGBranch, RolePermissions, SubscriptionPlan, AppFeature, KYCStatus, UserInvite, MeterGroup } from '../types';
 import { uploadToSupabase, deleteFromSupabase } from '../utils/storage';
 import { supabase } from '../lib/supabase';
@@ -209,7 +210,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           id: m.id, name: m.name, floor: m.floor, branchId: m.branch_id, createdAt: m.created_at
         })),
         payments: (payments || []).map(p => ({
-          id: p.id, tenantId: p.tenant_id, amount: p.amount, lateFee: p.late_fee, totalAmount: p.total_amount, paymentDate: p.payment_date, month: p.month, status: p.status, method: p.method, transactionId: p.transaction_id, receiptUrl: p.receipt_url, branch_id: p.branch_id,
+          id: p.id, tenantId: p.tenant_id, amount: p.amount, lateFee: p.late_fee, totalAmount: p.total_amount, paymentDate: p.payment_date, month: p.month, status: p.status, method: p.method, transactionId: p.transaction_id, receiptUrl: p.receipt_url, branchId: p.branch_id,
           electricityAmount: p.electricity_amount, baseShare: p.base_share, acShare: p.ac_share, unitsConsumed: p.units_consumed, costPerUnit: p.cost_per_unit, actualBillUrl: p.actual_bill_file_url, acBillUrl: p.ac_bill_file_url
         })),
         complaints: (complaints || []).map(c => ({
@@ -1246,7 +1247,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const computedStats = useMemo(() => {
-    const currentMonth = new Date().toISOString().substring(0, 7);
+    const currentMonth = format(new Date(), 'yyyy-MM');
     const payments = filteredData.payments || [];
     const rooms = filteredData.rooms || [];
     const tenants = filteredData.tenants || [];
@@ -1271,7 +1272,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     for (let i = 5; i >= 0; i--) {
       const d = new Date();
       d.setMonth(d.getMonth() - i);
-      const monthStr = d.toISOString().substring(0, 7); // YYYY-MM
+      const monthStr = format(d, 'yyyy-MM');
 
       const monthRev = payments
         .filter((p: Payment) => p.month === monthStr && p.status === 'paid')
