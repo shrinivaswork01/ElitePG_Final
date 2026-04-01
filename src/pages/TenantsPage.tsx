@@ -21,7 +21,9 @@ import {
   Zap,
   CreditCard,
   Receipt,
-  Clock
+  Clock,
+  LogOut,
+  CheckCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePaginatedData } from '../hooks/usePaginatedData';
@@ -37,7 +39,7 @@ import toast from 'react-hot-toast';
 export const TenantsPage = () => {
   const { user, users, register, updateUser, authorizeUser } = useAuth();
   const location = useLocation();
-  const { tenants, rooms, branches, addTenant, updateTenant, deleteTenant, checkFeatureAccess, currentPlan, uploadVerifiedKYC, kycs, userInvites, pgConfig } = useApp();
+  const { tenants, rooms, branches, addTenant, updateTenant, deleteTenant, checkFeatureAccess, currentPlan, uploadVerifiedKYC, kycs, userInvites, pgConfig, requestVacating, completeCheckout } = useApp();
   const canSendWhatsApp = checkFeatureAccess('whatsapp');
 
   const currentTenantsCount = tenants.length;
@@ -68,6 +70,7 @@ export const TenantsPage = () => {
   const [tenantToDelete, setTenantToDelete] = useState<Tenant | null>(null);
   const [kycUploadTenant, setKycUploadTenant] = useState<Tenant | null>(null);
   const [menuTenant, setMenuTenant] = useState<Tenant | null>(null);
+  const [checkoutConfirmModal, setCheckoutConfirmModal] = useState<{ isOpen: boolean, tenantId: string, tenantName: string } | null>(null);
   const [adminKycFile, setAdminKycFile] = useState<{ type: string; file?: File; url?: string; fileName: string } | null>(null);
   const [adminKycType, setAdminKycType] = useState('Aadhar Card');
   const [detailTenant, setDetailTenant] = useState<any | null>(null);
@@ -176,7 +179,7 @@ export const TenantsPage = () => {
           <DropdownMenu>
             {/* Edit first */}
             {['admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '') && (
-              <DropdownItem icon={<Edit2 className="w-4 h-4" />} label="Edit Tenant" onClick={() => setEditingTenant(t)} />
+              <DropdownItem icon={<Edit2 className="w-4 h-4" />} label="Edit Tenant" onClick={() => handleEditClick(t)} />
             )}
             <DropdownItem icon={<History className="w-4 h-4" />} label="Payment History" onClick={() => setViewingPayments(t)} />
             {(t.rent_agreement_url || t.rentAgreementUrl) && (
@@ -188,8 +191,24 @@ export const TenantsPage = () => {
             {canSendWhatsApp && (
               <DropdownItem icon={<MessageCircle className="w-4 h-4" />} label="WhatsApp Reminder" onClick={() => handleSendWhatsAppReminder(t)} />
             )}
-            {['admin', 'manager', 'receptionist'].includes(user?.role || '') && (
-              <DropdownItem icon={<Shield className="w-4 h-4" />} label="Upload KYC" onClick={() => { setKycUploadTenant(t); setAdminKycFile(null); setAdminKycType('Aadhar Card'); }} />
+            {['admin', 'manager', 'receptionist'].includes(user?.role || '') && t.status === 'active' && (
+              <DropdownItem 
+                icon={<LogOut className="w-4 h-4" />} 
+                label="Request Vacate" 
+                onClick={() => {
+                  if (window.confirm(`Start 30-day notice for ${t.name}?`)) {
+                    requestVacating(t.id);
+                    refetch();
+                  }
+                }} 
+              />
+            )}
+            {['admin', 'manager'].includes(user?.role || '') && t.status === 'vacating' && (
+              <DropdownItem 
+                icon={<CheckCircle className="w-4 h-4 text-emerald-500" />} 
+                label="Confirm Checkout" 
+                onClick={() => setCheckoutConfirmModal({ isOpen: true, tenantId: t.id, tenantName: t.name })} 
+              />
             )}
             {['admin', 'manager'].includes(user?.role || '') && (
               <DropdownItem icon={<Trash2 className="w-4 h-4" />} label="Delete Tenant" onClick={() => setTenantToDelete(t)} danger />
@@ -234,6 +253,7 @@ export const TenantsPage = () => {
     joiningDate: new Date().toISOString().split('T')[0],
     paymentDueDate: 5,
     status: 'active',
+    vacatingStatus: 'active',
     kycStatus: 'unsubmitted',
     inviteCode: ''
   });
@@ -322,6 +342,7 @@ export const TenantsPage = () => {
       joiningDate: tenant.joiningDate || tenant.joining_date || new Date().toISOString().split('T')[0],
       paymentDueDate: tenant.paymentDueDate ?? tenant.payment_due_date ?? 5,
       status: tenant.status || 'active',
+      vacatingStatus: tenant.vacatingStatus || tenant.vacating_status || 'active',
       kycStatus: tenant.kycStatus || tenant.kyc_status || 'unsubmitted',
       userId: tenant.userId || tenant.user_id || undefined,
       rentAgreementUrl: tenant.rentAgreementUrl || tenant.rent_agreement_url || undefined,
@@ -347,6 +368,7 @@ export const TenantsPage = () => {
       joiningDate: new Date().toISOString().split('T')[0],
       paymentDueDate: 5,
       status: 'active',
+      vacatingStatus: 'active',
       kycStatus: 'unsubmitted',
       isAcUser: false
     });
@@ -630,7 +652,9 @@ export const TenantsPage = () => {
           await authorizeUser(uid);
           toast.success('Tenant login authorized successfully!');
           setDetailTenant(null);
+          refetch();
         }}
+        onUpdate={refetch}
         electricityShare={tenantElectricityShare}
         canEdit={['admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '')}
         canDelete={['admin', 'manager'].includes(user?.role || '')}
@@ -1347,6 +1371,51 @@ export const TenantsPage = () => {
                   </button>
                 )}
               </form>
+            </motion.div>
+          </div>
+        )}
+        {checkoutConfirmModal?.isOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setCheckoutConfirmModal(null)}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-sm bg-white dark:bg-[#111111] rounded-3xl shadow-2xl overflow-hidden border border-white/5 p-6 text-center"
+            >
+              <div className="w-16 h-16 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <CheckCircle className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2 tracking-tight">
+                Final Check-out
+              </h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 leading-relaxed">
+                Finalize checkout for <span className="font-bold text-gray-900 dark:text-white">{checkoutConfirmModal.tenantName}</span>? <br/>Bed will be freed.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setCheckoutConfirmModal(null)}
+                  className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-gray-400 font-bold rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    await completeCheckout(checkoutConfirmModal.tenantId);
+                    setCheckoutConfirmModal(null);
+                    refetch();
+                  }}
+                  className="flex-1 px-4 py-2.5 bg-rose-600 text-white font-bold rounded-xl shadow-lg shadow-rose-600/20 hover:bg-rose-700 transition-all"
+                >
+                  Finalize
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

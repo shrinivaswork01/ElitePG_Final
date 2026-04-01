@@ -27,6 +27,8 @@ interface AppContextType {
   addTenant: (tenant: Omit<Tenant, 'id' | 'branchId'>, kycDoc?: { type: string, file?: File, url?: string }, rentAgreementDoc?: { file?: File, url?: string }) => Promise<void>;
   updateTenant: (id: string, updates: Partial<Tenant>, kycDoc?: { type: string, file?: File, url?: string }, rentAgreementDoc?: { file?: File, url?: string }) => Promise<void>;
   deleteTenant: (id: string) => Promise<void>;
+  requestVacating: (tenantId: string) => Promise<void>;
+  completeCheckout: (tenantId: string) => Promise<void>;
 
   addRoom: (room: Omit<Room, 'id' | 'branchId'>) => Promise<void>;
   updateRoom: (id: string, updates: Partial<Room>) => Promise<void>;
@@ -208,7 +210,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         })),
         tenants: (tenants || []).map(t => ({
           id: t.id, userId: t.user_id, name: t.name, email: t.email, phone: t.phone, roomId: t.room_id, bedNumber: t.bed_number, rentAmount: t.rent_amount, depositAmount: t.deposit_amount, joiningDate: t.joining_date, paymentDueDate: t.payment_due_date, status: t.status, kycStatus: t.kyc_status, rentAgreementUrl: t.rent_agreement_url, inviteCode: t.invite_code, branchId: t.branch_id,
-          isAuthorized: t.users?.is_authorized ?? true // default to true if user account doesn't exist yet (standard for manually added)
+          isAuthorized: t.users?.is_authorized ?? true,
+          vacatingDate: t.vacating_date,
+          exitDate: t.exit_date,
+          vacatingStatus: t.vacating_status || 'active'
         })),
         rooms: (rooms || []).map(r => ({
           id: r.id, roomNumber: r.room_number, floor: r.floor, totalBeds: r.total_beds, occupiedBeds: r.occupied_beds, type: r.type, price: r.price, branchId: r.branch_id,
@@ -508,6 +513,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if ((updates as any).inviteCode !== undefined) dbUpdates.invite_code = (updates as any).inviteCode;
     if (updates.signatureUrl !== undefined) dbUpdates.signature_url = updates.signatureUrl;
     if (updates.rentAgreementUrl !== undefined) dbUpdates.rent_agreement_url = updates.rentAgreementUrl;
+    if (updates.vacatingDate !== undefined) dbUpdates.vacating_date = updates.vacatingDate;
+    if (updates.exitDate !== undefined) dbUpdates.exit_date = updates.exitDate;
+    if (updates.vacatingStatus !== undefined) dbUpdates.vacating_status = updates.vacatingStatus;
     if (finalRentAgreementUrl !== undefined) dbUpdates.rent_agreement_url = finalRentAgreementUrl;
     if (kycDoc) dbUpdates.kyc_status = newKycStatus;
 
@@ -516,7 +524,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       applyOptimistic(prev => ({
         ...prev,
         tenants: prev.tenants.map((t: any) =>
-          t.id === id ? { ...t, ...updates, ...(finalRentAgreementUrl ? { rentAgreementUrl: finalRentAgreementUrl } : {}), ...(kycDoc ? { kycStatus: newKycStatus } : {}) } : t
+          t.id === id ? { 
+            ...t, 
+            ...updates, 
+            ...(finalRentAgreementUrl ? { rentAgreementUrl: finalRentAgreementUrl, rent_agreement_url: finalRentAgreementUrl } : {}), 
+            ...(kycDoc ? { kycStatus: newKycStatus, kyc_status: newKycStatus } : {}),
+            ...(updates.kycStatus ? { kyc_status: updates.kycStatus } : {}),
+            ...(updates.status ? { status: updates.status } : {})
+          } : t
         )
       }));
     }
@@ -592,6 +607,43 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (targetTenant?.userId) {
       await supabase.from('users').delete().eq('id', targetTenant.userId);
     }
+  };
+
+  const requestVacating = async (tenantId: string) => {
+    const today = new Date().toISOString().split('T')[0];
+    const exitDate = new Date();
+    exitDate.setDate(exitDate.getDate() + 30);
+    const exitDateStr = exitDate.toISOString().split('T')[0];
+
+    await updateTenant(tenantId, {
+      vacatingDate: today,
+      exitDate: exitDateStr,
+      vacatingStatus: 'notice_given',
+      status: 'vacating'
+    });
+    toast.success(`Vacating request submitted. Exit date: ${exitDateStr}`);
+  };
+
+  const completeCheckout = async (tenantId: string) => {
+    const tenant = data.tenants.find((t: any) => t.id === tenantId);
+    if (!tenant) return;
+
+    // 1. Mark as vacated
+    await updateTenant(tenantId, {
+      status: 'vacated',
+      vacatingStatus: 'vacated',
+      roomId: null as any // Using any to allow nulling out if types are strict
+    });
+
+    // 2. Update room occupancy if tracked manually
+    if (tenant.roomId) {
+      const room = data.rooms.find((r: any) => r.id === tenant.roomId);
+      if (room) {
+        await updateRoom(room.id, { occupiedBeds: Math.max(0, (room.occupiedBeds || 0) - 1) });
+      }
+    }
+
+    toast.success('Checkout completed. Bed allocation freed.');
   };
 
   const addRoom = async (room: Omit<Room, 'id' | 'branchId'> & { branchId?: string }) => {
@@ -1329,6 +1381,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     <AppContext.Provider value={{
       ...filteredData,
       addTenant, updateTenant, deleteTenant,
+      requestVacating, completeCheckout,
       addRoom, updateRoom, deleteRoom,
       addMeterGroup, updateMeterGroup, deleteMeterGroup,
       addPayment, updatePayment, deletePayment,

@@ -7,10 +7,12 @@ import {
   CreditCard,
   Download,
   Calendar,
-  Filter
+  Filter,
+  FileSpreadsheet
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useApp } from '../context/AppContext';
+import { exportToExcel } from '../utils/exportUtils';
 import {
   BarChart,
   Bar,
@@ -46,37 +48,12 @@ export const ReportsPage = () => {
     { name: 'Other', value: complaints.filter(c => c.category === 'Other').length },
   ].filter(d => d.value > 0);
 
-  const handleExportCSV = () => {
-    // Generate CSV Data Grid
-    const activeTenants = tenants.length;
-    const totalRevenue = stats.monthlyRevenue;
-    const pendingComplaints = stats.openComplaints;
-    const availableBeds = stats.vacantBeds;
-
-    // Create Header and Row
-    const headers = ['Metric', 'Value'];
-    const rows = [
-      ['Total Active Tenants', activeTenants.toString()],
-      ['Monthly Revenue (INR)', totalRevenue.toString()],
-      ['Total Open Complaints', pendingComplaints.toString()],
-      ['Total Vacant Beds', availableBeds.toString()]
-    ];
-
-    // Convert to CSV String
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.join(','))
-    ].join('\n');
-
-    // Create Download Blob
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `ElitePG_Analytics_${format(new Date(), 'yyyy-MM-dd')}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleExportExcel = async () => {
+    try {
+      await exportToExcel(tenants, rooms, payments, undefined, stats);
+    } catch (error) {
+      console.error('Export failed:', error);
+    }
   };
 
   return (
@@ -92,11 +69,11 @@ export const ReportsPage = () => {
             Filters
           </button>
           <button
-            onClick={handleExportCSV}
+            onClick={handleExportExcel}
             className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20"
           >
-            <Download className="w-4 h-4" />
-            Export Data
+            <FileSpreadsheet className="w-4 h-4" />
+            Export Excel
           </button>
         </div>
       </div>

@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { Room, MeterGroup } from '../types';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import {
   Plus,
   DoorOpen,
@@ -48,6 +48,14 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [detailRoom, setDetailRoom] = useState<Room | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterFloor, setFilterFloor] = useState<number | string>('all');
+  const location = useLocation();
+
+  useEffect(() => {
+    if (location.state?.selectedFloor) {
+      setFilterFloor(location.state.selectedFloor);
+    }
+  }, [location.state]);
   const [formData, setFormData] = useState<Omit<Room, 'id' | 'branchId'> & { meterGroupId?: string }>({
     roomNumber: '',
     floor: 1,
@@ -78,6 +86,7 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
   const { data: paginatedRooms, totalCount, isLoading, page, setPage, limit, refetch } = usePaginatedData<any>({
     table: 'rooms',
     select: '*, meter_groups(id, name, floor, branch_id, created_at)',
+    filters: filterFloor !== 'all' ? { floor: filterFloor } : undefined,
     ilikeFilters: searchTerm ? { room_number: searchTerm } : undefined,
     orderBy: { column: 'room_number', ascending: true }
   });
@@ -431,15 +440,31 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
       </div>
 
       <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-        <div className="relative w-full sm:w-96">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search room number..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-[#111111] border border-gray-100 dark:border-white/5 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
-          />
+        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+          <div className="relative w-full sm:w-80">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search room..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-[#111111] border border-gray-100 dark:border-white/5 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none shadow-sm"
+            />
+          </div>
+          
+          <div className="relative w-full sm:w-48">
+            <Layers className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <select
+              value={filterFloor}
+              onChange={(e) => setFilterFloor(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+              className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-[#111111] border border-gray-100 dark:border-white/5 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none shadow-sm appearance-none cursor-pointer"
+            >
+              <option value="all">All Floors</option>
+              {Array.from({ length: 10 }, (_, i) => i).map(f => (
+                <option key={f} value={f}>Floor {f}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {isNearLimit && !isAtLimit && (

@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Home, Phone, Mail, Calendar, CreditCard, Shield, FileCheck, MessageCircle, Edit2, Trash2, Zap, FileText, ExternalLink, Upload, Download } from 'lucide-react';
+import { X, Home, Phone, Mail, Calendar, CreditCard, Shield, FileCheck, MessageCircle, Edit2, Trash2, Zap, FileText, ExternalLink, Upload, Download, Clock, CheckCircle2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { cn } from '../utils';
 import { useAuth } from '../context/AuthContext';
@@ -28,6 +28,7 @@ interface TenantDetailPanelProps {
     costPerUnit?: number;
     unitsConsumed?: number;
   } | null;
+  onUpdate?: () => void;
 }
 
 const Field = ({ label, value, className }: { label: string; value: React.ReactNode; className?: string }) => (
@@ -51,10 +52,10 @@ const statusColor: Record<string, string> = {
 };
 
 export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
-  tenant, onClose, onEdit, onDelete, onViewAgreement, onViewPayments, canEdit, canDelete, onAuthorize, electricityShare
+  tenant, onClose, onEdit, onDelete, onViewAgreement, onViewPayments, canEdit, canDelete, onAuthorize, electricityShare, onUpdate
 }) => {
   const { user } = useAuth();
-  const { pgConfig, branches, updateTenant, tenants, rooms } = useApp();
+  const { pgConfig, branches, updateTenant, tenants, rooms, completeCheckout } = useApp();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const uploadAgreementRef = useRef<HTMLInputElement>(null);
@@ -74,6 +75,7 @@ export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
       tenant.rentAgreementUrl = null;
       setShowDeleteConfirm(false);
       toast.success('Agreement removed');
+      onUpdate?.();
     } catch (err) {
       toast.error('Failed to remove agreement');
     }
@@ -91,6 +93,7 @@ export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
       const url = await uploadToSupabase('agreements', path, file);
       await updateTenant(tenant.id, { rentAgreementUrl: url });
       toast.success('Agreement uploaded successfully!');
+      onUpdate?.();
     } catch (err) {
       toast.error('Failed to upload agreement');
     }
@@ -174,6 +177,35 @@ export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
                   </div>
                 </div>
               </div>
+
+              {/* Vacating Flow Admin Action */}
+              {tenant.vacatingStatus === 'notice_given' && (
+                <div className="bg-rose-50 dark:bg-rose-500/10 rounded-2xl p-4 space-y-3 border border-rose-100 dark:border-rose-500/20">
+                  <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400">
+                    <Clock className="w-5 h-5" />
+                    <span className="text-sm font-bold tracking-tight">Vacating Notice Active</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-rose-700/70 dark:text-rose-400/70">
+                    <span>Notice: {tenant.vacatingDate}</span>
+                    <span>Exit: {tenant.exitDate}</span>
+                  </div>
+                  
+                  {new Date() >= new Date(tenant.exitDate) ? (
+                    <button
+                      onClick={() => { completeCheckout(tenant.id); onClose(); }}
+                      className="w-full py-3 bg-rose-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-rose-600/20 hover:bg-rose-700 transition-all flex items-center justify-center gap-2"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      Complete Checkout
+                    </button>
+                  ) : (
+                    <div className="p-3 bg-white/50 dark:bg-white/5 rounded-xl text-center">
+                      <p className="text-[10px] font-bold text-rose-600/60 uppercase">Checkout Available On</p>
+                      <p className="text-sm font-bold text-rose-600">{tenant.exitDate}</p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Login Authorization */}
               {tenant.userId && !tenant.isAuthorized && (

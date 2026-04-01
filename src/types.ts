@@ -105,6 +105,9 @@ export interface Tenant {
   inviteCode?: string;
   branchId: string;
   isAcUser?: boolean; // Whether tenant uses AC (for electricity split)
+  vacatingDate?: string;
+  exitDate?: string;
+  vacatingStatus: 'active' | 'notice_given' | 'vacated';
 }
 
 export interface MeterGroup {

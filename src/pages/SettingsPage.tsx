@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { UserRole, PGConfig } from '../types';
-import { CheckCircle2, XCircle, Building2, Upload, Plus, AlertTriangle, Save } from 'lucide-react';
+import { CheckCircle, CheckCircle2, XCircle, Building2, Upload, Plus, AlertTriangle, Save } from 'lucide-react';
 import { cn } from '../utils';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
+import { RulesManager } from '../components/RulesManager';
 
 export const SettingsPage = () => {
   const { pgConfig, updatePGConfig, currentPlan } = useApp();
@@ -217,8 +218,22 @@ export const SettingsPage = () => {
         </div>
       </div>
 
-
-
+      {/* PG Rules Section */}
+      <div className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-200 dark:border-white/5 overflow-hidden shadow-sm">
+        <div className="p-6 border-b border-gray-100 dark:border-white/5 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white uppercase tracking-tight">Property Guidelines</h3>
+            <p className="text-xs text-gray-500">Define the rules and regulations for your PG</p>
+          </div>
+        </div>
+        <div className="p-6">
+          <RulesManager 
+            rules={pgConfig?.rules || []}
+            onUpdate={(newRules) => updatePGConfig({ rules: newRules })}
+            isAdmin={true}
+          />
+        </div>
+      </div>
 
       {/* Confirmation Modal */}
       <AnimatePresence>
