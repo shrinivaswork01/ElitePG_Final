@@ -8,8 +8,10 @@ import {
   fetchElectricityBill,
   fetchRoomAcReadings,
   fetchPreviousReading,
-  calculateElectricityShares
+  calculateElectricityShares,
+  deleteElectricityBill
 } from '../utils/electricityUtils';
+import { supabase } from '../lib/supabase';
 import { cn } from '../utils';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -41,6 +43,7 @@ export const ElectricityBillModal: React.FC<ElectricityBillModalProps> = ({
   const [actualFile, setActualFile] = useState<File | null>(null);
   const [acFile, setAcFile] = useState<File | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [existingBill, setExistingBill] = useState<ElectricityBill | null>(null);
   const [showBreakdown, setShowBreakdown] = useState(false);
@@ -223,7 +226,7 @@ export const ElectricityBillModal: React.FC<ElectricityBillModalProps> = ({
           currentReading: Number(r.currentReading) || 0
         })) : [];
 
-      await saveElectricityBill({
+      const savedBill = await saveElectricityBill({
         meterGroupId: flat.id,
         branchId,
         month,
@@ -239,6 +242,54 @@ export const ElectricityBillModal: React.FC<ElectricityBillModalProps> = ({
       });
 
       toast.success(existingBill ? 'Bill updated!' : 'Bill saved!');
+
+      // Auto-create/update separate electricity payment records per tenant
+      if (previewShares.length > 0) {
+        for (const share of previewShares) {
+          // Check if an electricity payment already exists for this tenant+month+bill
+          const { data: existingPmt } = await supabase
+            .from('payments')
+            .select('id')
+            .eq('tenant_id', share.tenantId)
+            .eq('month', month)
+            .eq('payment_type', 'electricity')
+            .eq('electricity_bill_id', savedBill.id)
+            .maybeSingle();
+
+          const elecPayload: any = {
+            electricity_amount: share.total,
+            total_amount: share.total,
+            amount: 0,
+            late_fee: 0,
+            base_share: share.baseShare || 0,
+            ac_share: share.acShare || 0,
+            units_consumed: share.unitsConsumed || 0,
+            cost_per_unit: share.costPerUnit || 0,
+            actual_bill_file_url: savedBill.actualBillUrl || null,
+            ac_bill_file_url: savedBill.acBillUrl || null,
+          };
+
+          if (existingPmt) {
+            // Update existing pending electricity payment
+            await supabase.from('payments').update(elecPayload).eq('id', existingPmt.id);
+          } else {
+            // Insert new pending electricity payment
+            await supabase.from('payments').insert({
+              tenant_id: share.tenantId,
+              month,
+              payment_type: 'electricity',
+              status: 'pending',
+              method: 'Offline',
+              electricity_bill_id: savedBill.id,
+              branch_id: branchId,
+              payment_date: new Date().toISOString().split('T')[0],
+              ...elecPayload
+            });
+          }
+        }
+        toast.success(`${previewShares.length} electricity payment records created for tenants`);
+      }
+
       onSaved?.();
       onClose();
     } catch (err: any) {
@@ -282,6 +333,34 @@ export const ElectricityBillModal: React.FC<ElectricityBillModalProps> = ({
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            {/* Delete Bill Action */}
+            {existingBill && !isLoading && (
+              <div className="px-6 pb-0">
+                <button
+                  onClick={async () => {
+                    if (!existingBill) return;
+                    if (!window.confirm('Delete this electricity bill? This will also remove all associated electricity payment records for tenants. This cannot be undone.')) return;
+                    setIsDeleting(true);
+                    try {
+                      await deleteElectricityBill(existingBill.id);
+                      toast.success('Bill and associated electricity payments deleted');
+                      onSaved?.();
+                      onClose();
+                    } catch (err: any) {
+                      toast.error(err.message || 'Failed to delete bill');
+                    } finally {
+                      setIsDeleting(false);
+                    }
+                  }}
+                  disabled={isDeleting}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-xl text-sm font-bold hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-all border border-rose-100 dark:border-rose-500/20"
+                >
+                  {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
+                  {isDeleting ? 'Deleting...' : 'Delete This Bill'}
+                </button>
+              </div>
+            )}
 
             {/* Content */}
             <div className="p-6 space-y-5">

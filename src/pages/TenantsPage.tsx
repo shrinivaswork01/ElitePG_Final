@@ -17,7 +17,11 @@ import {
   History,
   FileCheck,
   MessageCircle,
-  Calendar
+  Calendar,
+  Zap,
+  CreditCard,
+  Receipt,
+  Clock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePaginatedData } from '../hooks/usePaginatedData';
@@ -86,7 +90,7 @@ export const TenantsPage = () => {
     filters: filterStatus !== 'all' ? { status: filterStatus } : undefined
   });
 
-  const columns: ColumnDef<any>[] = [
+  const columns: ColumnDef<any>[] = React.useMemo(() => [
     {
       header: 'Tenant',
       accessorKey: 'name',
@@ -172,7 +176,7 @@ export const TenantsPage = () => {
           <DropdownMenu>
             {/* Edit first */}
             {['admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '') && (
-              <DropdownItem icon={<Edit2 className="w-4 h-4" />} label="Edit Tenant" onClick={() => handleEditClick(t)} />
+              <DropdownItem icon={<Edit2 className="w-4 h-4" />} label="Edit Tenant" onClick={() => setEditingTenant(t)} />
             )}
             <DropdownItem icon={<History className="w-4 h-4" />} label="Payment History" onClick={() => setViewingPayments(t)} />
             {(t.rent_agreement_url || t.rentAgreementUrl) && (
@@ -194,7 +198,7 @@ export const TenantsPage = () => {
         </div>
       )
     }
-  ];
+  ], [user?.role, canSendWhatsApp, tenants]);
 
 
   const handleDownload = () => {
@@ -1004,24 +1008,66 @@ export const TenantsPage = () => {
                     .map((payment) => (
                       <div
                         key={payment.id}
-                        className="flex items-center justify-between p-4 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/5"
+                        className="flex flex-col p-4 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/5 gap-3"
                       >
-                        <div className="flex items-center gap-4">
-                          <div className={cn(
-                            "w-10 h-10 rounded-full flex items-center justify-center",
-                            payment.status === 'paid' ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600" : "bg-amber-50 dark:bg-amber-500/10 text-amber-600"
-                          )}>
-                            <Calendar className="w-5 h-5" />
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-4">
+                            <div className={cn(
+                              "w-10 h-10 rounded-xl flex items-center justify-center",
+                              payment.paymentType === 'electricity' 
+                                ? "bg-amber-50 dark:bg-amber-500/10 text-amber-600" 
+                                : "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600"
+                            )}>
+                              {payment.paymentType === 'electricity' ? <Zap className="w-5 h-5" /> : <CreditCard className="w-5 h-5" />}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-bold text-gray-900 dark:text-white">
+                                  {format(parseISO(payment.month + '-01'), 'MMMM yyyy')}
+                                </p>
+                                <span className={cn(
+                                  "text-[9px] font-black px-1.5 py-0.5 rounded-lg uppercase tracking-wider",
+                                  payment.paymentType === 'electricity' 
+                                    ? "bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400"
+                                    : "bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400"
+                                )}>
+                                  {payment.paymentType === 'electricity' ? 'Electricity' : 'Rent'}
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">Paid on {payment.paymentDate}</p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-sm font-bold text-gray-900 dark:text-white">{format(parseISO(payment.month + '-01'), 'MMMM yyyy')}</p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">Paid on {payment.paymentDate}</p>
+                          <div className="text-right">
+                            <p className="text-sm font-bold text-gray-900 dark:text-white">₹{payment.totalAmount.toLocaleString()}</p>
+                            <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium uppercase tracking-tighter">{payment.method}</p>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <p className="text-sm font-bold text-gray-900 dark:text-white">₹{payment.totalAmount.toLocaleString()}</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">{payment.method}</p>
-                        </div>
+
+                        {payment.paymentType === 'electricity' && (
+                          <div className="flex items-center gap-4 pt-3 border-t border-gray-200/50 dark:border-white/5 mt-1 text-[10px] font-bold text-gray-500 dark:text-gray-400">
+                             <div className="flex items-center gap-1.5">
+                               <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
+                               Base: ₹{(payment.baseShare || (payment as any).base_share || 0).toLocaleString()}
+                             </div>
+                             <div className="flex items-center gap-1.5">
+                               <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                               AC: ₹{(payment.acShare || (payment as any).ac_share || 0).toLocaleString()}
+                             </div>
+                             {(payment.unitsConsumed || (payment as any).units_consumed) > 0 && (
+                               <div className="flex items-center gap-1.5 ml-auto text-indigo-500">
+                                 <Zap className="w-3 h-3" />
+                                 {(payment.unitsConsumed || (payment as any).units_consumed)} Units
+                               </div>
+                             )}
+                          </div>
+                        )}
+                        
+                        {payment.lateFee > 0 && (
+                          <div className="flex items-center gap-2 text-[10px] font-bold text-rose-500 mt-1">
+                             <Clock className="w-3 h-3" />
+                             Includes ₹{payment.lateFee} late fee
+                          </div>
+                        )}
                       </div>
                     ))}
                   {payments.filter(p => p.tenantId === viewingPayments.id).length === 0 && (

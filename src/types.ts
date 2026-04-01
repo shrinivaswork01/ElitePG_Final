@@ -136,6 +136,7 @@ export interface Payment {
   amount: number;
   lateFee: number;
   totalAmount: number;
+  paymentType: 'rent' | 'electricity';
   paymentDate: string;
   month: string; // e.g., "2024-03"
   status: 'paid' | 'pending';

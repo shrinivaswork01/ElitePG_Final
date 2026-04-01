@@ -64,8 +64,6 @@ export const Dashboard = () => {
   const { user, markAnnouncementAsRead } = useAuth();
   const [isEditingRules, setIsEditingRules] = React.useState(false);
   const [editedRules, setEditedRules] = React.useState(pgConfig?.rules || []);
-  const [myElectricityShare, setMyElectricityShare] = React.useState<ElectricityShare | null>(null);
-  const [myElectricityBill, setMyElectricityBill] = React.useState<any>(null);
   const [viewerDoc, setViewerDoc] = React.useState<{ url: string, title: string } | null>(null);
   const [detailPayment, setDetailPayment] = React.useState<any | null>(null);
 
@@ -99,6 +97,7 @@ export const Dashboard = () => {
   const tenantRoom = tenantData ? rooms.find(r => r.id === tenantData.roomId) : null;
   const tenantComplaints = isTenant ? complaints.filter(c => c.tenantId === tenantData?.id) : [];
   const tenantPayments = isTenant ? payments.filter(p => p.tenantId === tenantData?.id) : [];
+  const electricityPaymentThisMonth = isTenant ? tenantPayments.find(p => p.month === format(new Date(), 'yyyy-MM') && p.paymentType === 'electricity') : null;
 
   const employeeTasks = isEmployee ? tasks.filter(t => t.employeeId === employeeData?.id) : [];
   const employeeComplaints = isEmployee ? complaints.filter(c => c.assignedTo === employeeData?.id) : [];
@@ -120,34 +119,21 @@ export const Dashboard = () => {
       { label: 'Total Revenue', value: `₹${(payments || []).filter(p => p.status === 'paid').reduce((sum, p) => sum + p.totalAmount, 0).toLocaleString()}`, icon: TrendingUp, color: 'bg-emerald-500', trend: 'Lifetime', link: '/branches' },
     ];
   } else if (isTenant) {
+    const pendingElec = tenantPayments.filter(p => p.paymentType === 'electricity' && p.status === 'pending');
+    const totalElecDue = pendingElec.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
+    const earliestElecDue = pendingElec.length > 0 ? pendingElec[0] : null;
+
     statCards = [
       { label: 'My Rent', value: `₹${(tenantData?.rentAmount || 0).toLocaleString()}`, icon: CreditCard, color: 'bg-indigo-500', trend: 'Monthly', link: '/payments' },
       { 
         label: 'Electricity Due', 
-        value: `₹${(myElectricityShare?.total || 0).toLocaleString()}`, 
+        value: `₹${totalElecDue.toLocaleString()}`, 
         icon: DollarSign, 
-        color: (myElectricityShare?.total || 0) > 0 ? 'bg-amber-500' : 'bg-emerald-500', 
-        trend: (myElectricityShare?.total || 0) > 0 ? 'Action Needed' : 'Paid', 
+        color: totalElecDue > 0 ? 'bg-amber-500' : 'bg-emerald-500', 
+        trend: totalElecDue > 0 ? 'Action Needed' : 'Paid', 
         onClick: () => {
-          if (myElectricityShare) {
-            setDetailPayment({
-              id: 'upcoming',
-              tenantId: tenantData?.id,
-              amount: tenantData?.rentAmount || 0,
-              lateFee: 0,
-              totalAmount: (tenantData?.rentAmount || 0) + (myElectricityShare?.total || 0),
-              month: new Date().toISOString().slice(0, 7),
-              status: 'pending',
-              method: 'Online',
-              electricityAmount: myElectricityShare?.total || 0,
-              electricityBillId: myElectricityBill?.id,
-              baseShare: myElectricityShare?.baseShare,
-              acShare: myElectricityShare?.acShare,
-              branchId: user?.branchId || '',
-              actualBillUrl: myElectricityBill?.actualBillUrl,
-              acBillUrl: myElectricityBill?.acBillUrl,
-              tenants: { name: tenantData?.name }
-            });
+          if (earliestElecDue) {
+            setDetailPayment(earliestElecDue);
           }
         }
       },
@@ -237,43 +223,7 @@ export const Dashboard = () => {
     window.open(whatsappUrl, '_blank');
   };
 
-  React.useEffect(() => {
-    if (isTenant && tenantData && tenantRoom?.meterGroupId) {
-      import('../utils/electricityUtils').then(async ({ fetchElectricityBill, calculateElectricityShares, fetchRoomAcReadings }) => {
-        try {
-          const currentMonth = format(new Date(), 'yyyy-MM');
-          const bill = await fetchElectricityBill(tenantRoom.meterGroupId!, currentMonth);
-          if (bill) {
-            const flatRooms = rooms.filter(r => r.meterGroupId === tenantRoom.meterGroupId);
-            const flatTenants = tenants.filter(t => {
-              const r = rooms.find(rm => rm.id === t.roomId);
-              return r?.meterGroupId === tenantRoom.meterGroupId && t.status === 'active';
-            }).map(t => ({
-              id: t.id,
-              name: t.name,
-              roomId: t.roomId || (t as any).room_id || '',
-              is_ac_user: rooms.find(r => r.id === t.roomId)?.type === 'AC' || false,
-              isAcUser: rooms.find(r => r.id === t.roomId)?.type === 'AC' || false
-            }));
-
-            let acReadings: any[] = [];
-            if (bill.totalUnits && bill.totalUnits > 0) {
-              acReadings = await fetchRoomAcReadings(tenantRoom.meterGroupId!, currentMonth, rooms);
-            }
-
-            const shares = calculateElectricityShares(bill, flatTenants, flatRooms, acReadings);
-            const myShare = shares.find(s => s.tenantId === tenantData.id);
-            if (myShare) {
-              setMyElectricityShare(myShare);
-              setMyElectricityBill(bill);
-            }
-          }
-        } catch (err) {
-          console.warn('Failed to fetch electricity share:', err);
-        }
-      }).catch(err => console.warn('Failed to load electricityUtils:', err));
-    }
-  }, [isTenant, tenantData, tenantRoom, tenants, rooms]);
+  // Electricity dashboard fetch removed. Payments will automatically sync.
 
   return (
     <div className="space-y-8">
@@ -321,12 +271,8 @@ export const Dashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-        {statCards.map((stat, index) => (
-          <Link
-            key={stat.label}
-            to={stat.link}
-            className="block"
-          >
+        {statCards.map((stat, index) => {
+          const CardContent = (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -356,8 +302,18 @@ export const Dashboard = () => {
                 <h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{stat.value}</h3>
               </div>
             </motion.div>
-          </Link>
-        ))}
+          );
+          
+          return stat.link ? (
+            <Link key={stat.label} to={stat.link} className="block">
+              {CardContent}
+            </Link>
+          ) : (
+            <div key={stat.label} className="block">
+              {CardContent}
+            </div>
+          );
+        })}
       </div>
 
       {isManagerial && (
@@ -444,7 +400,7 @@ export const Dashboard = () => {
                     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
                     .slice(0, 5)
                     .map((item: any) => (
-                      <div key={item.id} className="p-4 sm:p-6 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                      <Link key={item.id} to="/tasks" className="p-4 sm:p-6 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5 transition-colors border-b border-gray-100 last:border-0 dark:border-white/5">
                         <div className="flex items-center gap-4">
                           <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600">
                             <ClipboardList className="w-5 h-5" />
@@ -459,7 +415,7 @@ export const Dashboard = () => {
                           </div>
                         </div>
                         <span className="text-xs font-medium text-gray-400">{new Date(item.createdAt).toLocaleDateString()}</span>
-                      </div>
+                      </Link>
                     ))
                   }
                   {employeeTasks.length === 0 && (
@@ -467,7 +423,7 @@ export const Dashboard = () => {
                   )}
                 </>
               ) : (isTenant ? tenantComplaints : complaints).slice(0, 5).map((complaint) => (
-                <div key={complaint.id} className="p-4 sm:p-6 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                <Link key={complaint.id} to="/complaints" className="p-4 sm:p-6 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5 transition-colors border-b border-gray-100 last:border-0 dark:border-white/5">
                   <div className="flex items-center gap-4">
                     <div className={cn(
                       "w-2 h-2 rounded-full",
@@ -486,6 +442,7 @@ export const Dashboard = () => {
                       <button
                         onClick={(e) => {
                           e.preventDefault();
+                          e.stopPropagation();
                           const tenant = tenants.find(t => t.id === complaint.tenantId);
                           if (tenant) {
                             const message = `*Complaint Update*\n\nHi ${tenant.name}, regarding your complaint: "${complaint.title}". We are looking into it.`;
@@ -500,7 +457,7 @@ export const Dashboard = () => {
                       </button>
                     )}
                   </div>
-                </div>
+                </Link>
               ))}
               {(isEmployee ? employeeTasks : (isTenant ? tenantComplaints : complaints)).length === 0 && (
                 <div className="p-12 text-center text-gray-500 dark:text-gray-400">No recent items</div>
@@ -544,16 +501,16 @@ export const Dashboard = () => {
             </div>
           )}
 
-          {isTenant && (
+          {isTenant && electricityPaymentThisMonth && (
             <div className="lg:col-span-1">
               <ElectricityBreakdownCard
-                baseAmount={myElectricityShare?.baseShare || 0}
-                acAmount={myElectricityShare?.acShare || 0}
-                totalAmount={myElectricityShare?.total || 0}
-                costPerUnit={myElectricityShare?.costPerUnit}
-                unitsConsumed={myElectricityShare?.unitsConsumed}
-                billUrl={myElectricityBill?.actualBillUrl}
-                acBillUrl={myElectricityBill?.acBillUrl}
+                baseAmount={electricityPaymentThisMonth.baseShare || 0}
+                acAmount={electricityPaymentThisMonth.acShare || 0}
+                totalAmount={(electricityPaymentThisMonth.baseShare || 0) + (electricityPaymentThisMonth.acShare || 0)}
+                costPerUnit={electricityPaymentThisMonth.costPerUnit}
+                unitsConsumed={electricityPaymentThisMonth.unitsConsumed}
+                billUrl={electricityPaymentThisMonth.actualBillUrl}
+                acBillUrl={electricityPaymentThisMonth.acBillUrl}
                 onViewDoc={(url, title) => setViewerDoc({ url, title })}
               />
             </div>

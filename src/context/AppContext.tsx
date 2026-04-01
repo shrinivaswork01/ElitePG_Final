@@ -144,8 +144,20 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     try {
       const isSuper = userRole === 'super';
+      const isTenant = userRole === 'tenant';
       const branchId = userBranchId;
       const branchFilter = isSuper ? {} : { branch_id: branchId };
+
+      let activeTenantId = null;
+      if (isTenant) {
+        const { data: tenant } = await supabase.from('tenants').select('id').eq('user_id', userId).maybeSingle();
+        activeTenantId = tenant?.id;
+      }
+
+      const tenantFilter = isTenant ? { user_id: userId } : branchFilter;
+      const paymentFilter = isTenant ? { tenant_id: activeTenantId } : branchFilter;
+      const complaintFilter = isTenant ? { tenant_id: activeTenantId } : branchFilter;
+      const kycFilter = isTenant ? { tenant_id: activeTenantId } : branchFilter;
 
       const [
         { data: branches },
@@ -166,13 +178,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       ] = await Promise.all([
         supabase.from('pg_branches').select('*').match(isSuper ? {} : { id: branchId }),
         supabase.from('subscription_plans').select('*'),
-        supabase.from('tenants').select('*, users(is_authorized)').match(branchFilter),
+        supabase.from('tenants').select('*, users(is_authorized)').match(tenantFilter),
         supabase.from('rooms').select('*, meter_groups(id, name, floor, branch_id, created_at)').match(branchFilter),
         supabase.from('meter_groups').select('*').match(branchFilter),
-        supabase.from('payments').select('*').match(branchFilter),
-        supabase.from('complaints').select('*').match(branchFilter),
+        supabase.from('payments').select('*').match(paymentFilter),
+        supabase.from('complaints').select('*').match(complaintFilter),
         supabase.from('employees').select('*').match(branchFilter),
-        supabase.from('kyc_documents').select('*').match(branchFilter),
+        supabase.from('kyc_documents').select('*').match(kycFilter),
         supabase.from('announcements').select('*').match(branchFilter),
         supabase.from('salary_payments').select('*').match(branchFilter),
         supabase.from('tasks').select('*').match(branchFilter),
@@ -210,8 +222,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           id: m.id, name: m.name, floor: m.floor, branchId: m.branch_id, createdAt: m.created_at
         })),
         payments: (payments || []).map(p => ({
-          id: p.id, tenantId: p.tenant_id, amount: p.amount, lateFee: p.late_fee, totalAmount: p.total_amount, paymentDate: p.payment_date, month: p.month, status: p.status, method: p.method, transactionId: p.transaction_id, receiptUrl: p.receipt_url, branchId: p.branch_id,
-          electricityAmount: p.electricity_amount, baseShare: p.base_share, acShare: p.ac_share, unitsConsumed: p.units_consumed, costPerUnit: p.cost_per_unit, actualBillUrl: p.actual_bill_file_url, acBillUrl: p.ac_bill_file_url
+          id: p.id, tenantId: p.tenant_id, amount: p.amount, lateFee: p.late_fee, totalAmount: p.total_amount, paymentType: p.payment_type || 'rent', paymentDate: p.payment_date, month: p.month, status: p.status, method: p.method, transactionId: p.transaction_id, receiptUrl: p.receipt_url, branchId: p.branch_id,
+          electricityAmount: p.electricity_amount, electricityBillId: p.electricity_bill_id, baseShare: p.base_share, acShare: p.ac_share, unitsConsumed: p.units_consumed, costPerUnit: p.cost_per_unit, actualBillUrl: p.actual_bill_file_url, acBillUrl: p.ac_bill_file_url,
+          proofUrl: p.proof_url, createdBy: p.created_by
         })),
         complaints: (complaints || []).map(c => ({
           id: c.id, tenantId: c.tenant_id, title: c.title, description: c.description, category: c.category, priority: c.priority, status: c.status, assignedTo: c.assigned_to, resolvedAt: c.resolved_at, branchId: c.branch_id, createdAt: c.created_at,
@@ -694,6 +707,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     applyOptimistic(prev => ({ ...prev, payments: [...prev.payments, { ...payment, id: `temp-${Date.now()}`, branchId: targetBranch, createdBy: user?.id || '' }] }));
     await refetch(supabase.from('payments').insert({
       tenant_id: payment.tenantId, amount: payment.amount, late_fee: payment.lateFee, total_amount: payment.totalAmount,
+      payment_type: payment.paymentType || 'rent',
       payment_date: payment.paymentDate, month: payment.month, status: payment.status, method: payment.method,
       transaction_id: payment.transactionId || null, receipt_url: payment.receiptUrl || null, branch_id: targetBranch,
       electricity_amount: payment.electricityAmount || 0,
@@ -711,6 +725,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     applyOptimistic(prev => ({ ...prev, payments: prev.payments.map((p: any) => p.id === id ? { ...p, ...updates } : p) }));
     const dbUpdates: any = {};
     if (updates.tenantId !== undefined) dbUpdates.tenant_id = updates.tenantId;
+    if (updates.paymentType !== undefined) dbUpdates.payment_type = updates.paymentType;
     if (updates.amount !== undefined) dbUpdates.amount = updates.amount;
     if (updates.lateFee !== undefined) dbUpdates.late_fee = updates.lateFee;
     if (updates.totalAmount !== undefined) dbUpdates.total_amount = updates.totalAmount;

@@ -25,6 +25,7 @@ import { ReportsPage } from './pages/ReportsPage';
 import { SubscriptionPage } from './pages/SubscriptionPage';
 import { HelpSupportPage } from './pages/HelpSupportPage';
 import { TasksPage } from './pages/TasksPage';
+import { UpdatePasswordPage } from './pages/UpdatePasswordPage';
 
 export default function App() {
   return (
@@ -47,6 +48,7 @@ export default function App() {
             <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<LoginPage isSignUp={true} />} />
+              <Route path="/update-password" element={<UpdatePasswordPage />} />
 
               <Route path="/" element={
                 <ProtectedRoute>

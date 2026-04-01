@@ -55,8 +55,6 @@ export const LoginPage = ({ isSignUp = false }: LoginPageProps) => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [setupInstructions, setSetupInstructions] = useState('');
-  const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const [forgotEmail, setForgotEmail] = useState('');
   const [forgotLoading, setForgotLoading] = useState(false);
 
   const { login, register, loginWithGoogle, setGoogleUserPassword, user, isAuthenticated, googleAuthStatus, clearGoogleAuthStatus } = useAuth();
@@ -73,21 +71,21 @@ export const LoginPage = ({ isSignUp = false }: LoginPageProps) => {
     }
   }, [searchParams]);
 
-  const handleForgotPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!forgotEmail) return;
+  const handleForgotPassword = async () => {
+    if (!username) {
+      toast.error('Please enter your Email / Username first');
+      return;
+    }
     setForgotLoading(true);
     try {
       const { supabase } = await import('../lib/supabase');
-      const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
-        redirectTo: `${window.location.origin}/login`,
+      const { error } = await supabase.auth.resetPasswordForEmail(username, {
+        redirectTo: `${window.location.origin}/update-password`,
       });
       if (error) {
         toast.error(error.message);
       } else {
         toast.success('Password reset email sent! Check your inbox.', { duration: 6000 });
-        setShowForgotPassword(false);
-        setForgotEmail('');
       }
     } catch {
       toast.error('Failed to send reset email. Please try again.');
@@ -532,65 +530,6 @@ export const LoginPage = ({ isSignUp = false }: LoginPageProps) => {
           </motion.div>
         </div>
       </motion.div>
-
-      <AnimatePresence>
-        {showForgotPassword && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/70 backdrop-blur-md"
-              onClick={() => setShowForgotPassword(false)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="relative w-full max-w-md bg-[#111111] rounded-3xl p-8 border border-white/10 shadow-2xl"
-            >
-              <div className="flex items-center gap-4 mb-6">
-                <div className="w-12 h-12 bg-indigo-600/20 rounded-2xl flex items-center justify-center">
-                  <Lock className="w-6 h-6 text-indigo-400" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-white">Forgot Password?</h3>
-                  <p className="text-sm text-gray-400">We'll send a reset link to your email</p>
-                </div>
-              </div>
-              <form onSubmit={handleForgotPassword} className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Email Address</label>
-                  <input
-                    type="email"
-                    required
-                    value={forgotEmail}
-                    onChange={(e) => setForgotEmail(e.target.value)}
-                    placeholder="your@email.com"
-                    className="w-full bg-black/40 border border-white/10 rounded-2xl py-3.5 px-5 text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 transition-all"
-                  />
-                </div>
-                <div className="flex gap-3 mt-6">
-                  <button
-                    type="button"
-                    onClick={() => setShowForgotPassword(false)}
-                    className="flex-1 py-3 rounded-2xl bg-white/5 text-gray-300 font-semibold hover:bg-white/10 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={forgotLoading}
-                    className="flex-1 py-3 rounded-2xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50"
-                  >
-                    {forgotLoading ? 'Sending...' : 'Send Reset Link'}
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </div>
   );
 };

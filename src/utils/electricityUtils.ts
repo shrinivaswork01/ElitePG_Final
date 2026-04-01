@@ -403,3 +403,39 @@ export async function getTenantElectricityShare(
   const shares = calculateElectricityShares(bill, allTenantsInFlat, rooms, acReadings);
   return shares.find(s => s.tenantId === targetTenantId) || null;
 }
+
+/**
+ * Delete an electricity bill and cascade-remove all associated records:
+ * - electricity payment records (payment_type='electricity')
+ * - nullify electricity references on any rent payments
+ * - room AC readings
+ * - the bill record itself
+ */
+export async function deleteElectricityBill(billId: string): Promise<void> {
+  // 1. Delete all electricity-type payment records referencing this bill
+  await supabase
+    .from('payments')
+    .delete()
+    .eq('electricity_bill_id', billId)
+    .eq('payment_type', 'electricity');
+
+  // 2. Nullify electricity_bill_id on any rent payments that reference it (legacy)
+  await supabase
+    .from('payments')
+    .update({ electricity_bill_id: null, electricity_amount: 0 })
+    .eq('electricity_bill_id', billId);
+
+  // 3. Delete AC readings
+  await supabase
+    .from('room_ac_readings')
+    .delete()
+    .eq('electricity_bill_id', billId);
+
+  // 4. Delete the bill itself
+  const { error } = await supabase
+    .from('electricity_bills')
+    .delete()
+    .eq('id', billId);
+
+  if (error) throw error;
+}

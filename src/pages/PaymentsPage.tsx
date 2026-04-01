@@ -24,7 +24,10 @@ import {
   Edit2,
   MoreVertical,
   MessageCircle,
-  Settings
+  History as HistoryIcon,
+  Settings,
+  Zap,
+  Home
 } from 'lucide-react';
 import { format, parseISO, differenceInDays, getDate, isAfter } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
@@ -54,12 +57,9 @@ export const PaymentsPage = () => {
   const [receiptNotes, setReceiptNotes] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'paid' | 'pending'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'rent' | 'electricity'>('all');
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [detailPayment, setDetailPayment] = useState<any | null>(null);
-  const [electricityShare, setElectricityShare] = useState<number>(0);
-  const [electricityDetails, setElectricityDetails] = useState<ElectricityShare | null>(null);
-  const [electricityBillId, setElectricityBillId] = useState<string | null>(null);
-  const [electricityBillData, setElectricityBillData] = useState<ElectricityBill | null>(null);
   const [viewerDoc, setViewerDoc] = useState<{ url: string, title: string } | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState<{ isOpen: boolean, paymentId?: string, bulkIds?: string[] } | null>(null);
 
@@ -87,18 +87,25 @@ export const PaymentsPage = () => {
     setIsPoliciesModalOpen(false);
   };
 
+  const isTenant = user?.role === 'tenant';
+  const tenantData = isTenant ? tenants.find(t => t.userId === user.id) : null;
+
   // Server-side paginated hook — fetches ONLY 10 records at a time
   const { data: paginatedPayments, totalCount, isLoading: isPaymentsLoading, page, setPage, limit, refetch: refetchPayments } = usePaginatedData<any>({
     table: 'payments',
     select: '*, tenants!payments_tenant_id_fkey(name, phone, rooms!tenants_room_id_fkey(room_number))',
     ilikeFilters: searchTerm ? { transaction_id: searchTerm } : undefined,
-    filters: filterStatus !== 'all' ? { status: filterStatus } : undefined,
+    filters: {
+      ...(filterStatus !== 'all' ? { status: filterStatus } : {}),
+      ...(filterType !== 'all' ? { payment_type: filterType } : {}),
+      ...(isTenant && tenantData ? { tenant_id: tenantData.id } : {})
+    },
     orderBy: { column: 'payment_date', ascending: false }
   });
 
   const isAdmin = ['super', 'admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '');
 
-  const paymentColumns: ColumnDef<any>[] = [
+  const paymentColumns: ColumnDef<any>[] = React.useMemo(() => [
     {
       header: 'Tenant',
       accessorKey: 'tenant_id',
@@ -129,7 +136,13 @@ export const PaymentsPage = () => {
       cell: (p) => (
         <div>
           <p className="text-sm font-bold text-gray-900 dark:text-white">₹{Number(p.total_amount).toLocaleString()}</p>
-          {Number(p.electricity_amount || 0) > 0 && <p className="text-[10px] text-amber-500 flex items-center gap-0.5">⚡ includes electricity</p>}
+          <div className="flex items-center gap-1.5 mt-0.5">
+            {(p.payment_type || 'rent') === 'electricity' ? (
+              <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center gap-0.5">⚡ Electricity</span>
+            ) : (
+              <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center gap-0.5">🏠 Rent</span>
+            )}
+          </div>
           {p.late_fee > 0 && <p className="text-[10px] text-rose-500">+₹{p.late_fee} late fee</p>}
         </div>
       )
@@ -237,67 +250,7 @@ export const PaymentsPage = () => {
         </div>
       )
     }
-  ];
-
-  // Auto-fetch electricity when tenant + month are both set
-  const fetchAndSetElectricity = useCallback(async (tenantId: string, month: string) => {
-    if (!tenantId || !month) {
-      setElectricityShare(0);
-      setElectricityDetails(null);
-      setElectricityBillId(null);
-      setElectricityBillData(null);
-      return 0;
-    }
-    const tenant = tenants.find(t => t.id === tenantId);
-    if (!tenant) return 0;
-    
-    // Find room to get meterGroupId
-    const room = rooms.find(r => r.id === tenant.roomId || r.id === (tenant as any).room_id);
-    if (!room?.meterGroupId) {
-      setElectricityShare(0);
-      setElectricityDetails(null);
-      setElectricityBillId(null);
-      setElectricityBillData(null);
-      return 0;
-    }
-
-    const bill = await fetchElectricityBill(room.meterGroupId, month);
-    if (!bill) {
-      setElectricityShare(0);
-      setElectricityDetails(null);
-      setElectricityBillId(null);
-      setElectricityBillData(null);
-      return 0;
-    }
-    setElectricityBillData(bill);
-    setElectricityBillId(bill.id);
-
-    // Get ALL active tenants in ALL rooms belonging to this Flat
-    const flatRooms = rooms.filter(r => r.meterGroupId === room.meterGroupId);
-    const flatTenants = tenants.filter(t => {
-      const r = rooms.find(rm => rm.id === t.roomId || rm.id === (t as any).room_id);
-      return r?.meterGroupId === room.meterGroupId && t.status === 'active';
-    }).map(t => ({
-      id: t.id, 
-      name: t.name,
-      roomId: t.roomId || (t as any).room_id || '',
-      is_ac_user: rooms.find(r => r.id === (t.roomId || (t as any).room_id))?.type === 'AC' || false,
-      isAcUser: rooms.find(r => r.id === (t.roomId || (t as any).room_id))?.type === 'AC' || false
-    }));
-
-    // Fetch AC readings if unit-based
-    let acReadings: any[] = [];
-    if (bill.totalUnits && bill.totalUnits > 0) {
-      acReadings = await fetchRoomAcReadings(room.meterGroupId, month, rooms);
-    }
-
-    const shares = calculateElectricityShares(bill, flatTenants, flatRooms, acReadings);
-    const myShare = shares.find(s => s.tenantId === tenantId);
-    const amount = myShare?.total || 0;
-    setElectricityShare(amount);
-    setElectricityDetails(myShare || null);
-    return amount;
-  }, [tenants, rooms]);
+  ], [user, deletePayment, refetchPayments, setPaymentToEdit, setSelectedPayment, setIsReceiptModalOpen]);
 
   const calculateLateFee = (tenantId: string, month: string) => {
     const tenant = tenants.find(t => t.id === tenantId);
@@ -320,66 +273,155 @@ export const PaymentsPage = () => {
     return 0;
   };
 
-  const isTenant = user?.role === 'tenant';
-  const tenantData = isTenant ? tenants.find(t => t.userId === user.id) : null;
 
-  useEffect(() => {
-    if (isTenant && tenantData) {
-      fetchAndSetElectricity(tenantData.id, format(new Date(), 'yyyy-MM'));
-    }
-  }, [isTenant, tenantData?.id, fetchAndSetElectricity]);
 
-  const [isPayModalOpen, setIsPayModalOpen] = useState(false);
+  const [payingDue, setPayingDue] = useState<any | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<'Online' | 'Offline'>('Online');
 
-  const currentMonth = format(new Date(), 'yyyy-MM');
-  const hasPaidCurrentMonth = payments.some(p => p.tenantId === tenantData?.id && p.month === currentMonth && p.status === 'paid');
+  const currentMonth = React.useMemo(() => format(new Date(), 'yyyy-MM'), []);
 
-  const upcomingDues = isTenant && tenantData ? [{
-    month: currentMonth,
-    rentAmount: tenantData.rentAmount,
-    electricityAmount: electricityShare || 0,
-    baseAmount: electricityDetails?.baseShare || 0,
-    acAmount: electricityDetails?.acShare || 0,
-    actualBillUrl: electricityBillData?.actualBillUrl,
-    acBillUrl: electricityBillData?.acBillUrl,
-    unitsConsumed: electricityDetails?.unitsConsumed || 0,
-    costPerUnit: electricityDetails?.costPerUnit || 0,
-    amount: tenantData.rentAmount + (electricityShare || 0),
-    dueDate: `${currentMonth}-${(tenantData.paymentDueDate || pgConfig?.defaultPaymentDueDate || 1).toString().padStart(2, '0')}`,
-    lateFee: calculateLateFee(tenantData.id, currentMonth),
-    isPaid: hasPaidCurrentMonth
-  }] : [];
+  const hasPaidRentThisMonth = React.useMemo(() => {
+    return payments.some(p => p.tenantId === tenantData?.id && p.month === currentMonth && p.status === 'paid' && (p.paymentType === 'rent' || !p.paymentType));
+  }, [payments, tenantData?.id, currentMonth]);
+
+  const electricityPaymentThisMonth = React.useMemo(() => {
+    return payments.find(p => p.tenantId === tenantData?.id && p.month === currentMonth && p.paymentType === 'electricity');
+  }, [payments, tenantData?.id, currentMonth]);
+
+  const hasPaidElectricityThisMonth = electricityPaymentThisMonth?.status === 'paid';
+
+  // Keep backward compat: hasPaidCurrentMonth means fully paid (rent + electricity if exists)
+  const hasPaidCurrentMonth = hasPaidRentThisMonth && (!electricityPaymentThisMonth || hasPaidElectricityThisMonth);
+
+  const upcomingDues = React.useMemo(() => {
+    if (!isTenant || !tenantData) return [];
+
+    const dues: any[] = [];
+    
+    // Find all months that have either a pending electricity payment or are the current month (for rent)
+    // Actually, we should check for ANY month where rent or electricity is pending.
+    const pendingMonths = Array.from(new Set([
+      ...payments.filter(p => p.tenantId === tenantData.id && p.status === 'pending').map(p => p.month),
+      currentMonth
+    ])).sort().reverse();
+
+    for (const month of pendingMonths) {
+      const isCurrent = month === currentMonth;
+      const rentPayment = payments.find(p => p.tenantId === tenantData.id && p.month === month && (p.paymentType === 'rent' || !p.paymentType));
+      const electricityPayment = payments.find(p => p.tenantId === tenantData.id && p.month === month && p.paymentType === 'electricity');
+
+      const isRentPaid = rentPayment?.status === 'paid';
+      const isElecPaid = !electricityPayment || electricityPayment.status === 'paid';
+
+      // Always show rent for current month, or if it's pending in past months
+      if (isCurrent || (rentPayment && !isRentPaid)) {
+        dues.push({
+          type: 'rent' as const,
+          month,
+          rentAmount: tenantData.rentAmount,
+          electricityAmount: 0,
+          baseAmount: 0,
+          acAmount: 0,
+          unitsConsumed: 0,
+          costPerUnit: 0,
+          amount: tenantData.rentAmount,
+          dueDate: `${month}-${(tenantData.paymentDueDate || pgConfig?.defaultPaymentDueDate || 1).toString().padStart(2, '0')}`,
+          lateFee: isRentPaid ? 0 : calculateLateFee(tenantData.id, month),
+          isPaid: isRentPaid,
+          id: rentPayment?.id
+        });
+      }
+
+      // Show electricity if it exists for this month
+      if (electricityPayment) {
+        const elecAmount = (electricityPayment as any).electricity_amount || electricityPayment.electricityAmount || electricityPayment.totalAmount || 0;
+        dues.push({
+          type: 'electricity' as const,
+          month,
+          rentAmount: 0,
+          electricityAmount: elecAmount,
+          baseAmount: electricityPayment.baseShare || (electricityPayment as any).base_share || 0,
+          acAmount: electricityPayment.acShare || (electricityPayment as any).ac_share || 0,
+          actualBillUrl: electricityPayment.actualBillUrl || (electricityPayment as any).actual_bill_file_url,
+          acBillUrl: electricityPayment.acBillUrl || (electricityPayment as any).ac_bill_file_url,
+          unitsConsumed: electricityPayment.unitsConsumed || (electricityPayment as any).units_consumed || 0,
+          costPerUnit: electricityPayment.costPerUnit || (electricityPayment as any).cost_per_unit || 0,
+          amount: elecAmount,
+          dueDate: `${month}-${(tenantData.paymentDueDate || pgConfig?.defaultPaymentDueDate || 1).toString().padStart(2, '0')}`,
+          lateFee: 0, // Electricity usually doesn't have late fee in this system yet
+          isPaid: electricityPayment.status === 'paid',
+          paymentId: electricityPayment.id,
+          id: electricityPayment.id
+        });
+      }
+    }
+
+    return dues;
+  }, [isTenant, tenantData, currentMonth, payments, pgConfig?.defaultPaymentDueDate]);
 
   const handleOnlinePayment = async () => {
-    if (tenantData && upcomingDues.length > 0) {
-      const due = upcomingDues[0];
+    if (tenantData && payingDue) {
+      const due = payingDue;
 
-      // Check for exact duplicate payment
-      const existingPayment = payments.find(p => p.tenantId === tenantData.id && p.month === due.month && (p.status === 'paid' || p.status === 'pending'));
-      if (existingPayment) {
-        toast.error('A payment for this month is already recorded or in progress.');
-        return;
+      // For rent, check for duplicate insert
+      if (due.type === 'rent') {
+        const existingPayment = payments.find(p => p.tenantId === tenantData.id && p.month === due.month && p.paymentType === 'rent' && (p.status === 'paid' || p.status === 'pending'));
+        if (existingPayment) {
+          toast.error('A rent payment for this month is already recorded or in progress.');
+          return;
+        }
       }
 
       const isOffline = paymentMethod === 'Offline';
       const totalAmount = due.amount + due.lateFee;
 
+      const recordPaymentSuccess = async (method: 'Offline' | 'Online', transactionId?: string) => {
+        if (due.type === 'electricity' && due.paymentId) {
+          // Update the existing pending electricity record
+          await updatePayment(due.paymentId, {
+            status: method === 'Offline' ? 'pending' : 'paid',
+            method,
+            transactionId: transactionId || null,
+            paymentDate: format(new Date(), 'yyyy-MM-dd')
+          });
+          
+          if (method === 'Online' && transactionId) {
+            handleDownloadReceipt({ ...payments.find(p => p.id === due.paymentId)!, status: 'paid', method: 'Online', transactionId } as Payment);
+          }
+        } else {
+          // Insert new rent record
+          const paymentRecord: Omit<Payment, 'id' | 'branchId'> = {
+            tenantId: tenantData.id,
+            amount: due.rentAmount,
+            lateFee: due.lateFee,
+            totalAmount,
+            paymentType: due.type,
+            electricityAmount: 0, // No longer merged
+            paymentDate: format(new Date(), 'yyyy-MM-dd'),
+            month: due.month,
+            status: method === 'Offline' ? 'pending' : 'paid',
+            method,
+            transactionId: transactionId || undefined
+          };
+          
+          await addPayment(paymentRecord);
+          // If online, mock downloading receipt for the temp inserted record (ideally we wait for it to sync, but we proceed like Razorpay)
+          if (method === 'Online' && transactionId) {
+            handleDownloadReceipt({ ...paymentRecord, id: transactionId } as Payment);
+          }
+        }
+
+        refetchPayments();
+        setPayingDue(null);
+        if (method === 'Offline') {
+          toast.success(`Offline payment request submitted for ₹${totalAmount.toLocaleString()}. Please pay at the desk.`);
+        } else {
+          toast.success(`Payment successful! Transaction ID: ${transactionId}`);
+        }
+      };
+
       if (isOffline) {
-        addPayment({
-          tenantId: tenantData.id,
-          amount: due.rentAmount,
-          lateFee: due.lateFee,
-          totalAmount,
-          electricityAmount: due.electricityAmount,
-          electricityBillId: electricityBillId || undefined,
-          paymentDate: format(new Date(), 'yyyy-MM-dd'),
-          month: due.month,
-          status: 'pending',
-          method: 'Offline',
-        });
-        setIsPayModalOpen(false);
-        toast.success(`Offline payment request submitted for ₹${totalAmount.toLocaleString()}. Please pay at the desk.`);
+        await recordPaymentSuccess('Offline');
       } else {
         const res = await loadRazorpayScript();
 
@@ -393,31 +435,10 @@ export const PaymentsPage = () => {
           amount: totalAmount * 100, // Amount in paise
           currency: 'INR',
           name: 'ElitePG',
-          description: `Rent Payment for ${format(parseISO(`${due.month}-01`), 'MMMM yyyy')}`,
+          description: `${due.type === 'electricity' ? 'Electricity' : 'Rent'} Payment for ${format(parseISO(`${due.month}-01`), 'MMMM yyyy')}`,
           image: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&q=80&w=150&h=150',
           handler: function (response: any) {
-            const paymentRecord: Omit<Payment, 'id' | 'branchId'> = {
-              tenantId: tenantData.id,
-              amount: due.rentAmount,
-              lateFee: due.lateFee,
-              totalAmount,
-              electricityAmount: due.electricityAmount,
-              electricityBillId: electricityBillId || undefined,
-              paymentDate: format(new Date(), 'yyyy-MM-dd'),
-              month: due.month,
-              status: 'paid',
-              method: 'Online',
-              transactionId: response.razorpay_payment_id
-            };
-            
-            addPayment(paymentRecord);
-            refetchPayments();
-            setIsPayModalOpen(false);
-            toast.success(`Payment successful! Transaction ID: ${response.razorpay_payment_id}`);
-
-            // Immediate receipt download
-            const receiptPayment: Payment = { ...paymentRecord, id: response.razorpay_payment_id } as Payment;
-            handleDownloadReceipt(receiptPayment);
+            recordPaymentSuccess('Online', response.razorpay_payment_id);
           },
           prefill: {
             name: tenantData.name,
@@ -435,7 +456,7 @@ export const PaymentsPage = () => {
     }
   };
 
-  const [newPayment, setNewPayment] = useState<Omit<Payment, 'id' | 'branchId'>>({
+  const [newPayment, setNewPayment] = useState<Omit<Payment, 'id' | 'branchId'> & { paymentType: 'rent' | 'electricity' }>({
     tenantId: '',
     amount: 0,
     lateFee: 0,
@@ -443,72 +464,32 @@ export const PaymentsPage = () => {
     paymentDate: new Date().toISOString().split('T')[0],
     month: format(new Date(), 'yyyy-MM'),
     status: 'paid',
-    method: 'Offline'
+    method: 'Offline',
+    paymentType: 'rent'
   });
 
   const handleAddPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPayment.tenantId) {
-      const existingPayment = payments.find(p => p.tenantId === newPayment.tenantId && p.month === newPayment.month);
+      const existingPayment = payments.find(p => p.tenantId === newPayment.tenantId && p.month === newPayment.month && p.paymentType === newPayment.paymentType);
       if (existingPayment) {
-        toast.error(`A payment record already exists for this tenant for ${newPayment.month}.`);
+        toast.error(`A ${newPayment.paymentType} payment record already exists for this tenant for ${newPayment.month}.`);
         return;
       }
 
       const tenant = tenants.find(t => t.id === newPayment.tenantId);
-      const room = rooms.find(r => r.id === tenant?.roomId || r.id === (tenant as any)?.room_id);
-      
-      let baseShare = 0;
-      let acShare = 0;
-      let unitsConsumed = 0;
-      let costPerUnit = 0;
-      let actualBillUrl = '';
-      let acBillUrl = '';
-
-      if (electricityBillData) {
-        const flatRooms = rooms.filter(r => r.meterGroupId === room?.meterGroupId);
-        const flatTenants = tenants.filter(t => {
-          const r = rooms.find(rm => rm.id === t.roomId || rm.id === (t as any).room_id);
-          return r?.meterGroupId === room?.meterGroupId && t.status === 'active';
-        }).map(t => ({
-          id: t.id, name: t.name, roomId: t.roomId || (t as any).room_id || '',
-          is_ac_user: rooms.find(r => r.id === (t.roomId || (t as any).room_id))?.type === 'AC' || false,
-          isAcUser: rooms.find(r => r.id === (t.roomId || (t as any).room_id))?.type === 'AC' || false
-        }));
-
-        let acReadings: any[] = [];
-        if (electricityBillData.totalUnits && electricityBillData.totalUnits > 0) {
-          try {
-            const { fetchRoomAcReadings } = await import('../utils/electricityUtils');
-            acReadings = await fetchRoomAcReadings(room?.meterGroupId!, newPayment.month, rooms);
-          } catch (err) { /* ignore */ }
-        }
-
-        const { calculateElectricityShares } = await import('../utils/electricityUtils');
-        const shares = calculateElectricityShares(electricityBillData, flatTenants, flatRooms, acReadings);
-        const myShare = shares.find(s => s.tenantId === newPayment.tenantId);
-        if (myShare) {
-          baseShare = myShare.baseShare;
-          acShare = myShare.acShare;
-          unitsConsumed = myShare.unitsConsumed || 0;
-          costPerUnit = myShare.costPerUnit || 0;
-          actualBillUrl = electricityBillData.actualBillUrl || '';
-          acBillUrl = electricityBillData.acBillUrl || '';
-        }
-      }
-
       await addPayment({
         ...newPayment,
-        electricityAmount: electricityShare,
-        electricityBillId: electricityBillId || undefined,
-        totalAmount: (newPayment.amount || 0) + electricityShare + (newPayment.lateFee || 0),
-        baseShare,
-        acShare,
-        unitsConsumed,
-        costPerUnit,
-        actualBillUrl,
-        acBillUrl
-      } as Omit<Payment, 'id'>);
+        branchId: tenant?.branchId || user?.branchId || '',
+        electricityAmount: newPayment.paymentType === 'electricity' ? newPayment.amount : 0,
+        electricity_amount: newPayment.paymentType === 'electricity' ? newPayment.amount : 0,
+        amount: newPayment.paymentType === 'rent' ? newPayment.amount : 0,
+        base_share: 0,
+        ac_share: 0,
+        units_consumed: 0,
+        cost_per_unit: 0,
+      } as any);
+      
       setIsAddModalOpen(false);
       setNewPayment({
         tenantId: '',
@@ -518,11 +499,9 @@ export const PaymentsPage = () => {
         paymentDate: new Date().toISOString().split('T')[0],
         month: format(new Date(), 'yyyy-MM'),
         status: 'paid',
-        method: 'Offline'
+        method: 'Offline',
+        paymentType: 'rent'
       });
-      setElectricityShare(0);
-      setElectricityBillId(null);
-      setElectricityBillData(null);
       refetchPayments();
     }
   };
@@ -587,6 +566,7 @@ export const PaymentsPage = () => {
         paymentDate: payment.paymentDate,
         month: payment.month,
         amount: payment.amount,
+        paymentType: payment.paymentType,
         electricityAmount: (payment as any).electricityAmount || (payment as any).electricity_amount || 0,
         lateFee: payment.lateFee,
         totalAmount: payment.totalAmount,
@@ -602,7 +582,12 @@ export const PaymentsPage = () => {
         branchAddress: currentBranch?.address,
         pgName: currentBranch?.name,
         logoUrl: pgConfig?.logoUrl,
-        signatureUrl: authorizedSignature
+        signatureUrl: authorizedSignature,
+        // Electricity breakdown
+        baseShare: (payment as any).baseShare || (payment as any).base_share || 0,
+        acShare: (payment as any).acShare || (payment as any).ac_share || 0,
+        unitsConsumed: (payment as any).unitsConsumed || (payment as any).units_consumed || 0,
+        costPerUnit: (payment as any).costPerUnit || (payment as any).cost_per_unit || 0
       }, true) as Blob;
 
       // Upload to Supabase Storage
@@ -614,46 +599,52 @@ export const PaymentsPage = () => {
       await updatePayment(payment.id, { receiptUrl: publicUrl });
       
       // Open the new URL
-      window.open(publicUrl, '_blank');
-      toast.success('Receipt generated and stored!', { id: toastId });
+      const win = window.open(publicUrl, '_blank');
+      if (!win) {
+         toast.error('Pop-up blocked! Please allow pop-ups for this site.', { id: toastId });
+      } else {
+         toast.success('Receipt generated and stored!', { id: toastId });
+      }
       
       // Refetch to sync local state
       refetchPayments();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Receipt persistence failed:', err);
-      toast.error('Failed to generate/store receipt. Please try again.', { id: toastId });
+      toast.error(`Receipt generation failed: ${err.message || 'Unknown error'}`, { id: toastId });
     } finally {
       setIsGeneratingPDF(false);
     }
   };
 
-  const filteredPayments = payments.filter(p => {
-    const tenant = tenants.find(t => t.id === p.tenantId);
-    const matchesSearch = (tenant?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.month.includes(searchTerm);
-    
-    // Super roles see everything in their branch
-    if (['super', 'admin', 'manager'].includes(user?.role || '')) {
-      return matchesSearch;
-    }
+  const filteredPayments = React.useMemo(() => {
+    return payments.filter(p => {
+      const tenant = tenants.find(t => t.id === p.tenantId);
+      const matchesSearch = (tenant?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        p.month.includes(searchTerm);
+      
+      // Super roles see everything in their branch
+      if (['super', 'admin', 'manager'].includes(user?.role || '')) {
+        return matchesSearch;
+      }
 
-    // Receptionist: Can view only payments they created
-    if (user?.role === 'receptionist') {
-      return matchesSearch && p.createdBy === user?.id;
-    }
+      // Receptionist: Can view only payments they created
+      if (user?.role === 'receptionist') {
+        return matchesSearch && p.createdBy === user?.id;
+      }
 
-    // Caretaker: View limited (assigned tenants) - For now same as branch
-    if (user?.role === 'caretaker') {
-       return matchesSearch;
-    }
+      // Caretaker: View limited (assigned tenants) - For now same as branch
+      if (user?.role === 'caretaker') {
+         return matchesSearch;
+      }
 
-    // Tenant: Only see their own
-    if (user?.role === 'tenant') {
-      return matchesSearch && tenant?.userId === user?.id;
-    }
+      // Tenant: Only see their own
+      if (user?.role === 'tenant') {
+        return matchesSearch && tenant?.userId === user?.id;
+      }
 
-    return false;
-  });
+      return false;
+    });
+  }, [payments, tenants, searchTerm, user?.role, user?.id]);
 
   const handleDownload = () => {
     const data = filteredPayments.map(p => {
@@ -680,12 +671,21 @@ export const PaymentsPage = () => {
   };
 
   // Dashboard stats should be independent of the current search term to match Dashboard expectations
-  const totalRevenue = (isTenant ? payments.filter(p => p.tenantId === tenantData?.id) : payments)
-    .filter(p => p.status === 'paid')
-    .reduce((sum, p) => sum + p.totalAmount, 0);
+  const totalRevenue = React.useMemo(() => {
+    return (isTenant ? payments.filter(p => p.tenantId === tenantData?.id) : payments)
+      .filter(p => p.status === 'paid')
+      .reduce((sum, p) => sum + p.totalAmount, 0);
+  }, [isTenant, payments, tenantData?.id]);
 
-  const myPaymentsThisMonth = isTenant ? payments.filter(p => p.tenantId === tenantData?.id && p.month === format(new Date(), 'yyyy-MM')) : [];
+  const myPaymentsThisMonth = React.useMemo(() => {
+    return isTenant ? payments.filter(p => p.tenantId === tenantData?.id && p.month === currentMonth) : [];
+  }, [isTenant, payments, tenantData?.id, currentMonth]);
+  
   const myPendingDuesCount = isTenant ? (hasPaidCurrentMonth ? 0 : 1) : 0;
+  
+  const paidThisMonthCount = React.useMemo(() => {
+    return payments.filter(p => p.month === currentMonth).length;
+  }, [payments, currentMonth]);
 
   return (
     <div className="space-y-6">
@@ -720,80 +720,113 @@ export const PaymentsPage = () => {
       </div>
 
       {isTenant && upcomingDues.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className={cn(
-            "rounded-[32px] p-8 sm:p-10 text-white shadow-2xl flex flex-col lg:flex-row items-center justify-between gap-8 relative overflow-hidden",
-            upcomingDues[0].isPaid ? "bg-emerald-600 shadow-emerald-600/20" : "bg-indigo-600 shadow-indigo-600/30"
-          )}
-        >
-          <div className="absolute top-0 right-0 p-12 opacity-10">
-            {upcomingDues[0].isPaid ? <CheckCircle2 className="w-48 h-48" /> : <CreditCard className="w-48 h-48" />}
-          </div>
-          <div className="relative z-10 flex flex-col sm:flex-row items-center gap-8">
-            <div className={cn(
-               "w-20 h-20 bg-white/20 backdrop-blur-xl rounded-3xl flex items-center justify-center shadow-inner",
-               upcomingDues[0].isPaid && "bg-emerald-400/20"
-            )}>
-              {upcomingDues[0].isPaid ? <CheckCircle2 className="w-10 h-10 text-white" /> : <CreditCard className="w-10 h-10 text-white" />}
-            </div>
-            <div className="text-center sm:text-left">
-              <p className={cn(
-                "text-sm font-bold uppercase tracking-widest",
-                upcomingDues[0].isPaid ? "text-emerald-100" : "text-indigo-100"
-              )}>
-                {upcomingDues[0].isPaid ? `Rent for ${format(parseISO(`${upcomingDues[0].month}-01`), 'MMMM yyyy')} is PAID` : `Rent Due for ${format(parseISO(`${upcomingDues[0].month}-01`), 'MMMM yyyy')}`}
-              </p>
-              <h3 className="text-5xl font-black mt-2 tracking-tighter">₹{(upcomingDues[0].amount + upcomingDues[0].lateFee).toLocaleString()}</h3>
-              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 mt-4">
-                <span className="px-3 py-1 bg-white/10 rounded-full text-xs font-bold flex items-center gap-2">
-                  <CreditCard className="w-3 h-3" />
-                  Rent: ₹{upcomingDues[0].rentAmount.toLocaleString()}
-                </span>
-                {upcomingDues[0].electricityAmount > 0 && (
-                  <span className={cn(
-                    "px-3 py-1 bg-white/10 rounded-full text-xs font-bold flex items-center gap-2",
-                    upcomingDues[0].isPaid ? "text-emerald-100" : "text-amber-300"
-                  )}>
-                    <TrendingUp className="w-3 h-3" />
-                    Electricity: ₹{upcomingDues[0].electricityAmount.toLocaleString()}
-                  </span>
-                )}
-                {!upcomingDues[0].isPaid && upcomingDues[0].lateFee > 0 && (
-                  <span className="px-3 py-1 bg-rose-500/20 text-rose-200 rounded-full text-xs font-bold flex items-center gap-2">
-                    <Clock className="w-3 h-3" />
-                    Late Fee: ₹{upcomingDues[0].lateFee}
-                  </span>
-                )}
+        <div className="space-y-8">
+          {Array.from(new Set(upcomingDues.map(d => d.month))).map(month => (
+            <div key={month} className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="h-px flex-1 bg-gray-100 dark:bg-white/5" />
+                <h3 className="text-sm font-black uppercase tracking-widest text-gray-400">
+                  {format(parseISO(`${month}-01`), 'MMMM yyyy')}
+                </h3>
+                <div className="h-px flex-1 bg-gray-100 dark:bg-white/5" />
               </div>
-              <div className="mt-4 border-t border-white/20 pt-4">
-                <span className={cn(
-                  "text-xs font-semibold flex items-center gap-2",
-                  upcomingDues[0].isPaid ? "text-emerald-100" : "text-indigo-100"
-                )}>
-                  {upcomingDues[0].isPaid ? (
-                    <><CheckCircle2 className="w-4 h-4" /> Thank you for your timely payment!</>
-                  ) : (
-                    <><Clock className="w-4 h-4" /> Pay by {upcomingDues[0].dueDate} to avoid additional late fees.</>
-                  )}
-                </span>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {upcomingDues.filter(d => d.month === month).map((due, idx) => (
+                  <motion.div
+                    key={`${due.type}-${due.month}-${idx}`}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={cn(
+                      "group relative rounded-[28px] p-6 border transition-all hover:scale-[1.01]",
+                      due.isPaid 
+                        ? "bg-emerald-50/50 dark:bg-emerald-500/5 border-emerald-100 dark:border-emerald-500/10" 
+                        : "bg-white dark:bg-[#111111] border-gray-100 dark:border-white/5 shadow-xl shadow-black/5"
+                    )}
+                  >
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className={cn(
+                          "w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg",
+                          due.isPaid 
+                            ? "bg-emerald-500 text-white" 
+                            : (due.type === 'electricity' ? "bg-amber-500 text-white" : "bg-indigo-600 text-white")
+                        )}>
+                          {due.isPaid ? <CheckCircle2 className="w-6 h-6" /> : (due.type === 'electricity' ? <Zap className="w-6 h-6" /> : <CreditCard className="w-6 h-6" />)}
+                        </div>
+                        <div>
+                          <h4 className="text-base font-black text-gray-900 dark:text-white uppercase tracking-tight">
+                            {due.type === 'electricity' ? 'Electricity' : 'Monthly Rent'}
+                          </h4>
+                          <span className={cn(
+                            "text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest",
+                            due.isPaid ? "bg-emerald-500/20 text-emerald-600" : "bg-rose-500/20 text-rose-600"
+                          )}>
+                            {due.isPaid ? 'Paid' : 'Pending'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-2xl font-black text-gray-900 dark:text-white tracking-tighter">
+                          ₹{(due.amount + due.lateFee).toLocaleString()}
+                        </p>
+                        {due.lateFee > 0 && !due.isPaid && (
+                          <p className="text-[10px] font-bold text-rose-500">Includes ₹{due.lateFee} late fee</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 mb-6">
+                      {due.type === 'rent' && (
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-gray-500">Base Rent</span>
+                          <span className="font-bold text-gray-700 dark:text-gray-300">₹{due.rentAmount.toLocaleString()}</span>
+                        </div>
+                      )}
+                      {due.type === 'electricity' && (
+                        <>
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="text-gray-500">Base Charge (Fixed)</span>
+                            <span className="font-bold text-gray-700 dark:text-gray-300">₹{due.baseAmount.toLocaleString()}</span>
+                          </div>
+                          {due.acAmount > 0 && (
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="text-gray-500">AC Charge ({due.unitsConsumed} units)</span>
+                              <span className="font-bold text-gray-700 dark:text-gray-300">₹{due.acAmount.toLocaleString()}</span>
+                            </div>
+                          )}
+                        </>
+                      )}
+                      <div className="flex justify-between items-center text-[10px] pt-2 border-t border-gray-100 dark:border-white/5">
+                        <span className="text-gray-400 font-bold uppercase tracking-widest">Expected By</span>
+                        <span className="text-gray-500 font-black">{format(parseISO(`${due.month}-${due.dueDate.split('-')[2]}`), 'dd MMM yyyy')}</span>
+                      </div>
+                    </div>
+
+                    {!due.isPaid ? (
+                      <button
+                        onClick={() => setPayingDue(due)}
+                        className="w-full py-3 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all hover:scale-[1.02] active:scale-95"
+                      >
+                        Make Payment
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          const p = payments.find(pmt => pmt.id === due.id || pmt.id === due.paymentId);
+                          if (p) handleDownloadReceipt(p);
+                        }}
+                        className="w-full py-3 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-2xl font-black uppercase tracking-widest text-xs border border-emerald-100 dark:border-emerald-500/20 hover:bg-emerald-500/20 transition-all"
+                      >
+                        Download Receipt
+                      </button>
+                    )}
+                  </motion.div>
+                ))}
               </div>
             </div>
-          </div>
-          <button
-            disabled={upcomingDues[0].isPaid}
-            onClick={() => !upcomingDues[0].isPaid && setIsPayModalOpen(true)}
-            className={cn(
-              "relative z-10 w-full lg:w-auto px-10 py-5 rounded-2xl font-black uppercase tracking-widest transition-all shadow-xl",
-              upcomingDues[0].isPaid 
-                ? "bg-emerald-500/30 text-white border border-white/20 cursor-default" 
-                : "bg-white text-indigo-600 hover:bg-indigo-50 hover:scale-105 active:scale-95"
-            )}
-          >
-            {upcomingDues[0].isPaid ? 'Paid' : 'Pay Now'}
-          </button>
-        </motion.div>
+          ))}
+        </div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -816,7 +849,7 @@ export const PaymentsPage = () => {
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{isTenant ? 'Payments (This Month)' : 'Paid This Month'}</p>
               <h3 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
-                {isTenant ? myPaymentsThisMonth.length : payments.filter(p => p.month === format(new Date(), 'yyyy-MM')).length} Payments
+                {isTenant ? myPaymentsThisMonth.length : paidThisMonthCount} Payments
               </h3>
             </div>
           </div>
@@ -829,12 +862,57 @@ export const PaymentsPage = () => {
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{isTenant ? 'Pending Dues' : 'Pending Dues'}</p>
               <h3 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
-                {isTenant ? myPendingDuesCount : tenants.length - payments.filter(p => p.month === format(new Date(), 'yyyy-MM')).length} {isTenant ? 'Dues' : 'Tenants'}
+                {isTenant ? myPendingDuesCount : tenants.length - paidThisMonthCount} {isTenant ? 'Dues' : 'Tenants'}
               </h3>
             </div>
           </div>
         </div>
       </div>
+
+      {!isTenant && (
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+          {[
+            { id: 'all', label: 'All Payments', icon: <HistoryIcon className="w-4 h-4" /> },
+            { id: 'rent', label: 'Rent Only', icon: <CreditCard className="w-4 h-4" /> },
+            { id: 'electricity', label: 'Electricity Only', icon: <Zap className="w-4 h-4" /> }
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setFilterType(tab.id as any)}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all border",
+                filterType === tab.id
+                  ? "bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-600/20"
+                  : "bg-white dark:bg-white/5 text-gray-500 dark:text-gray-400 border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/10"
+              )}
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
+          ))}
+          
+          <div className="h-6 w-px bg-gray-100 dark:bg-white/10 mx-2 hidden sm:block" />
+          
+          {[
+            { id: 'all', label: 'All Status' },
+            { id: 'paid', label: 'Paid' },
+            { id: 'pending', label: 'Pending' }
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setFilterStatus(tab.id as any)}
+              className={cn(
+                "px-4 py-2 rounded-xl text-xs font-bold transition-all uppercase tracking-wider",
+                filterStatus === tab.id
+                  ? "bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400"
+                  : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="bg-white dark:bg-[#111111] p-4 rounded-2xl border border-gray-100 dark:border-white/5 shadow-sm flex flex-col sm:flex-row gap-4">
         <div className="relative flex-1">
@@ -848,9 +926,6 @@ export const PaymentsPage = () => {
           />
         </div>
         <div className="flex gap-2">
-          <button className="p-2.5 bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
-            <Filter className="w-5 h-5" />
-          </button>
           <button
             onClick={handleDownload}
             className="p-2.5 bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
@@ -1026,13 +1101,13 @@ export const PaymentsPage = () => {
 
 
       <AnimatePresence>
-        {isPayModalOpen && upcomingDues.length > 0 && (
+        {payingDue && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setIsPayModalOpen(false)}
+              onClick={() => setPayingDue(null)}
               className="absolute inset-0 bg-black/40 backdrop-blur-sm"
             />
 
@@ -1044,7 +1119,7 @@ export const PaymentsPage = () => {
             >
               <div className="p-6 sm:p-8 border-b border-gray-100 dark:border-white/5 flex items-center justify-between shrink-0">
                 <h3 className="text-xl font-bold text-gray-900 dark:text-white">Make Payment</h3>
-                <button onClick={() => setIsPayModalOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors">
+                <button onClick={() => setPayingDue(null)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors">
                   <X className="w-6 h-6 text-gray-400" />
                 </button>
               </div>
@@ -1053,67 +1128,69 @@ export const PaymentsPage = () => {
                   <div className="flex justify-between items-center pb-4 border-b border-gray-100 dark:border-white/5">
                     <div>
                       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Month</p>
-                      <p className="text-sm font-bold text-gray-900 dark:text-white">{format(parseISO(`${upcomingDues[0].month}-01`), 'MMMM yyyy')}</p>
+                      <p className="text-sm font-bold text-gray-900 dark:text-white">{format(parseISO(`${payingDue.month}-01`), 'MMMM yyyy')}</p>
                     </div>
                     <div className="text-right">
                       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Due Date</p>
-                      <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400">{upcomingDues[0].dueDate}</p>
+                      <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400">{payingDue.dueDate}</p>
                     </div>
                   </div>
 
                   <div className="space-y-3">
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-gray-500 font-medium tracking-tight">Monthly Rent</span>
-                      <span className="font-bold text-gray-900 dark:text-white">₹{upcomingDues[0].rentAmount.toLocaleString()}</span>
-                    </div>
+                    {payingDue.type === 'rent' ? (
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-gray-500 font-medium tracking-tight">Monthly Rent</span>
+                        <span className="font-bold text-gray-900 dark:text-white">₹{payingDue.rentAmount.toLocaleString()}</span>
+                      </div>
+                    ) : null}
 
-                    {(upcomingDues[0] as any).baseAmount > 0 && (
+                    {payingDue.type === 'electricity' && payingDue.baseAmount > 0 && (
                       <div className="flex justify-between items-center text-sm">
                         <span className="text-gray-500 font-medium tracking-tight">Electricity (Base Share)</span>
-                        <span className="font-bold text-gray-900 dark:text-white">₹{(upcomingDues[0] as any).baseAmount.toLocaleString()}</span>
+                        <span className="font-bold text-gray-900 dark:text-white">₹{payingDue.baseAmount.toLocaleString()}</span>
                       </div>
                     )}
 
-                    {(upcomingDues[0] as any).acAmount > 0 && (
+                    {payingDue.type === 'electricity' && payingDue.acAmount > 0 && (
                       <div className="flex justify-between items-center text-sm">
                         <span className="flex flex-col">
                           <span className="text-gray-500 font-medium tracking-tight">Electricity (AC Share)</span>
-                          {(upcomingDues[0] as any).unitsConsumed > 0 && (
-                            <span className="text-[10px] text-gray-400">{(upcomingDues[0] as any).unitsConsumed} units × ₹{(upcomingDues[0] as any).costPerUnit.toFixed(2)}</span>
+                          {payingDue.unitsConsumed > 0 && (
+                            <span className="text-[10px] text-gray-400">{payingDue.unitsConsumed} units × ₹{payingDue.costPerUnit.toFixed(2)}</span>
                           )}
                         </span>
-                        <span className="font-bold text-gray-900 dark:text-white">₹{(upcomingDues[0] as any).acAmount.toLocaleString()}</span>
+                        <span className="font-bold text-gray-900 dark:text-white">₹{payingDue.acAmount.toLocaleString()}</span>
                       </div>
                     )}
 
-                    {upcomingDues[0].lateFee > 0 && (
+                    {payingDue.lateFee > 0 && (
                       <div className="flex justify-between items-center text-sm p-3 bg-rose-50 dark:bg-rose-500/10 rounded-xl border border-rose-100 dark:border-rose-500/20 text-rose-600 dark:text-rose-400">
                         <span className="font-bold flex items-center gap-2">
                           <Clock className="w-4 h-4" />
                           Late Fee Charged
                         </span>
-                        <span className="font-black text-base">₹{upcomingDues[0].lateFee.toLocaleString()}</span>
+                        <span className="font-black text-base">₹{payingDue.lateFee.toLocaleString()}</span>
                       </div>
                     )}
                   </div>
 
                   {/* Documents Verification */}
-                  {((upcomingDues[0] as any).actualBillUrl || (upcomingDues[0] as any).acBillUrl) && (
+                  {payingDue.type === 'electricity' && (payingDue.actualBillUrl || payingDue.acBillUrl) && (
                     <div className="pt-4 border-t border-gray-100 dark:border-white/5 space-y-2">
                       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center mb-2">Verify Bill Proofs</p>
                       <div className="grid grid-cols-2 gap-2">
-                        {(upcomingDues[0] as any).actualBillUrl && (
+                        {payingDue.actualBillUrl && (
                           <button
-                            onClick={() => setViewerDoc({ url: (upcomingDues[0] as any).actualBillUrl, title: 'Electricity Bill' })}
+                            onClick={() => setViewerDoc({ url: payingDue.actualBillUrl, title: 'Electricity Bill' })}
                             className="flex items-center justify-center gap-2 py-2 px-3 bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-xl text-xs font-bold hover:bg-amber-100 transition-colors border border-amber-200"
                           >
                             <FileText className="w-4 h-4" />
                             View Bill
                           </button>
                         )}
-                        {(upcomingDues[0] as any).acBillUrl && (
+                        {payingDue.acBillUrl && (
                           <button
-                            onClick={() => setViewerDoc({ url: (upcomingDues[0] as any).acBillUrl, title: 'AC Reading Proof' })}
+                            onClick={() => setViewerDoc({ url: payingDue.acBillUrl, title: 'AC Reading Proof' })}
                             className="flex items-center justify-center gap-2 py-2 px-3 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-colors border border-indigo-200"
                           >
                             <FileText className="w-4 h-4" />
@@ -1126,7 +1203,7 @@ export const PaymentsPage = () => {
 
                   <div className="pt-4 mt-2 border-t border-gray-100 dark:border-white/5 flex items-center justify-between">
                     <span className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-tight">Total Amount</span>
-                    <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400">₹{(upcomingDues[0].amount + upcomingDues[0].lateFee).toLocaleString()}</span>
+                    <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400">₹{(payingDue.amount + payingDue.lateFee).toLocaleString()}</span>
                   </div>
                 </div>
 
@@ -1144,7 +1221,7 @@ export const PaymentsPage = () => {
                   onClick={handleOnlinePayment}
                   className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
                 >
-                  Pay ₹{(upcomingDues[0].amount + upcomingDues[0].lateFee).toLocaleString()}
+                  Pay ₹{(payingDue.amount + payingDue.lateFee).toLocaleString()}
                 </button>
 
                 <p className="text-[10px] text-center text-gray-400 dark:text-gray-500 italic">
@@ -1327,33 +1404,65 @@ export const PaymentsPage = () => {
                   <Plus className="w-6 h-6 rotate-45 text-gray-400" />
                 </button>
               </div>
-              <form onSubmit={handleAddPayment} className="p-6 sm:p-8 space-y-6">
+               <form onSubmit={handleAddPayment} className="p-6 sm:p-8 space-y-6">
                 <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Select Tenant</label>
-                    <select
-                      required
-                      value={newPayment.tenantId}
-                      onChange={(e) => {
-                        const tenant = tenants.find(t => t.id === e.target.value);
-                        const lateFee = calculateLateFee(e.target.value, newPayment.month || '');
-                        setNewPayment({
-                          ...newPayment,
-                          tenantId: e.target.value,
-                          amount: tenant?.rentAmount || 0,
-                          lateFee,
-                          totalAmount: (tenant?.rentAmount || 0) + lateFee
-                        });
-                        fetchAndSetElectricity(e.target.value, newPayment.month || '');
-                      }}
-                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                    >
-                      <option value="">Choose a tenant</option>
-                      {tenants.map(t => (
-                        <option key={t.id} value={t.id}>{t.name}</option>
-                      ))}
-                    </select>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                       <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Payment Type</label>
+                       <select
+                         required
+                         value={newPayment.paymentType}
+                         onChange={(e) => {
+                           const type = e.target.value as 'rent' | 'electricity';
+                           const tenant = tenants.find(t => t.id === newPayment.tenantId);
+                           let amount = 0;
+                           if (type === 'rent') amount = tenant?.rentAmount || 0;
+                           else {
+                             // For electricity, we check if there's a pending bill or allow manual entry
+                             // For now, let's allow manual entry for admin ease if not using the auto-modal
+                             amount = 0;
+                           }
+                           
+                           setNewPayment({
+                             ...newPayment,
+                             paymentType: type,
+                             amount,
+                             totalAmount: amount + (newPayment.lateFee || 0)
+                           });
+                         }}
+                         className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white font-bold"
+                       >
+                         <option value="rent">Rent Payment</option>
+                         <option value="electricity">Electricity Bill</option>
+                       </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Select Tenant</label>
+                      <select
+                        required
+                        value={newPayment.tenantId}
+                        onChange={(e) => {
+                          const tenant = tenants.find(t => t.id === e.target.value);
+                          const lateFee = newPayment.paymentType === 'rent' ? calculateLateFee(e.target.value, newPayment.month || '') : 0;
+                          const amount = newPayment.paymentType === 'rent' ? (tenant?.rentAmount || 0) : 0;
+                          setNewPayment({
+                            ...newPayment,
+                            tenantId: e.target.value,
+                            amount,
+                            lateFee,
+                            totalAmount: amount + lateFee
+                          });
+                        }}
+                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                      >
+                        <option value="">Choose a tenant</option>
+                        {tenants.map(t => (
+                          <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
+
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Month</label>
@@ -1362,14 +1471,13 @@ export const PaymentsPage = () => {
                         type="month"
                         value={newPayment.month}
                         onChange={(e) => {
-                          const lateFee = calculateLateFee(newPayment.tenantId || '', e.target.value);
+                          const lateFee = newPayment.paymentType === 'rent' ? calculateLateFee(newPayment.tenantId || '', e.target.value) : 0;
                           setNewPayment({
                             ...newPayment,
                             month: e.target.value,
                             lateFee,
                             totalAmount: (newPayment.amount || 0) + lateFee
                           });
-                          fetchAndSetElectricity(newPayment.tenantId || '', e.target.value);
                         }}
                         className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                       />
@@ -1387,12 +1495,24 @@ export const PaymentsPage = () => {
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Rent Amount</label>
+                      <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                        {newPayment.paymentType === 'rent' ? 'Rent Amount' : 'Bill Amount'}
+                      </label>
                       <input
-                        readOnly
+                        required
                         type="number"
                         value={newPayment.amount}
-                        className="w-full px-4 py-2.5 bg-gray-100 dark:bg-white/5 border-none rounded-xl text-gray-500 dark:text-gray-400"
+                        onChange={(e) => {
+                          const val = Number(e.target.value);
+                          setNewPayment({ ...newPayment, amount: val, totalAmount: val + (newPayment.lateFee || 0) });
+                        }}
+                        readOnly={newPayment.paymentType === 'rent'}
+                        className={cn(
+                          "w-full px-4 py-2.5 border-none rounded-xl text-sm transition-all",
+                          newPayment.paymentType === 'rent' 
+                            ? "bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-gray-400"
+                            : "bg-gray-50 dark:bg-white/10 text-gray-900 dark:text-white font-bold ring-2 ring-indigo-500/10 focus:ring-indigo-500/40"
+                        )}
                       />
                     </div>
                     <div className="space-y-2">
@@ -1426,31 +1546,11 @@ export const PaymentsPage = () => {
                     </div>
                   </div>
 
-                  {/* Electricity Auto-Fill */}
-                  {electricityShare > 0 && (
-                    <div className="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-500/10 rounded-xl border border-amber-100 dark:border-amber-500/20">
-                      <div className="flex items-center gap-2">
-                        <span className="text-amber-500 text-sm">⚡</span>
-                        <span className="text-sm font-semibold text-amber-700 dark:text-amber-300">Electricity</span>
-                      </div>
-                      <span className="text-sm font-bold text-amber-600 dark:text-amber-400">₹{electricityShare.toLocaleString()}</span>
-                    </div>
-                  )}
-                  {newPayment.tenantId && electricityShare === 0 && electricityBillData === null && (
-                    <p className="text-[10px] text-gray-400 italic">No electricity bill found for this month.</p>
-                  )}
-
                   <div className="p-4 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-500">Rent</span>
+                      <span className="text-xs text-gray-500">{newPayment.paymentType === 'rent' ? 'Rent' : 'Electricity'}</span>
                       <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">₹{(newPayment.amount || 0).toLocaleString()}</span>
                     </div>
-                    {electricityShare > 0 && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-amber-500">⚡ Electricity</span>
-                        <span className="text-xs font-semibold text-amber-600">₹{electricityShare.toLocaleString()}</span>
-                      </div>
-                    )}
                     {(newPayment.lateFee || 0) > 0 && (
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-rose-500">Late Fee</span>
@@ -1459,7 +1559,7 @@ export const PaymentsPage = () => {
                     )}
                     <div className="flex items-center justify-between pt-2 border-t border-indigo-200 dark:border-indigo-500/20">
                       <span className="text-sm font-bold text-indigo-900 dark:text-indigo-100">Total Amount</span>
-                      <span className="text-xl font-bold text-indigo-600 dark:text-indigo-400">₹{((newPayment.amount || 0) + electricityShare + (newPayment.lateFee || 0)).toLocaleString()}</span>
+                      <span className="text-xl font-bold text-indigo-600 dark:text-indigo-400">₹{((newPayment.amount || 0) + (newPayment.lateFee || 0)).toLocaleString()}</span>
                     </div>
                   </div>
                 </div>

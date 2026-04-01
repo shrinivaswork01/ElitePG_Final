@@ -82,7 +82,7 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
     orderBy: { column: 'room_number', ascending: true }
   });
 
-  const roomColumns: ColumnDef<any>[] = [
+  const roomColumns: ColumnDef<any>[] = React.useMemo(() => [
     {
       header: 'Room',
       accessorKey: 'room_number',
@@ -160,9 +160,9 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
         </div>
       )
     }
-  ];
+  ], [tenants, user?.role]);
 
-  const flatColumns: ColumnDef<MeterGroup>[] = [
+  const flatColumns: ColumnDef<MeterGroup>[] = React.useMemo(() => [
     {
       header: 'Flat / Group',
       accessorKey: 'name',
@@ -223,7 +223,7 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
         </div>
       )
     }
-  ];
+  ], [rooms, tenants]);
 
 
   const handleEditClick = (room: any) => {

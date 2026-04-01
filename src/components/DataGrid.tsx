@@ -28,7 +28,7 @@ export interface DataGridProps<T> {
   compact?: boolean;
 }
 
-export function DataGrid<T>({
+const DataGridComponent = <T,>({
   columns,
   data,
   isLoading,
@@ -40,7 +40,7 @@ export function DataGrid<T>({
   onRowClick,
   emptyStateMessage = "No records found",
   compact = false
-}: DataGridProps<T>) {
+}: DataGridProps<T>) => {
   const totalPages = Math.ceil(totalCount / limit) || 1;
 
   // Render Skeletons when loading
@@ -137,5 +137,7 @@ export function DataGrid<T>({
       </div>
     </div>
   );
-}
+};
+
+export const DataGrid = React.memo(DataGridComponent) as <T>(props: DataGridProps<T>) => React.ReactElement;
 

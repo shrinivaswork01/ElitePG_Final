@@ -8,6 +8,7 @@ export interface TenantReceiptData {
   paymentDate: string;
   month: string;
   amount: number;
+  paymentType?: 'rent' | 'electricity' | string;
   electricityAmount?: number;
   lateFee: number;
   totalAmount: number;
@@ -24,6 +25,11 @@ export interface TenantReceiptData {
   pgName?: string;
   logoUrl?: string;
   signatureUrl?: string;
+  // Electricity breakdown
+  baseShare?: number;
+  acShare?: number;
+  unitsConsumed?: number;
+  costPerUnit?: number;
 }
 
 export interface SubscriptionReceiptData {
@@ -95,9 +101,20 @@ async function buildPDF(cfg: ReceiptConfig, filename: string, returnBlob: boolea
   let logoWidth = 20;
   if (cfg.logoUrl) {
     try {
-      // Small delay to ensure image can be fetched if it's a URL
-      // In a real browser context, we'd need to preload or use base64
-      doc.addImage(cfg.logoUrl, 'PNG', logoX, 10, logoWidth, logoWidth);
+      let finalLogoStr = cfg.logoUrl;
+      if (cfg.logoUrl.startsWith('http')) {
+        const response = await fetch(cfg.logoUrl);
+        const blob = await response.blob();
+        finalLogoStr = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      }
+      
+      const isPNG = finalLogoStr.toLowerCase().includes('image/png') || cfg.logoUrl.toLowerCase().includes('png');
+      doc.addImage(finalLogoStr, isPNG ? 'PNG' : 'JPEG', logoX, 10, logoWidth, logoWidth);
     } catch (e) {
       // Fallback logo
       doc.setFillColor(...WHITE);
@@ -239,21 +256,23 @@ async function buildPDF(cfg: ReceiptConfig, filename: string, returnBlob: boolea
 
   y += 10;
   
+  const dLines = doc.splitTextToSize(cfg.descriptionRow, 140);
+  const rowHeight = Math.max(15, dLines.length * 6 + 5);
+
   doc.setFillColor(...WHITE);
-  doc.rect(15, y, W - 30, 15, 'F');
+  doc.rect(15, y, W - 30, rowHeight, 'F');
   doc.setDrawColor(...GRAY_200);
-  doc.rect(15, y, W - 30, 15, 'S');
+  doc.rect(15, y, W - 30, rowHeight, 'S');
 
   doc.setTextColor(...GRAY_900);
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
-  const dLines = doc.splitTextToSize(cfg.descriptionRow, 140);
   doc.text(dLines, 20, y + 9);
   
   doc.setFont('helvetica', 'bold');
   doc.text(`Rs. ${cfg.totalAmount.toLocaleString('en-IN')}`, W - 20, y + 9, { align: 'right' });
 
-  y += 15;
+  y += rowHeight;
 
   // Total Summary
   doc.setFillColor(...GRAY_50);
@@ -267,7 +286,7 @@ async function buildPDF(cfg: ReceiptConfig, filename: string, returnBlob: boolea
   doc.text('GRAND TOTAL', 20, y + 8);
   doc.text(`Rs. ${cfg.totalAmount.toLocaleString('en-IN')}`, W - 20, y + 8, { align: 'right' });
 
-  y += 25;
+  y += 22;
 
   // ── 5. Signature and Footer ──────────────────────────────────────────────
   doc.setDrawColor(...GRAY_200);
@@ -298,12 +317,24 @@ async function buildPDF(cfg: ReceiptConfig, filename: string, returnBlob: boolea
 
   if (cfg.signatureUrl && cfg.signatureUrl.length > 50) { // Check if it's a valid data URL/long string
     try {
+      let finalSignatureStr = cfg.signatureUrl;
+      if (cfg.signatureUrl.startsWith('http')) {
+        const response = await fetch(cfg.signatureUrl);
+        const blob = await response.blob();
+        finalSignatureStr = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      }
+
       // Auto-detect format from data URL
-      const isPNG = cfg.signatureUrl.toLowerCase().includes('png');
-      const isJPEG = cfg.signatureUrl.toLowerCase().includes('jpeg') || cfg.signatureUrl.toLowerCase().includes('jpg');
+      const isPNG = finalSignatureStr.toLowerCase().includes('image/png') || cfg.signatureUrl.toLowerCase().includes('png');
+      const isJPEG = finalSignatureStr.toLowerCase().includes('image/jpeg') || cfg.signatureUrl.toLowerCase().includes('jpeg') || cfg.signatureUrl.toLowerCase().includes('jpg');
       const format = isPNG ? 'PNG' : (isJPEG ? 'JPEG' : 'PNG'); 
       
-      doc.addImage(cfg.signatureUrl, format, sigX, sigY - 5, sigW, sigH);
+      doc.addImage(finalSignatureStr, format, sigX, sigY - 5, sigW, sigH);
     } catch (e) {
       console.error('Signature rendering failed:', e);
       doc.setDrawColor(...GRAY_400);
@@ -344,9 +375,37 @@ export async function generateTenantReceiptPDF(data: TenantReceiptData, returnBl
   const roomBranch = [data.roomNumber ? `Room ${data.roomNumber}` : '', data.branchName].filter(Boolean).join(' · ');
   if (roomBranch) billedToLines.push(roomBranch);
 
-  const electricityDesc = data.electricityAmount && data.electricityAmount > 0 ? ` + Electricity: Rs. ${data.electricityAmount.toLocaleString('en-IN')}` : '';
-  const lateFeeDesc = data.lateFee > 0 ? ` + Late Fee: Rs. ${data.lateFee.toLocaleString('en-IN')}` : '';
-  const desc = `Monthly Rent: Rs. ${data.amount.toLocaleString('en-IN')}${electricityDesc}${lateFeeDesc}\nFor Period: ${monthLabel}`;
+  let desc = '';
+  if (data.paymentType === 'electricity') {
+    const totalElec = data.electricityAmount || data.amount || 0;
+    const base = data.baseShare || 0;
+    const ac = data.acShare || 0;
+    const units = data.unitsConsumed || 0;
+    const cpu = data.costPerUnit || 0;
+
+    desc = `ELITE ELECTRICTY BILL BREAKDOWN\n`;
+    desc += `--------------------------------------------------\n`;
+    desc += `Base Charges (Fixed/Pooled): Rs. ${base.toLocaleString('en-IN')}\n`;
+    if (ac > 0) {
+      desc += `AC Charges (${units} units x Rs. ${cpu.toFixed(2)}): Rs. ${ac.toLocaleString('en-IN')}\n`;
+    }
+    desc += `--------------------------------------------------\n`;
+    desc += `TOTAL ELECTRICITY: Rs. ${totalElec.toLocaleString('en-IN')}\n`;
+    if (data.lateFee > 0) {
+      desc += `Late Fee Applied: Rs. ${data.lateFee.toLocaleString('en-IN')}\n`;
+    }
+    desc += `Month: ${monthLabel}`;
+  } else {
+    // Rent Receipt
+    const lateFeeDesc = data.lateFee > 0 ? ` (+ Rs. ${data.lateFee.toLocaleString('en-IN')} Late Fee)` : '';
+    desc = `Accommodation / Monthly Rent Payment\n`;
+    desc += `Month: ${monthLabel}\n`;
+    desc += `Base Rent: Rs. ${data.amount.toLocaleString('en-IN')}${lateFeeDesc}\n`;
+    if (data.electricityAmount && data.electricityAmount > 0) {
+       desc += `Electricity Shared: Rs. ${data.electricityAmount.toLocaleString('en-IN')}\n`;
+    }
+    desc += `Total Paid: Rs. ${data.totalAmount.toLocaleString('en-IN')}`;
+  }
 
   return await buildPDF({
     receiptNo,
