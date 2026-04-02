@@ -9,7 +9,15 @@ interface FloorOccupancyProps {
   primaryColor?: string;
 }
 
-export const FloorOccupancy: React.FC<FloorOccupancyProps> = ({ data, primaryColor = '#4F46E5' }) => {
+export const FloorOccupancy: React.FC<FloorOccupancyProps> = ({ data, primaryColor = '#4f46e5' }) => {
+  const extractBaseColor = (colorStr: string) => {
+    if (!colorStr) return '#4f46e5';
+    if (!colorStr.includes('gradient')) return colorStr;
+    const match = colorStr.match(/(?:#[a-fA-F0-9]{3,8}|rgba?\([^\)]+\)|hsla?\([^\)]+\))/);
+    return match ? match[0] : '#4f46e5';
+  };
+
+  const chartColor = extractBaseColor(primaryColor);
   const navigate = useNavigate();
   return (
     <div className="bg-white dark:bg-[#0d0d0d] p-6 sm:p-8 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm h-full flex flex-col relative overflow-hidden">
@@ -17,12 +25,12 @@ export const FloorOccupancy: React.FC<FloorOccupancyProps> = ({ data, primaryCol
       <div className="flex items-center justify-between mb-8">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <Building2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-            <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-gray-500">Occupancy Visualization</span>
+            <Building2 className="w-4 h-4" style={{ color: chartColor }} />
+            <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-gray-500">Flat Occupancy</span>
           </div>
-          <h3 className="text-xl font-black text-gray-900 dark:text-white">Floor-wise Status</h3>
+          <h3 className="text-xl font-black text-gray-900 dark:text-white">Flat-wise Occupancy</h3>
         </div>
-        <div className="px-3 py-1 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[10px] font-bold rounded-full uppercase tracking-widest">
+        <div className="px-3 py-1 text-[10px] font-bold rounded-full uppercase tracking-widest" style={{ backgroundColor: `${chartColor}15`, color: chartColor }}>
           {data.reduce((sum, item) => sum + item.occupied, 0)} Total Occupied
         </div>
       </div>
@@ -42,8 +50,8 @@ export const FloorOccupancy: React.FC<FloorOccupancyProps> = ({ data, primaryCol
             >
               <div className="flex justify-between items-end mb-2.5">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-gray-50 dark:bg-white/5 flex items-center justify-center text-gray-400 group-hover:text-indigo-500 transition-colors">
-                     <span className="text-xs font-black">{item.name.match(/\d+/)?.[0] || '0'}</span>
+                  <div className="w-8 h-8 rounded-xl bg-gray-50 dark:bg-white/5 flex items-center justify-center text-gray-400 group-hover:text-indigo-500 transition-colors" style={{ color: primaryColor === '#4f46e5' ? undefined : chartColor }}>
+                     <span className="text-[10px] font-black">{item.name.charAt(0)}</span>
                   </div>
                   <div>
                     <p className="text-xs font-bold text-gray-700 dark:text-gray-300">{item.name}</p>
@@ -71,8 +79,8 @@ export const FloorOccupancy: React.FC<FloorOccupancyProps> = ({ data, primaryCol
                   transition={{ duration: 1.5, ease: "circOut", delay: 0.3 + index * 0.1 }}
                   className="h-full rounded-full transition-all relative"
                   style={{ 
-                    background: `linear-gradient(to right, ${primaryColor}, #8B5CF6)`,
-                    boxShadow: `0 0 15px ${primaryColor}40`
+                    background: `linear-gradient(to right, ${chartColor}, ${chartColor}dd)`,
+                    boxShadow: `0 0 15px ${chartColor}40`
                   }}
                 >
                   <div className="absolute inset-x-0 top-0 h-1/2 bg-white/20" />

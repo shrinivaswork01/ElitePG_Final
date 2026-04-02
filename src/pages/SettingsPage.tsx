@@ -199,7 +199,7 @@ export const SettingsPage = () => {
                 <div className="flex-1 flex items-center gap-2">
                   <input
                     type="color"
-                    value={settingsForm.primaryColor?.startsWith('linear') ? 'linear-gradient(to right, #4f46e5, #7c3aed)' : settingsForm.primaryColor}
+                    value={settingsForm.primaryColor?.startsWith('linear') ? '#4f46e5' : settingsForm.primaryColor}
                     onChange={(e) => setSettingsForm({ ...settingsForm, primaryColor: e.target.value })}
                     className="w-10 h-10 rounded-lg border-none cursor-pointer bg-transparent shrink-0"
                   />
@@ -212,7 +212,48 @@ export const SettingsPage = () => {
                   />
                 </div>
               </div>
-              <p className="text-[10px] text-gray-400">Supports HEX (#4f46e5), RGB/RGBA, or CSS Gradients (linear-gradient(...)). Copy & paste a value.</p>
+              <p className="text-[10px] text-gray-400">Custom selection (HEX, RGB, or linear-gradient)</p>
+              
+              <div className="pt-4 border-t border-gray-100 dark:border-white/5 space-y-3">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Quick Presets</label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => setSettingsForm({ ...settingsForm, primaryColor: '#4f46e5' })}
+                    className={cn(
+                      "group relative px-4 py-3 rounded-2xl border transition-all flex items-center gap-3 overflow-hidden",
+                      settingsForm.primaryColor === '#4f46e5'
+                        ? "bg-white dark:bg-white/5 border-indigo-500 shadow-lg shadow-indigo-500/10 ring-2 ring-indigo-500/20"
+                        : "bg-gray-50/50 dark:bg-white/5 border-gray-200 dark:border-white/10 hover:border-indigo-300 dark:hover:border-indigo-500/30"
+                    )}
+                  >
+                    <div className="w-4 h-4 rounded-full bg-[#4f46e5]" />
+                    <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Solid Indigo</span>
+                    {settingsForm.primaryColor === '#4f46e5' && (
+                      <div className="absolute top-1 right-1">
+                        <CheckCircle2 className="w-3 h-3 text-indigo-500" />
+                      </div>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() => setSettingsForm({ ...settingsForm, primaryColor: GRADIENT_THEME })}
+                    className={cn(
+                      "group relative px-4 py-3 rounded-2xl border transition-all flex items-center gap-3 overflow-hidden",
+                      settingsForm.primaryColor === GRADIENT_THEME
+                        ? "bg-white dark:bg-white/5 border-indigo-500 shadow-lg shadow-indigo-500/10 ring-2 ring-indigo-500/20"
+                        : "bg-gray-50/50 dark:bg-white/5 border-gray-200 dark:border-white/10 hover:border-indigo-300 dark:hover:border-indigo-500/30"
+                    )}
+                  >
+                    <div className="w-4 h-4 rounded-full" style={{ background: GRADIENT_THEME }} />
+                    <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Modern Gradient</span>
+                    {settingsForm.primaryColor === GRADIENT_THEME && (
+                      <div className="absolute top-1 right-1">
+                        <CheckCircle2 className="w-3 h-3 text-indigo-500" />
+                      </div>
+                    )}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

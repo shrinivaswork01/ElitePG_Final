@@ -36,7 +36,9 @@ export const SuperAdminPage = () => {
     updateSubscriptionPlan, 
     deleteSubscriptionPlan,
     updateBranchSubscription,
-    userInvites
+    userInvites,
+    tenants,
+    rooms
   } = useApp();
   const { users, register, deleteUser, updateUser } = useAuth();
   const [activeTab, setActiveTab] = useState<'branches' | 'admins' | 'subscriptions'>('branches');
@@ -49,6 +51,11 @@ export const SuperAdminPage = () => {
   const [editingAdmin, setEditingAdmin] = useState<User | null>(null);
   const [editingPlan, setEditingPlan] = useState<SubscriptionPlan | null>(null);
   const [selectedBranch, setSelectedBranch] = useState<PGBranch | null>(null);
+  
+  // New Filter States
+  const [adminStatusFilter, setAdminStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [adminBranchFilter, setAdminBranchFilter] = useState('all');
+  const [billingInterval, setBillingInterval] = useState<'monthly' | 'yearly'>('monthly');
 
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -157,6 +164,21 @@ export const SuperAdminPage = () => {
   };
 
   const adminUsers = users.filter(u => u.role === 'admin');
+  
+  const filteredAdmins = adminUsers.filter(u => {
+    const matchesSearch = u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                         u.email.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = adminStatusFilter === 'all' ? true : (adminStatusFilter === 'active' ? u.isAuthorized : !u.isAuthorized);
+    const matchesBranch = adminBranchFilter === 'all' ? true : u.branchId === adminBranchFilter;
+    return matchesSearch && matchesStatus && matchesBranch;
+  });
+
+  const getRevenuePerPlan = (planId: string) => {
+    const branchIds = branches.filter(b => b.planId === planId).map(b => b.id);
+    return (useApp().payments || [])
+      .filter(p => p.status === 'paid' && branchIds.includes(p.branchId))
+      .reduce((sum, p) => sum + p.totalAmount, 0);
+  };
 
   return (
     <div className="space-y-6">
@@ -271,7 +293,7 @@ export const SuperAdminPage = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto w-full"
           >
             {branches.filter(b => b.name.toLowerCase().includes(searchTerm.toLowerCase())).map((branch) => (
               <div key={branch.id} className="bg-white dark:bg-[#111111] p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm hover:shadow-md transition-all group">
@@ -296,14 +318,35 @@ export const SuperAdminPage = () => {
                 </div>
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{branch.name}</h3>
                 <p className="text-sm font-medium text-indigo-600 dark:text-indigo-400 mb-4">{branch.branchName}</p>
-                <div className="space-y-2 text-sm text-gray-500 dark:text-gray-400">
+                <div className="space-y-3 text-sm text-gray-500 dark:text-gray-400">
                   <div className="flex items-center gap-2">
-                    <MapPin className="w-4 h-4" />
-                    {branch.address}
+                    <MapPin className="w-4 h-4 text-indigo-400" />
+                    <span className="truncate">{branch.address}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Phone className="w-4 h-4" />
+                    <Phone className="w-4 h-4 text-indigo-400" />
                     {branch.phone}
+                  </div>
+                </div>
+
+                <div className="mt-6 grid grid-cols-3 gap-3">
+                  <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/5 text-center">
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Tenants</p>
+                    <p className="text-sm font-black text-gray-900 dark:text-white">
+                      {(tenants || []).filter(t => t.branchId === branch.id).length}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/5 text-center">
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Rooms</p>
+                    <p className="text-sm font-black text-gray-900 dark:text-white">
+                      {(rooms || []).filter(r => r.branchId === branch.id).length}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/5 text-center">
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Occupancy</p>
+                    <p className="text-sm font-black text-indigo-600 dark:text-indigo-400">
+                      {Math.round(((tenants || []).filter(t => t.branchId === branch.id).length / Math.max(1, (rooms || []).filter(r => r.branchId === branch.id).reduce((sum, r) => sum + (r.totalBeds || 1), 0))) * 100)}%
+                    </p>
                   </div>
                 </div>
                 <div className="mt-6 pt-6 border-t border-gray-100 dark:border-white/5 flex flex-col gap-4">
@@ -374,8 +417,66 @@ export const SuperAdminPage = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="bg-white dark:bg-[#111111] rounded-2xl border border-gray-200 dark:border-white/5 overflow-hidden"
+            className="space-y-6"
           >
+            {/* Admin Stats Bar */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="bg-white dark:bg-[#111111] p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Total Admins</p>
+                <p className="text-2xl font-black text-gray-900 dark:text-white">{adminUsers.length}</p>
+              </div>
+              <div className="bg-white dark:bg-[#111111] p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Active Now</p>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                  <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400">{adminUsers.filter(u => u.isAuthorized).length}</p>
+                </div>
+              </div>
+              <div className="bg-white dark:bg-[#111111] p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Unassigned</p>
+                <p className="text-2xl font-black text-amber-600 dark:text-amber-400">{adminUsers.filter(u => !u.branchId).length}</p>
+              </div>
+            </div>
+
+            {/* Admin Filters */}
+            <div className="flex flex-col sm:flex-row gap-4 bg-white dark:bg-[#111111] p-4 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
+              <div className="flex-1 relative">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search by name or email..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-11 pr-4 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+              </div>
+              <select
+                value={adminBranchFilter}
+                onChange={(e) => setAdminBranchFilter(e.target.value)}
+                className="px-4 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none min-w-[160px]"
+              >
+                <option value="all">All Branches</option>
+                {branches.map(b => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+              <div className="flex bg-gray-50 dark:bg-white/5 p-1 rounded-xl border border-gray-200 dark:border-white/5">
+                {(['all', 'active', 'inactive'] as const).map(status => (
+                  <button
+                    key={status}
+                    onClick={() => setAdminStatusFilter(status)}
+                    className={cn(
+                      "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
+                      adminStatusFilter === status ? "bg-white dark:bg-white/10 text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                    )}
+                  >
+                    {status}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-[#111111] rounded-2xl border border-gray-200 dark:border-white/5 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead>
@@ -388,58 +489,69 @@ export const SuperAdminPage = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-white/5">
-                  {adminUsers.filter(u => u.name.toLowerCase().includes(searchTerm.toLowerCase())).map((admin) => (
+                  {filteredAdmins.map((admin) => (
                     <tr key={admin.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs">
+                          <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-black text-sm border border-indigo-100 dark:border-indigo-500/20">
                             {admin.name?.charAt(0) || '?'}
                           </div>
                           <div>
-                            <p className="text-sm font-medium text-gray-900 dark:text-white">{admin.name}</p>
-                            <p className="text-xs text-gray-500">{admin.email}</p>
+                            <p className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-tight">{admin.name}</p>
+                            <p className="text-[10px] font-bold text-gray-400">{admin.email}</p>
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{admin.username}</td>
-                      <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
+                      <td className="px-6 py-4 text-sm font-bold text-gray-500 dark:text-gray-400">{admin.username}</td>
+                      <td className="px-6 py-4">
                         {branches.find(b => b.id === admin.branchId) ? (
-                          <>
-                            <p className="font-medium text-gray-900 dark:text-white">
-                              {branches.find(b => b.id === admin.branchId)?.name}
-                            </p>
-                            <p className="text-xs">
-                              {branches.find(b => b.id === admin.branchId)?.branchName}
-                            </p>
-                          </>
-                        ) : 'N/A'}
+                          <div className="bg-indigo-50/50 dark:bg-indigo-500/5 px-3 py-1.5 rounded-xl border border-indigo-100/50 dark:border-indigo-500/10 inline-block">
+                             <p className="text-xs font-black text-gray-900 dark:text-white tracking-tight">
+                               {branches.find(b => b.id === admin.branchId)?.name}
+                             </p>
+                             <p className="text-[9px] font-bold text-indigo-600/60 uppercase">
+                               {branches.find(b => b.id === admin.branchId)?.branchName}
+                             </p>
+                          </div>
+                        ) : <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Unassigned</span>}
                       </td>
                       <td className="px-6 py-4">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-500/10 dark:text-green-400">
-                          <CheckCircle2 className="w-3 h-3" />
-                          Active
+                        <span className={cn(
+                          "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border",
+                          admin.isAuthorized 
+                            ? "bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20"
+                            : "bg-rose-50 text-rose-600 border-rose-100 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20"
+                        )}>
+                          <div className={cn("w-1.5 h-1.5 rounded-full", admin.isAuthorized ? "bg-emerald-500" : "bg-rose-500")} />
+                          {admin.isAuthorized ? 'Authorized' : 'Suspended'}
                         </span>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex gap-2">
                           <button 
                             onClick={() => handleEditAdmin(admin)}
-                            className="p-2 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-lg transition-colors"
+                            className="bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-indigo-100 dark:border-indigo-500/20 hover:bg-indigo-100 transition-all"
                           >
-                            <Edit2 className="w-4 h-4" />
+                            Edit
                           </button>
                           <button 
                             onClick={() => deleteUser(admin.id)}
-                            className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors"
+                            className="bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-rose-100 dark:border-rose-500/20 hover:bg-rose-100 transition-all"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            Delete
                           </button>
                         </div>
                       </td>
                     </tr>
                   ))}
+                  {filteredAdmins.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-12 text-center text-gray-400 font-black uppercase tracking-[0.2em] text-xs">No admins found matching current filters</td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
+            </div>
             </div>
           </motion.div>
         )}
@@ -450,8 +562,28 @@ export const SuperAdminPage = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+            className="space-y-6"
           >
+            {/* Global Subscription Header */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-indigo-600 p-8 rounded-[2.5rem] text-white shadow-xl shadow-indigo-600/20 relative overflow-hidden">
+               <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-32 -mt-32 blur-3xl" />
+               <div className="relative z-10">
+                 <h3 className="text-2xl font-black uppercase tracking-tight mb-1">Global Subscription Analytics</h3>
+                 <p className="text-indigo-100 text-sm font-medium">Monitoring revenue streams and renewal cycles across all branches</p>
+               </div>
+               <div className="flex items-center bg-white/10 p-1.5 rounded-2xl border border-white/10 relative z-10">
+                  <button 
+                    onClick={() => setBillingInterval('monthly')}
+                    className={cn("px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all", billingInterval === 'monthly' ? "bg-white text-indigo-600 shadow-lg" : "text-white hover:bg-white/5")}
+                  >Monthly</button>
+                  <button 
+                    onClick={() => setBillingInterval('yearly')}
+                    className={cn("px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all", billingInterval === 'yearly' ? "bg-white text-indigo-600 shadow-lg" : "text-white hover:bg-white/5")}
+                  >Yearly</button>
+               </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {subscriptionPlans.map((plan) => (
               <div key={plan.id} className="bg-white dark:bg-[#111111] p-6 rounded-3xl border border-gray-200 dark:border-white/5 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -477,10 +609,12 @@ export const SuperAdminPage = () => {
                   <Zap className="w-6 h-6" />
                 </div>
 
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-1">{plan.name}</h3>
+                <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight mb-2">{plan.name}</h3>
                 <div className="flex items-baseline gap-2 mb-1">
-                  <span className="text-3xl font-black text-gray-900 dark:text-white">₹{plan.price}</span>
-                  <span className="text-sm text-gray-500">/month</span>
+                  <span className="text-4xl font-black text-gray-900 dark:text-white tracking-tighter">
+                    ₹{billingInterval === 'monthly' ? plan.price : plan.annualPrice}
+                  </span>
+                  <span className="text-sm font-bold text-gray-400">/{billingInterval === 'monthly' ? 'month' : 'year'}</span>
                 </div>
                 <div className="flex items-baseline gap-2 mb-6">
                   <span className="text-lg font-bold text-indigo-600 dark:text-indigo-400">₹{plan.annualPrice}</span>
@@ -513,11 +647,19 @@ export const SuperAdminPage = () => {
                   </div>
                 </div>
 
-                <div className="text-xs text-gray-400">
-                  Used by {branches.filter(b => b.planId === plan.id).length} branches
+                <div className="mt-8 pt-8 border-t border-gray-100 dark:border-white/5 grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Active Branches</p>
+                    <p className="text-lg font-black text-gray-900 dark:text-white">{branches.filter(b => b.planId === plan.id).length}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Total Revenue</p>
+                    <p className="text-lg font-black text-gray-900 dark:text-white">₹{getRevenuePerPlan(plan.id).toLocaleString()}</p>
+                  </div>
                 </div>
               </div>
             ))}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

@@ -73,6 +73,16 @@ export const Dashboard = () => {
   const { user, markAnnouncementAsRead } = useAuth();
   const [viewerDoc, setViewerDoc] = React.useState<{ url: string, title: string } | null>(null);
   const [detailPayment, setDetailPayment] = React.useState<any | null>(null);
+  const [showAllRules, setShowAllRules] = React.useState(false);
+
+  const extractBaseColor = (colorStr?: string) => {
+    if (!colorStr) return '#4f46e5';
+    if (!colorStr.includes('gradient')) return colorStr;
+    const match = colorStr.match(/(?:#[a-fA-F0-9]{3,8}|rgba?\([^\)]+\)|hsla?\([^\)]+\))/);
+    return match ? match[0] : '#4f46e5';
+  };
+
+  const themeColor = extractBaseColor(pgConfig?.primaryColor);
   
   useEffect(() => {
     fetchData();
@@ -100,16 +110,37 @@ export const Dashboard = () => {
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
+  const ninetyDaysAgo = new Date();
+  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
   const newTenantsLast30 = (tenants || []).filter(t => new Date(t.joiningDate) > thirtyDaysAgo).length;
-  const tenantTrend = (tenants || []).length > 0 ? `+${Math.round((newTenantsLast30 / tenants.length) * 100)}%` : '0%';
+  const prevTenantsLast30 = (tenants || []).filter(t => {
+    const d = new Date(t.joiningDate);
+    return d > ninetyDaysAgo && d <= thirtyDaysAgo;
+  }).length;
+
+  const tenantGrowth = prevTenantsLast30 > 0 ? Math.round(((newTenantsLast30 - prevTenantsLast30) / prevTenantsLast30) * 100) : 0;
+  const tenantTrend = `${tenantGrowth >= 0 ? '+' : ''}${tenantGrowth}%`;
+
+  // Super Admin Specific Trends
+  const branchesThisMonth = branches.filter(b => b.createdAt && new Date(b.createdAt) > thirtyDaysAgo).length;
+  const activeSubscriptions = branches.filter(b => b.subscriptionStatus === 'active').length;
+  const pendingRenewals = branches.filter(b => {
+    if (!b.subscriptionEndDate) return false;
+    const daysLeft = Math.ceil((new Date(b.subscriptionEndDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+    return daysLeft >= 0 && daysLeft <= 15;
+  }).length;
 
   let statCards = [];
   if (isSuper) {
     const authUsers = useAuth().users || [];
     statCards = [
-      { label: 'Total Branches', value: branches.length, icon: Building2, color: 'bg-indigo-600', trend: 'Active', link: '/branches' },
-      { label: 'Total Admins', value: authUsers.filter(u => u.role === 'admin').length, icon: Users, color: 'bg-blue-500', trend: 'System', link: '/branches' },
+      { label: 'Total Branches', value: branches.length, icon: Building2, color: 'bg-indigo-600', trend: `+${branchesThisMonth} this month`, link: '/branches' },
+      { label: 'Total Tenants', value: (tenants || []).length, icon: Users, color: 'bg-blue-500', trend: `${tenantTrend} growth`, link: '/tenants' },
       { label: 'Total Revenue', value: `₹${(payments || []).filter(p => p.status === 'paid').reduce((sum, p) => sum + p.totalAmount, 0).toLocaleString()}`, icon: TrendingUp, color: 'bg-emerald-500', trend: 'Lifetime', link: '/branches' },
+      { label: 'Active Subscriptions', value: activeSubscriptions, icon: CreditCard, color: 'bg-violet-600', trend: 'Paying', link: '/branches' },
+      { label: 'Pending Renewals', value: pendingRenewals, icon: Clock, color: 'bg-amber-500', trend: 'Next 15 Days', link: '/branches' },
+      { label: 'System Health', value: '100%', icon: ShieldCheck, color: 'bg-emerald-600', trend: 'Operational', link: '/branches' },
     ];
   } else if (isTenant) {
     const pendingElec = tenantPayments.filter(p => p.paymentType === 'electricity' && p.status === 'pending');
@@ -158,7 +189,7 @@ export const Dashboard = () => {
   const canViewReports = checkFeatureAccess('reports');
 
   const revenueData = stats.revenueHistory;
-  const occupancyData = stats.occupancyByFloor;
+  const occupancyData = stats.occupancyByFlat;
 
   const handleDownloadReport = async () => {
     try {
@@ -275,7 +306,10 @@ export const Dashboard = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+      <div className={cn(
+        "grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6",
+        isManagerial ? "lg:grid-cols-4" : (isTenant ? "lg:grid-cols-4" : "lg:grid-cols-3")
+      )}>
         {statCards.map((stat, index) => {
           const CardContent = (
             <motion.div
@@ -384,7 +418,7 @@ export const Dashboard = () => {
 
           <div className="lg:col-span-1">
             <FloorOccupancy 
-              data={occupancyData} 
+              data={stats.occupancyByFlat} 
               primaryColor={pgConfig?.primaryColor} 
             />
           </div>
@@ -536,15 +570,17 @@ export const Dashboard = () => {
                 billUrl={electricityPaymentThisMonth.actualBillUrl}
                 acBillUrl={electricityPaymentThisMonth.acBillUrl}
                 onViewDoc={(url, title) => setViewerDoc({ url, title })}
+                onPay={() => setDetailPayment(electricityPaymentThisMonth)}
+                themeColor={themeColor}
               />
             </div>
           ) : null}
           {isTenant && tenantData ? (
             <div className="lg:col-span-2">
-              <div className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden flex flex-col h-full">
+              <div className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden flex flex-col h-full bg-gradient-to-br from-white to-gray-50/50 dark:from-[#111111] dark:to-white/[0.02]">
                   <div className="p-6 sm:p-8 border-b border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/[0.02]">
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                      <Building2 className="w-5 h-5 text-indigo-600" />
+                    <h3 className="text-lg font-black text-gray-900 dark:text-white flex items-center gap-2 uppercase tracking-tight">
+                      <Building2 className="w-5 h-5" style={{ color: themeColor }} />
                       Manage My Stay
                     </h3>
                   </div>
@@ -561,20 +597,20 @@ export const Dashboard = () => {
                     </div>
 
                     <div className="space-y-4">
-                      <div className="flex items-center justify-between p-4 bg-indigo-50/50 dark:bg-indigo-500/5 rounded-2xl border border-indigo-100 dark:border-indigo-500/10">
+                      <div className="flex items-center justify-between p-4 bg-gray-50/50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/5">
                         <div className="flex items-center gap-3">
-                          <div className="p-2 bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                          <div className="p-2 bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-xl" style={{ background: `${themeColor}20`, color: themeColor }}>
                             <CalendarDays className="w-5 h-5" />
                           </div>
                           <div>
-                            <p className="text-[10px] font-bold text-indigo-600/60 dark:text-indigo-400/60 uppercase tracking-wider">Joining Date</p>
-                            <p className="text-sm font-bold text-gray-900 dark:text-white">{tenantData?.joiningDate}</p>
+                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">Joining Date</p>
+                            <p className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-tight">{tenantData?.joiningDate}</p>
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Status</p>
+                          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">Status</p>
                           <span className={cn(
-                            "text-[10px] font-bold px-2.5 py-1 rounded-lg uppercase tracking-wider",
+                            "text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-widest",
                             tenantData?.status === 'active'
                               ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
                               : "bg-amber-500/10 text-amber-600 border border-amber-500/20"
@@ -587,14 +623,21 @@ export const Dashboard = () => {
                       <button
                         onClick={handleVacateRequest}
                         className={cn(
-                          "w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-bold transition-all shadow-lg text-sm",
+                          "w-full flex items-center justify-center gap-3 py-4 rounded-2xl font-black transition-all shadow-xl text-sm relative group overflow-hidden",
                           tenantData?.vacatingStatus === 'notice_given'
                             ? "bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10 shadow-none border border-gray-200 dark:border-white/5"
-                            : "bg-rose-600 text-white hover:bg-rose-700 shadow-rose-600/20 active:scale-[0.98]"
+                            : "text-white active:scale-[0.98] hover:shadow-2xl hover:-translate-y-0.5"
                         )}
+                        style={tenantData?.vacatingStatus !== 'notice_given' ? { 
+                          background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)',
+                          boxShadow: `0 20px 40px -15px ${themeColor}40`
+                        } : {}}
                       >
-                        <LogOut className="w-5 h-5" />
-                        {tenantData?.vacatingStatus === 'notice_given' ? 'Cancel Vacate Request' : 'Request to Vacate'}
+                         <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+                         <LogOut className="w-5 h-5 relative z-10" />
+                         <span className="relative z-10">
+                           {tenantData?.vacatingStatus === 'notice_given' ? 'Cancel Vacate Request' : 'Request to Vacate'}
+                         </span>
                       </button>
 
                       {tenantData?.vacatingStatus === 'notice_given' && (
@@ -635,18 +678,18 @@ export const Dashboard = () => {
                 <div className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden h-full flex flex-col transition-all hover:shadow-xl hover:shadow-indigo-500/5">
                   <div className="p-6 sm:p-8 border-b border-gray-100 dark:border-white/5 flex items-center justify-between bg-gray-50/50 dark:bg-white/[0.02]">
                     <div className="flex items-center gap-3">
-                      <div className="p-2.5 bg-indigo-50 dark:bg-indigo-500/10 rounded-xl">
-                        <ScrollText className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                      <div className="p-2.5 bg-indigo-50 dark:bg-indigo-500/10 rounded-xl" style={{ background: `${themeColor}15` }}>
+                        <ScrollText className="w-5 h-5" style={{ color: themeColor }} />
                       </div>
                       <div>
                         <h3 className="text-lg font-black text-gray-900 dark:text-white uppercase tracking-tight">Property Guidelines</h3>
-                        <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest leading-none mt-1">Rules & Regulations</p>
+                        <p className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest leading-none mt-1">Rules & Regulations</p>
                       </div>
                     </div>
                   </div>
-                  <div className="p-6 sm:p-10 overflow-y-auto max-h-[500px]">
+                  <div className={cn("p-6 sm:p-10", !showAllRules && "overflow-hidden")}>
                     <div className="grid grid-cols-1 gap-4 sm:gap-6">
-                      {(pgConfig?.rules || []).map((rule, i) => (
+                      {(pgConfig?.rules || []).slice(0, showAllRules ? undefined : 5).map((rule, i) => (
                         <motion.div
                           key={i}
                           initial={{ opacity: 0, y: 10 }}
@@ -654,13 +697,13 @@ export const Dashboard = () => {
                           transition={{ delay: i * 0.05 }}
                           className="flex items-start gap-4 p-5 bg-gray-50/50 dark:bg-white/[0.02] rounded-2xl border border-gray-100/50 dark:border-white/5 group hover:border-indigo-100 dark:hover:border-indigo-500/20 transition-all hover:shadow-lg hover:shadow-indigo-500/5"
                         >
-                          <div className="mt-1 shrink-0 p-1.5 bg-emerald-500/10 rounded-lg">
+                          <div className="mt-1 shrink-0 p-1.5 bg-emerald-500/10 rounded-lg" style={{ background: `${themeColor}15` }}>
                             <CheckCircle2 
-                              className="w-4 h-4 text-emerald-500" 
-                              style={{ color: pgConfig?.primaryColor || '#10b981' }} 
+                              className="w-4 h-4" 
+                              style={{ color: themeColor }} 
                             />
                           </div>
-                          <span className="text-sm font-bold text-gray-700 dark:text-gray-300 leading-relaxed">
+                          <span className="text-sm font-bold text-gray-700 dark:text-gray-300 leading-relaxed uppercase tracking-tight">
                             {rule}
                           </span>
                         </motion.div>
@@ -670,10 +713,19 @@ export const Dashboard = () => {
                           <div className="w-20 h-20 bg-gray-50 dark:bg-white/5 rounded-full flex items-center justify-center mx-auto mb-6">
                             <ScrollText className="w-10 h-10 text-gray-200 dark:text-gray-700" />
                           </div>
-                          <p className="text-sm font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">No specific guidelines found</p>
+                          <p className="text-sm font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">No specific guidelines found</p>
                         </div>
                       )}
                     </div>
+                    
+                    {(pgConfig?.rules || []).length > 5 && (
+                       <button
+                         onClick={() => setShowAllRules(!showAllRules)}
+                         className="w-full mt-8 py-3 bg-gray-100 dark:bg-white/5 rounded-xl text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest hover:bg-gray-200 dark:hover:bg-white/10 transition-all"
+                       >
+                         {showAllRules ? 'Show Less' : `View All ${(pgConfig?.rules || []).length} Guidelines`}
+                       </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -700,34 +752,38 @@ export const Dashboard = () => {
                         <div
                           key={announcement.id}
                           className={cn(
-                            "p-4 rounded-2xl border transition-all group/item relative",
+                            "p-5 rounded-2xl border transition-all group/item relative",
                             isUnseen
                               ? "bg-indigo-50/50 dark:bg-indigo-500/5 border-indigo-200 dark:border-indigo-500/20 shadow-sm"
                               : "bg-gray-50 dark:bg-white/5 border-gray-100 dark:border-white/5"
                           )}
                           onMouseEnter={() => isUnseen && markAnnouncementAsRead(announcement.id)}
                         >
-                          {isUnseen && (
-                            <div className="absolute -top-1 -right-1 w-3 h-3 bg-indigo-600 rounded-full border-2 border-white dark:border-[#111111] z-10" />
-                          )}
-                          <div className="flex justify-between items-start mb-2">
+                          <div className="flex justify-between items-start mb-3">
                             <div className="flex-1">
-                              <h4 className={cn("font-bold text-gray-900 dark:text-white", isUnseen && "text-indigo-600 dark:text-indigo-400")}>
-                                {announcement.title}
-                              </h4>
-                              <span className="text-[10px] text-gray-400 dark:text-gray-500">{announcement.createdAt}</span>
+                              <div className="flex items-center gap-2 mb-1">
+                                <h4 className={cn("font-black text-gray-900 dark:text-white uppercase tracking-tight", isUnseen && "text-indigo-600 dark:text-indigo-400")}>
+                                  {announcement.title}
+                                </h4>
+                                {isUnseen && (
+                                  <span className="px-2 py-0.5 bg-indigo-600 text-white text-[8px] font-black uppercase tracking-widest rounded-full animate-pulse">
+                                    Important
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{announcement.createdAt}</span>
                             </div>
                             {isAdmin && (
                               <button
                                 onClick={() => handleBroadcast(announcement)}
-                                className="p-2 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-xl transition-colors"
+                                className="p-2 bg-white dark:bg-white/10 text-emerald-600 dark:text-emerald-400 rounded-xl shadow-sm border border-gray-100 dark:border-white/5 hover:scale-110 transition-all"
                                 title="Broadcast via WhatsApp"
                               >
                                 <Send className="w-4 h-4" />
                               </button>
                             )}
                           </div>
-                          <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">{announcement.content}</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed font-medium line-clamp-3">{announcement.content}</p>
                         </div>
                       );
                     })}

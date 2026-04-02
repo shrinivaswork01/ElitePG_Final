@@ -89,7 +89,7 @@ interface AppContextType {
     totalTasks: number;
     pendingTasks: number;
     revenueHistory: { name: string, revenue: number }[];
-    occupancyByFloor: { name: string, occupied: number, total: number }[];
+    occupancyByFlat: { name: string, occupied: number, total: number }[];
   };
   currentBranch: PGBranch | undefined;
   currentPlan: SubscriptionPlan | undefined;
@@ -1348,18 +1348,30 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       revenueHistory.push({ name: monthStr, revenue: monthRev });
     }
 
-    const floors = [...new Set((rooms || []).map((r: Room) => r.floor))].sort();
-    const occupancyByFloor = (rooms || []).length > 0 && floors.length > 0 ? floors.map((floor) => {
-      const floorRooms = (rooms || []).filter((r: Room) => r.floor === floor);
-
-      const floorRoomIds = floorRooms.map((r: Room) => r.id);
+    const meterGroups = filteredData.meterGroups || [];
+    const occupancyByFlat = meterGroups.length > 0 ? meterGroups.map((mg) => {
+      const flatRooms = rooms.filter((r: Room) => r.meterGroupId === mg.id);
+      const flatRoomIds = flatRooms.map((r: Room) => r.id);
       const occupied = (tenants || []).filter((t: Tenant) =>
-        t.status === 'active' && floorRoomIds.includes(t.roomId)
+        t.status === 'active' && flatRoomIds.includes(t.roomId)
       ).length;
+      const total = flatRooms.reduce((sum: number, r: Room) => sum + r.totalBeds, 0);
+      return { name: mg.name, occupied, total };
+    }).filter(flat => flat.total > 0) : [];
 
-      const total = floorRooms.reduce((sum: number, r: Room) => sum + r.totalBeds, 0);
-      return { name: `Floor ${floor}`, occupied, total };
-    }) : [{ name: 'Ground Floor', occupied: 0, total: 20 }]; // Synthetic payload prevents Recharts crash when entirely empty
+    // Add rooms not assigned to any flat as "Standard Rooms"
+    const unassignedRooms = rooms.filter((r: Room) => !r.meterGroupId);
+    if (unassignedRooms.length > 0) {
+      const occupied = (tenants || []).filter((t: Tenant) =>
+        t.status === 'active' && unassignedRooms.map(r => r.id).includes(t.roomId)
+      ).length;
+      const total = unassignedRooms.reduce((sum: number, r: Room) => sum + r.totalBeds, 0);
+      occupancyByFlat.push({ name: 'Standard Rooms', occupied, total });
+    }
+
+    if (occupancyByFlat.length === 0) {
+      occupancyByFlat.push({ name: 'Ground Floor', occupied: 0, total: 20 });
+    }
 
     return {
       totalTenants: tenants.length,
@@ -1371,7 +1383,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       totalTasks: (filteredData.tasks || []).length,
       pendingTasks: (filteredData.tasks || []).filter((t: Task) => t.status === 'pending').length,
       revenueHistory,
-      occupancyByFloor
+      occupancyByFlat
     };
   }, [filteredData]);
 
