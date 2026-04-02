@@ -205,9 +205,33 @@ export const Layout = ({ children }: LayoutProps) => {
       <div className="lg:hidden fixed top-4 left-4 z-50 flex items-center gap-2">
         <button
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="p-2 bg-white dark:bg-[#111111] rounded-lg shadow-md border border-gray-200 dark:border-white/5 text-gray-900 dark:text-white"
+          className="p-3 bg-white dark:bg-[#111111] rounded-2xl shadow-xl shadow-indigo-600/10 border border-gray-200 dark:border-white/5 text-gray-900 dark:text-white"
         >
-          {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          <div className="w-6 h-6 relative flex flex-col items-center justify-center gap-1.5">
+            <motion.span 
+              animate={{ 
+                rotate: isMobileMenuOpen ? 45 : 0,
+                y: isMobileMenuOpen ? 7.5 : 0 
+              }}
+              className="w-6 h-0.5 bg-current rounded-full absolute"
+              style={{ top: '25%' }}
+            />
+            <motion.span 
+              animate={{ 
+                opacity: isMobileMenuOpen ? 0 : 1,
+                x: isMobileMenuOpen ? -10 : 0
+              }}
+              className="w-6 h-0.5 bg-current rounded-full"
+            />
+            <motion.span 
+              animate={{ 
+                rotate: isMobileMenuOpen ? -45 : 0,
+                y: isMobileMenuOpen ? -7.5 : 0 
+              }}
+              className="w-6 h-0.5 bg-current rounded-full absolute"
+              style={{ bottom: '25%' }}
+            />
+          </div>
         </button>
       </div>
 
@@ -219,14 +243,16 @@ export const Layout = ({ children }: LayoutProps) => {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
+              transition={{ duration: 0.4, ease: "easeInOut" }}
               onClick={() => setIsMobileMenuOpen(false)}
-              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 lg:hidden"
+              className="fixed inset-0 bg-black/40 backdrop-blur-md z-40 lg:hidden"
             />
             <motion.aside
-              initial={{ x: -280 }}
+              initial={{ x: "-100%" }}
               animate={{ x: 0 }}
-              exit={{ x: -280 }}
-              className="fixed inset-y-0 left-0 w-72 bg-white dark:bg-[#111111] z-50 lg:hidden flex flex-col shadow-2xl"
+              exit={{ x: "-100%" }}
+              transition={{ duration: 0.4, ease: [0.32, 0.72, 0, 1] }}
+              className="fixed inset-y-0 left-0 w-72 bg-white dark:bg-[#0c0c0c] z-50 lg:hidden flex flex-col shadow-2xl border-r border-gray-200 dark:border-white/5"
             >
               <div className="p-6 flex items-center gap-3">
                 {pgConfig?.logoUrl ? (

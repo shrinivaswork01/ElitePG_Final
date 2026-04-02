@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../utils';
 import { Link } from 'react-router-dom';
+import { InviteCodeCard } from '../components/InviteCodeCard';
 import {
   Users,
   DoorOpen,
@@ -29,7 +30,9 @@ import {
   FileSpreadsheet,
   Clock,
   CheckCircle2,
-  Lock
+  Lock,
+  Share2,
+  Star
 } from 'lucide-react';
 import {
   AreaChart,
@@ -68,7 +71,9 @@ export const Dashboard = () => {
     checkFeatureAccess,
     fetchData,
     requestVacating,
-    completeCheckout
+    completeCheckout,
+    userInvites,
+    currentBranch
   } = useApp();
   const { user, markAnnouncementAsRead } = useAuth();
   const [viewerDoc, setViewerDoc] = React.useState<{ url: string, title: string } | null>(null);
@@ -135,12 +140,12 @@ export const Dashboard = () => {
   if (isSuper) {
     const authUsers = useAuth().users || [];
     statCards = [
-      { label: 'Total Branches', value: branches.length, icon: Building2, color: 'bg-indigo-600', trend: `+${branchesThisMonth} this month`, link: '/branches' },
-      { label: 'Total Tenants', value: (tenants || []).length, icon: Users, color: 'bg-blue-500', trend: `${tenantTrend} growth`, link: '/tenants' },
-      { label: 'Total Revenue', value: `₹${(payments || []).filter(p => p.status === 'paid').reduce((sum, p) => sum + p.totalAmount, 0).toLocaleString()}`, icon: TrendingUp, color: 'bg-emerald-500', trend: 'Lifetime', link: '/branches' },
-      { label: 'Active Subscriptions', value: activeSubscriptions, icon: CreditCard, color: 'bg-violet-600', trend: 'Paying', link: '/branches' },
-      { label: 'Pending Renewals', value: pendingRenewals, icon: Clock, color: 'bg-amber-500', trend: 'Next 15 Days', link: '/branches' },
-      { label: 'System Health', value: '100%', icon: ShieldCheck, color: 'bg-emerald-600', trend: 'Operational', link: '/branches' },
+      { label: 'Total Branches', value: branches.length, icon: Building2, color: 'bg-indigo-600', trend: `+${branchesThisMonth} this month`, trendIcon: TrendingUp, trendColor: 'emerald', link: '/branches' },
+      { label: 'Total Tenants', value: (tenants || []).length, icon: Users, color: 'bg-blue-500', trend: `${tenantTrend} growth`, trendIcon: TrendingUp, trendColor: 'emerald', link: '/tenants' },
+      { label: 'Total Revenue', value: `₹${(payments || []).filter(p => p.status === 'paid').reduce((sum, p) => sum + p.totalAmount, 0).toLocaleString()}`, icon: TrendingUp, color: 'bg-emerald-500', trend: 'Lifetime', trendIcon: Star, trendColor: 'emerald', link: '/branches' },
+      { label: 'Active Subscriptions', value: activeSubscriptions, icon: CreditCard, color: 'bg-violet-600', trend: 'Paying', trendIcon: CheckCircle, trendColor: 'emerald', link: '/branches' },
+      { label: 'Pending Renewals', value: pendingRenewals, icon: Clock, color: 'bg-amber-500', trend: 'Next 15 Days', trendIcon: CalendarDays, trendColor: 'amber', link: '/branches' },
+      { label: 'System Health', value: '100%', icon: ShieldCheck, color: 'bg-emerald-600', trend: 'Operational', trendIcon: CheckCircle, trendColor: 'emerald', link: '/branches' },
     ];
   } else if (isTenant) {
     const pendingElec = tenantPayments.filter(p => p.paymentType === 'electricity' && p.status === 'pending');
@@ -181,6 +186,18 @@ export const Dashboard = () => {
       { label: 'Monthly Revenue', value: `₹${(stats.monthlyRevenue || 0).toLocaleString()}`, icon: TrendingUp, color: 'bg-violet-500', trend: 'Current', link: '/payments' },
       { label: 'Open Complaints', value: stats.openComplaints, icon: AlertCircle, color: 'bg-rose-500', trend: 'Active', link: '/complaints' },
     ];
+
+    const branchInvite = userInvites?.find(i => i.branchId === user?.branchId && i.role === 'tenant' && i.status === 'pending');
+    if (branchInvite) {
+      statCards.push({
+        label: 'Quick Invite',
+        value: branchInvite.inviteCode,
+        icon: Share2,
+        color: 'bg-emerald-500',
+        trend: 'Active',
+        isInviteCard: true
+      });
+    }
   }
 
   const isAdmin = user?.role === 'admin';
@@ -332,11 +349,17 @@ export const Dashboard = () => {
                 </div>
                 <div className={cn(
                   "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider",
-                  (stat.trend.startsWith('+') || ['Current', 'Identity', 'Lifetime', 'Active', 'System', 'Paid'].includes(stat.trend))
+                  stat.trendColor === 'emerald'
+                    ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-500/20"
+                    : stat.trendColor === 'amber'
+                    ? "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-500/20"
+                    : (stat.trend.startsWith('+') || ['Current', 'Identity', 'Lifetime', 'Active', 'System', 'Paid'].includes(stat.trend))
                     ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-500/20" 
                     : "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-500/20"
                 )}>
-                  {stat.trend.startsWith('+') ? (
+                  {stat.trendIcon ? (
+                    <stat.trendIcon className="w-3.5 h-3.5" />
+                  ) : stat.trend.startsWith('+') ? (
                     <TrendingUp className="w-3.5 h-3.5" />
                   ) : stat.trend === 'Paid' || stat.trend === 'Active' ? (
                     <CheckCircle className="w-3.5 h-3.5" />
@@ -353,6 +376,17 @@ export const Dashboard = () => {
             </motion.div>
           );
           
+          if (stat.isInviteCard) {
+            return (
+              <InviteCodeCard 
+                key={stat.label}
+                inviteCode={stat.value as string}
+                branchName={currentBranch?.name}
+                variant="compact"
+              />
+            );
+          }
+
           return stat.link ? (
             <Link key={stat.label} to={stat.link} className="block">
               {CardContent}

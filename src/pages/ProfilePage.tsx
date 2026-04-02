@@ -4,9 +4,12 @@ import { motion } from 'motion/react';
 import { User, Mail, Phone, Shield, Save, LogOut, Camera, FileText, Upload, CheckCircle, Clock, AlertCircle, X, Zap, Star, Eye, EyeOff, Copy, Share2, MessageSquare, Check } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
+import { uploadToSupabase, deleteFromSupabase } from '../utils/storage';
 import { cn } from '../utils';
+import { Trash2, Loader2 } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
+import { InviteCodeCard } from '../components/InviteCodeCard';
 
 export const ProfilePage = () => {
   const { user, updateProfile, logout } = useAuth();
@@ -19,9 +22,13 @@ export const ProfilePage = () => {
     phone: user?.phone || '',
     avatar: user?.avatar || '',
     password: user?.password || '',
-    signatureUrl: user?.signatureUrl || '',
+    signatureUrl: (user?.role === 'admin' || user?.role === 'super') 
+      ? (currentBranch?.officialSignatureUrl || user?.signatureUrl || '')
+      : (user?.signatureUrl || ''),
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingSignature, setIsUploadingSignature] = useState(false);
+  const [isViewingSignature, setIsViewingSignature] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [copiedInvite, setCopiedInvite] = useState(false);
 
@@ -54,19 +61,51 @@ export const ProfilePage = () => {
     }
   };
 
-  const handleSignatureUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSignatureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 2 * 1024 * 1024) {
         toast.error('Signature file size exceeds 2MB limit');
         return;
       }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData(prev => ({ ...prev, signatureUrl: reader.result as string }));
-        toast.success('Signature uploaded! Save changes to apply.');
-      };
-      reader.readAsDataURL(file);
+      
+      setIsUploadingSignature(true);
+      try {
+        // 1. Delete old signature if it was a storage URL
+        if (formData.signatureUrl && formData.signatureUrl.includes('signatures/')) {
+          await deleteFromSupabase('signatures', formData.signatureUrl);
+        }
+
+        // 2. Upload new signature
+        const path = `sig_${user?.id}_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+        const publicUrl = await uploadToSupabase('signatures', path, file);
+
+        // 3. Update local state
+        setFormData(prev => ({ ...prev, signatureUrl: publicUrl }));
+        toast.success('Signature uploaded to storage! Save changes to apply.');
+      } catch (err) {
+        console.error('Signature upload failed:', err);
+        toast.error('Failed to upload signature to storage');
+      } finally {
+        setIsUploadingSignature(false);
+      }
+    }
+  };
+
+  const handleRemoveSignature = async () => {
+    if (!formData.signatureUrl) return;
+    
+    setIsUploadingSignature(true);
+    try {
+      if (formData.signatureUrl.includes('signatures/')) {
+        await deleteFromSupabase('signatures', formData.signatureUrl);
+      }
+      setFormData(prev => ({ ...prev, signatureUrl: '' }));
+      toast.success('Signature removed locally. Save changes to persist.');
+    } catch (err) {
+      toast.error('Failed to remove signature file');
+    } finally {
+      setIsUploadingSignature(false);
     }
   };
 
@@ -271,32 +310,73 @@ export const ProfilePage = () => {
                   Official Signature (For Receipts)
                 </label>
                 <div className="flex flex-col sm:flex-row items-center gap-6 p-4 bg-gray-50/50 dark:bg-white/[0.02] rounded-2xl border border-dashed border-gray-200 dark:border-white/10">
-                  <div className="w-40 h-20 bg-white dark:bg-black/20 rounded-xl flex items-center justify-center border border-gray-100 dark:border-white/5 overflow-hidden">
+                  <div className="w-40 h-24 bg-white dark:bg-black/20 rounded-xl flex items-center justify-center border border-gray-100 dark:border-white/5 overflow-hidden relative group/sig shadow-inner">
+                    {isUploadingSignature ? (
+                      <div className="absolute inset-0 flex items-center justify-center bg-white/50 dark:bg-black/50 backdrop-blur-sm z-10 text-indigo-600">
+                        <Loader2 className="w-6 h-6 animate-spin" />
+                      </div>
+                    ) : null}
+                    
                     {formData.signatureUrl ? (
-                      <img src={formData.signatureUrl} alt="Signature" className="max-w-full max-h-full object-contain p-2" />
+                      <>
+                        <img src={formData.signatureUrl} alt="Signature" className="max-w-full max-h-full object-contain p-2" />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/sig:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setIsViewingSignature(true)}
+                            className="p-2 bg-white text-indigo-600 rounded-full shadow-lg hover:scale-110 transition-transform"
+                            title="View Full Size"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </>
                     ) : (
                       <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest text-center px-4">No Signature Added</span>
                     )}
                   </div>
-                  <div className="flex-1 space-y-2 text-center sm:text-left">
-                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                  <div className="flex-1 space-y-3 text-center sm:text-left">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed max-w-xs">
                       Upload a transparent PNG signature. This will appear on all generated payment receipts.
                     </p>
-                    <div className="flex flex-wrap gap-2">
-                      <label className="inline-flex items-center gap-2 px-4 py-2 bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold text-gray-700 dark:text-gray-200 cursor-pointer hover:bg-gray-50 dark:hover:bg-white/10 transition-colors">
+                    <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                      <label className="inline-flex items-center gap-2 px-4 py-2 bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold text-gray-700 dark:text-gray-200 cursor-pointer hover:bg-gray-50 dark:hover:bg-white/10 transition-colors shadow-sm">
                         <Upload className="w-3 h-3" />
-                        {formData.signatureUrl ? 'Change Signature' : 'Upload Signature'}
+                        {formData.signatureUrl ? 'Change' : 'Upload'}
                         <input type="file" accept="image/*" className="hidden" onChange={handleSignatureUpload} />
                       </label>
-                      {formData.signatureUrl && (user?.role === 'admin' || user?.role === 'super') && (
-                        <button
-                          type="button"
-                          onClick={handleSetOfficialSignature}
-                          className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 rounded-xl text-xs font-bold text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors"
-                        >
-                          <CheckCircle className="w-3 h-3" />
-                          Set as Official
-                        </button>
+                      
+                      {formData.signatureUrl && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={handleRemoveSignature}
+                            className="p-2 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-xl hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-colors"
+                            title="Remove Signature"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                          
+                          {(user?.role === 'admin' || user?.role === 'super') && (
+                            <button
+                              type="button"
+                              onClick={handleSetOfficialSignature}
+                              className={cn(
+                                "inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm",
+                                currentBranch?.officialSignatureUrl === formData.signatureUrl 
+                                  ? "bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400"
+                                  : "bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-500/20"
+                              )}
+                              disabled={currentBranch?.officialSignatureUrl === formData.signatureUrl}
+                            >
+                              {currentBranch?.officialSignatureUrl === formData.signatureUrl ? (
+                                <><Check className="w-3 h-3" /> Official</>
+                              ) : (
+                                <><CheckCircle className="w-3 h-3" /> Set as Official</>
+                              )}
+                            </button>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -421,66 +501,10 @@ export const ProfilePage = () => {
 
       {/* Invite Code Card — for admins/managers to share with new tenants */}
       {['super', 'admin', 'manager', 'receptionist'].includes(user?.role || '') && branchInvite && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.08 }}
-          className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm p-6 space-y-4"
-        >
-          <div className="flex items-center gap-3 mb-1">
-            <div className="p-2.5 bg-indigo-50 dark:bg-indigo-500/10 rounded-xl">
-              <Share2 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-gray-900 dark:text-white">Tenant Invite Code</h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Share this with new tenants to let them sign up.</p>
-            </div>
-          </div>
-
-          {/* Code display */}
-          <div className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-white/5 rounded-2xl">
-            <code className="flex-1 text-2xl font-black tracking-widest text-indigo-600 dark:text-indigo-400 font-mono">
-              {branchInvite.inviteCode}
-            </code>
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(branchInvite.inviteCode);
-                setCopiedInvite(true);
-                setTimeout(() => setCopiedInvite(false), 2000);
-              }}
-              className="p-2.5 rounded-xl bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-200 dark:hover:bg-indigo-500/30 transition-all"
-              title="Copy invite code"
-            >
-              {copiedInvite ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-            </button>
-          </div>
-
-          {/* Action buttons */}
-          <div className="flex flex-col sm:flex-row gap-2">
-            <button
-              onClick={() => {
-                const url = `${window.location.origin}/signup?code=${branchInvite.inviteCode}`;
-                navigator.clipboard.writeText(url);
-                toast.success('Signup link copied to clipboard!');
-              }}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-gray-100 dark:bg-white/5 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-bold hover:bg-gray-200 dark:hover:bg-white/10 transition-colors"
-            >
-              <Copy className="w-4 h-4" />
-              Copy Signup Link
-            </button>
-            <button
-              onClick={() => {
-                const url = `${window.location.origin}/signup?code=${branchInvite.inviteCode}`;
-                const msg = `Hi! Please use this link to sign up for our PG:\n${url}\n\nOr use invite code: *${branchInvite.inviteCode}*`;
-                window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
-              }}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded-xl text-sm font-bold hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition-colors"
-            >
-              <MessageSquare className="w-4 h-4" />
-              Share via WhatsApp
-            </button>
-          </div>
-        </motion.div>
+        <InviteCodeCard 
+          inviteCode={branchInvite.inviteCode} 
+          branchName={currentBranch?.name} 
+        />
       )}
 
       {(isTenant || isEmployee) && (
@@ -692,6 +716,40 @@ export const ProfilePage = () => {
                     referrerPolicy="no-referrer"
                   />
                 )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {isViewingSignature && formData.signatureUrl && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsViewingSignature(false)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative w-full max-w-2xl max-h-[80vh] flex flex-col items-center justify-center"
+            >
+              <button 
+                onClick={() => setIsViewingSignature(false)} 
+                className="absolute -top-12 right-0 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full backdrop-blur-md transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+              <div className="bg-white rounded-3xl p-8 shadow-2xl">
+                <img 
+                  src={formData.signatureUrl} 
+                  alt="Signature" 
+                  className="max-w-full max-h-[60vh] object-contain" 
+                />
+                <p className="text-gray-400 text-[10px] items-center text-center font-bold uppercase tracking-widest mt-6">Signature Preview</p>
               </div>
             </motion.div>
           </div>

@@ -1317,11 +1317,11 @@ export const PaymentsPage = () => {
                   />
                 </div>
 
-                <div className="flex gap-3 pt-4 no-print">
+                <div className="flex flex-col sm:flex-row gap-3 pt-4 no-print">
                   <button
                     onClick={() => handleDownloadReceipt()}
                     disabled={isGeneratingPDF}
-                    className="flex-1 flex items-center justify-center gap-2 py-4 bg-emerald-600 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20 disabled:opacity-60"
+                    className="w-full sm:flex-1 flex items-center justify-center gap-2 py-4 bg-emerald-600 text-white rounded-2xl font-black uppercase tracking-tight sm:tracking-widest hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20 disabled:opacity-60 whitespace-nowrap"
                   >
                     {isGeneratingPDF ? (
                       <Loader2 className="w-5 h-5 animate-spin" />
@@ -1333,14 +1333,14 @@ export const PaymentsPage = () => {
                     {isGeneratingPDF ? 'Working...' : selectedPayment.receiptUrl ? 'View Receipt' : 'Generate & Store PDF'}
                   </button>
                   {selectedPayment.receiptUrl && (
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 w-full sm:w-auto">
                       <button
                         onClick={() => {
                           const tenant = tenants.find(t => t.id === selectedPayment.tenantId);
                           const text = `Hello ${tenant?.name || ''}, your payment receipt for ${format(parseISO(`${selectedPayment.month}-01`), 'MMMM yyyy')} is ready. View it here: ${selectedPayment.receiptUrl}`;
                           window.open(`https://wa.me/${tenant?.phone ? '91'+tenant.phone : ''}?text=${encodeURIComponent(text)}`, '_blank');
                         }}
-                        className="p-4 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-2xl font-bold hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition-all shadow-sm"
+                        className="flex-1 sm:flex-none p-4 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-2xl font-bold hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition-all shadow-sm flex items-center justify-center"
                         title="Share on WhatsApp"
                       >
                         <MessageCircle className="w-5 h-5" />
@@ -1358,14 +1358,14 @@ export const PaymentsPage = () => {
                             toast.success('Link copied to clipboard!');
                           }
                         }}
-                        className="p-4 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-2xl font-bold hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-all shadow-sm"
+                        className="flex-1 sm:flex-none p-4 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-2xl font-bold hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-all shadow-sm flex items-center justify-center"
                         title="Share / Copy Link"
                       >
                         <Share2 className="w-5 h-5" />
                       </button>
                       <button
                         onClick={() => window.open(selectedPayment.receiptUrl, '_blank')}
-                        className="p-4 bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-gray-400 rounded-2xl font-bold hover:bg-gray-100 dark:hover:bg-white/10 transition-all shadow-sm"
+                        className="flex-1 sm:flex-none p-4 bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-gray-400 rounded-2xl font-bold hover:bg-gray-100 dark:hover:bg-white/10 transition-all shadow-sm flex items-center justify-center"
                         title="Download/Open"
                       >
                         <Download className="w-5 h-5" />

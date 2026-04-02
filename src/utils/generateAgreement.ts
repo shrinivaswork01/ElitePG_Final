@@ -194,9 +194,29 @@ export const generateAgreementPDF = async (
       y = 30;
     }
 
-    // Signatures — prefer the freshly-uploaded signature from the modal
-    const tenantSig = tenantSignatureDataUrl || tenant?.signatureUrl || tenant?.signature_url || tenant?.users?.signature_url;
-    const ownerSig = owner?.signatureUrl || branch?.officialSignatureUrl;
+    // ── Signatures — robustly handle both Base64 and remote URLs
+    const getSignatureDataUrl = async (url?: string): Promise<string | null> => {
+      if (!url || url.length < 10) return null;
+      if (url.startsWith('data:image')) return url;
+      try {
+        const response = await fetch(url);
+        const blob = await response.blob();
+        return await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(blob);
+        });
+      } catch (e) {
+        console.error('Failed to fetch signature:', url, e);
+        return null;
+      }
+    };
+
+    const tenantSigUrl = tenantSignatureDataUrl || tenant?.signatureUrl || tenant?.signature_url || tenant?.users?.signature_url;
+    const ownerSigUrl = owner?.signatureUrl || branch?.officialSignatureUrl;
+
+    const tenantSig = await getSignatureDataUrl(tenantSigUrl);
+    const ownerSig = await getSignatureDataUrl(ownerSigUrl);
 
     const ownerSigName = owner?.name || 'Admin';
     const tenantSigName = tenant?.name || 'Tenant';
@@ -215,17 +235,17 @@ export const generateAgreementPDF = async (
     y += 6;
 
     // Draw signature images
-    if (tenantSig && tenantSig.length > 50) {
+    if (tenantSig) {
       try {
-        const isPNG = tenantSig.startsWith('data:image/png');
+        const isPNG = tenantSig.toLowerCase().includes('image/png');
         doc.addImage(tenantSig, isPNG ? 'PNG' : 'JPEG', leftX, y, 45, 18);
-      } catch (e) { }
+      } catch (e) { console.error('Tenant sig render fail:', e); }
     }
-    if (ownerSig && ownerSig.length > 50) {
+    if (ownerSig) {
       try {
-        const isPNG = ownerSig.startsWith('data:image/png');
+        const isPNG = ownerSig.toLowerCase().includes('image/png');
         doc.addImage(ownerSig, isPNG ? 'PNG' : 'JPEG', rightX, y, 45, 18);
-      } catch (e) { }
+      } catch (e) { console.error('Owner sig render fail:', e); }
     }
     y += 22;
 
