@@ -61,7 +61,8 @@ export const SubscriptionPage = () => {
     setIsProcessing(true);
 
     const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY || 'rzp_test_SPuhgTcTc6kl88';
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim();
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
 
     const scriptLoaded = await loadRazorpayScript();
     if (!scriptLoaded) {
@@ -71,12 +72,13 @@ export const SubscriptionPage = () => {
     }
 
     const razorpayPlanId = activeBilling === 'annual' ? plan.razorpayAnnualPlanId : plan.razorpayMonthlyPlanId;
-    const useSubscriptionFlow = !!razorpayPlanId && !!supabaseUrl;
+    const useSubscriptionFlow = !!razorpayPlanId && !!supabaseUrl && !!anonKey;
 
     console.log('Subscription Flow Check:', { 
       activeBilling, 
       razorpayPlanId, 
       supabaseUrl: !!supabaseUrl, 
+      anonKeyValid: anonKey?.startsWith('eyJ'),
       useSubscriptionFlow 
     });
 
@@ -88,8 +90,8 @@ export const SubscriptionPage = () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'apikey': anonKey,
+            'Authorization': `Bearer ${anonKey}`,
           },
           body: JSON.stringify({
             razorpayPlanId,
@@ -138,7 +140,13 @@ export const SubscriptionPage = () => {
         rzp.on('payment.failed', (r: any) => { setIsProcessing(false); toast.error(`Payment failed: ${r.error.description}`); });
         rzp.open();
       } catch (err: any) {
-        toast.error('Failed to connect to subscription service.');
+        console.error('Subscription Creation Error:', err);
+        const errorDetails = err instanceof TypeError && err.message.includes('fetch') 
+          ? 'Network error: Edge Function may not be deployed or is unreachable.'
+          : err.message || 'Unexpected error occurred.';
+          
+        toast.error(`Subscription Error: ${errorDetails}`, { duration: 5000 });
+        toast('Tip: Verify Edge Functions are deployed & Razorpay secrets set in Supabase.', { icon: '💡', duration: 7000 });
         setIsProcessing(false);
       }
     } else {
@@ -179,6 +187,18 @@ export const SubscriptionPage = () => {
         <h2 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">Subscription Plan</h2>
         <p className="text-gray-500 dark:text-gray-400">Manage your branch subscription and features.</p>
       </div>
+
+      {!import.meta.env.VITE_SUPABASE_ANON_KEY?.trim().startsWith('eyJ') && (
+        <div className="bg-rose-500/10 border-2 border-rose-500/50 p-6 rounded-[2rem] flex items-center gap-4 text-rose-600 dark:text-rose-400">
+           <div className="w-12 h-12 bg-rose-500 text-white rounded-2xl flex items-center justify-center shrink-0 shadow-lg shadow-rose-500/20">
+             <ShieldCheck className="w-6 h-6" />
+           </div>
+           <div>
+             <p className="font-black uppercase tracking-tight text-lg">⚠️ Invalid Supabase API Key Detected</p>
+             <p className="text-sm font-bold opacity-80">Your VITE_SUPABASE_ANON_KEY in .env does not look like a Supabase key. It should start with "eyJ". Please check Step 3 in the deployment guide.</p>
+           </div>
+        </div>
+      )}
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}
