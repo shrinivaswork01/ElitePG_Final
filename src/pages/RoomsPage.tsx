@@ -271,6 +271,7 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
       type: room.type || 'Non-AC',
       price: room.price ?? 6000,
       description: room.description || '',
+      meterGroupId: room.meterGroupId || room.meter_group_id || '',
     };
     const amenities = Array.isArray(room.amenities) ? room.amenities : 
                      (typeof room.amenities === 'string' ? JSON.parse(room.amenities) : []);

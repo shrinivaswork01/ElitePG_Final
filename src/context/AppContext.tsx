@@ -18,6 +18,7 @@ interface AppContextType {
   salaryPayments: SalaryPayment[];
   tasks: Task[];
   pgConfig: PGConfig | null;
+  pgConfigs: PGConfig[];
   branches: PGBranch[];
   subscriptionPlans: SubscriptionPlan[];
   userInvites: UserInvite[];
@@ -65,9 +66,9 @@ interface AppContextType {
   updateTask: (id: string, updates: Partial<Task>) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
 
-  updatePGConfig: (updates: Partial<PGConfig>) => Promise<void>;
+  updatePGConfig: (updates: Partial<PGConfig>, branchId?: string) => Promise<void>;
 
-  addBranch: (branch: Omit<PGBranch, 'id' | 'createdAt' | 'planId' | 'subscriptionStatus' | 'subscriptionEndDate'>) => Promise<void>;
+  addBranch: (branch: Omit<PGBranch, 'id' | 'createdAt' | 'planId' | 'subscriptionStatus' | 'subscriptionEndDate'>) => Promise<string | null>;
   updateBranch: (id: string, updates: Partial<PGBranch>) => Promise<void>;
   deleteBranch: (id: string) => Promise<void>;
 
@@ -159,6 +160,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const tenantFilter = isTenant ? { user_id: userId } : branchFilter;
       const paymentFilter = isTenant ? { tenant_id: activeTenantId } : branchFilter;
       const complaintFilter = isTenant ? { tenant_id: activeTenantId } : branchFilter;
+      // Admins should see all KYC regardless of kycFilter if it's potentially mismatching branch_id, but we keep it for performance
       const kycFilter = isTenant ? { tenant_id: activeTenantId } : branchFilter;
 
       const [
@@ -186,7 +188,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         supabase.from('payments').select('*').match(paymentFilter),
         supabase.from('complaints').select('*').match(complaintFilter),
         supabase.from('employees').select('*').match(branchFilter),
-        supabase.from('kyc_documents').select('*').match(kycFilter),
+        supabase.from('kyc_documents').select('*'), // Filtered locally in filteredData for better resilience and legacy support
         supabase.from('announcements').select('*').match(branchFilter),
         supabase.from('salary_payments').select('*').match(branchFilter),
         supabase.from('tasks').select('*').match(branchFilter),
@@ -261,7 +263,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           theme: c.theme,
           defaultPaymentDueDate: c.default_payment_due_date || 1,
           defaultLateFeeDay: c.default_late_fee_day || 5,
-          lateFeeAmount: c.late_fee_amount || 50
+          lateFeeAmount: c.late_fee_amount || 50,
+          razorpayKeyId: c.razorpay_key_id
         })),
         userInvites: (userInvites || []).map(i => ({
           id: i.id, inviteCode: i.invite_code, email: i.email, branchId: i.branch_id, role: i.role as any, status: i.status as any, createdAt: i.created_at
@@ -328,7 +331,19 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       payments: (data.payments || []).filter((p: Payment) => p.branchId === branchId),
       complaints: (data.complaints || []).filter((c: Complaint) => c.branchId === branchId),
       employees: (data.employees || []).filter((e: Employee) => e.branchId === branchId),
-      kycs: (data.kycs || []).filter((k: KYCData) => k.branchId === branchId),
+      kycs: (data.kycs || []).filter((k: KYCData) => {
+        if (k.branchId === branchId) return true;
+        // Resilient check: If branchId matches on the tenant/employee associated with the KYC
+        if (k.tenantId) {
+          const t = (data.tenants || []).find((t: any) => t.id === k.tenantId);
+          if (t && t.branchId === branchId) return true;
+        }
+        if (k.employeeId) {
+          const e = (data.employees || []).find((e: any) => e.id === k.employeeId);
+          if (e && e.branchId === branchId) return true;
+        }
+        return false;
+      }),
       announcements: (data.announcements || []).filter((a: Announcement) => a.branchId === branchId),
       salaryPayments: (data.salaryPayments || []).filter((p: SalaryPayment) => p.branchId === branchId),
       tasks: (data.tasks || []).filter((t: Task) => t.branchId === branchId),
@@ -519,11 +534,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (finalRentAgreementUrl !== undefined) dbUpdates.rent_agreement_url = finalRentAgreementUrl;
     if (kycDoc) dbUpdates.kyc_status = newKycStatus;
 
-    // Optimistically update local state immediately so rent/fields reflect instantly
+    // Optimistically update local state immediately
     if (Object.keys(updates).length > 0 || finalRentAgreementUrl || kycDoc) {
-      applyOptimistic(prev => ({
-        ...prev,
-        tenants: prev.tenants.map((t: any) =>
+      applyOptimistic(prev => {
+        const nextTenants = prev.tenants.map((t: any) =>
           t.id === id ? { 
             ...t, 
             ...updates, 
@@ -532,8 +546,27 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             ...(updates.kycStatus ? { kyc_status: updates.kycStatus } : {}),
             ...(updates.status ? { status: updates.status } : {})
           } : t
-        )
-      }));
+        );
+
+        // Also optimistically update kycs array if a kycDoc is provided
+        let nextKycs = prev.kycs;
+        if (kycDoc && finalKycUrl) {
+           const tempKyc: KYCData = {
+             id: `temp-${Date.now()}`,
+             tenantId: id,
+             documentType: kycDoc.type,
+             documentUrl: finalKycUrl,
+             status: newKycStatus || 'pending',
+             submittedAt: new Date().toISOString().split('T')[0],
+             branchId: (nextTenants.find((t: any) => t.id === id) as any)?.branchId || user?.branchId || ''
+           };
+           // Remove any existing KYC for this tenant first
+           nextKycs = nextKycs.filter((k: any) => k.tenantId !== id);
+           nextKycs = [...nextKycs, tempKyc];
+        }
+
+        return { ...prev, tenants: nextTenants, kycs: nextKycs };
+      });
     }
 
     const { error } = await supabase.from('tenants').update(dbUpdates).eq('id', id);
@@ -591,7 +624,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
     await supabase.from('complaints').delete().eq('tenant_id', id);
     await supabase.from('payments').delete().eq('tenant_id', id);
-    await supabase.from('kycs').delete().eq('tenant_id', id);
     await supabase.from('kyc_documents').delete().eq('tenant_id', id);
     
     // Delete tenant record FIRST
@@ -937,10 +969,28 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     // Optimistically update local state immediately
     if (Object.keys(updates).length > 0 || kycDoc) {
-      applyOptimistic(prev => ({
-        ...prev,
-        employees: prev.employees.map((e: any) => e.id === id ? { ...e, ...updates, ...(kycDoc ? { kycStatus: newKycStatus } : {}) } : e)
-      }));
+      applyOptimistic(prev => {
+        const nextEmployees = prev.employees.map((e: any) => 
+          e.id === id ? { ...e, ...updates, ...(kycDoc ? { kycStatus: newKycStatus } : {}) } : e
+        );
+
+        let nextKycs = prev.kycs;
+        if (kycDoc && finalKycUrl) {
+          const tempKyc: KYCData = {
+            id: `temp-e-${Date.now()}`,
+            employeeId: id,
+            documentType: kycDoc.type,
+            documentUrl: finalKycUrl,
+            status: newKycStatus || 'pending',
+            submittedAt: new Date().toISOString().split('T')[0],
+            branchId: (nextEmployees.find((e: any) => e.id === id) as any)?.branchId || user?.branchId || ''
+          };
+          nextKycs = nextKycs.filter((k: any) => k.employeeId !== id);
+          nextKycs = [...nextKycs, tempKyc];
+        }
+
+        return { ...prev, employees: nextEmployees, kycs: nextKycs };
+      });
     }
 
     const { error } = await supabase.from('employees').update(dbUpdates).eq('id', id);
@@ -1170,8 +1220,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await refetch(supabase.from('tasks').delete().eq('id', id), 'Task deleted'); 
   };
 
-  const updatePGConfig = async (updates: Partial<PGConfig>) => {
-    const targetBranch = filteredData.currentBranch?.id || user?.branchId;
+  const updatePGConfig = async (updates: Partial<PGConfig>, branchId?: string) => {
+    const targetBranch = branchId || filteredData.currentBranch?.id || user?.branchId;
     if (!targetBranch) { toast.error("No active branch selected."); return; }
     const dbUpdates: any = {};
     if (updates.rules !== undefined) dbUpdates.rules = updates.rules;
@@ -1185,6 +1235,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.defaultPaymentDueDate !== undefined) dbUpdates.default_payment_due_date = updates.defaultPaymentDueDate;
     if (updates.defaultLateFeeDay !== undefined) dbUpdates.default_late_fee_day = updates.defaultLateFeeDay;
     if (updates.lateFeeAmount !== undefined) dbUpdates.late_fee_amount = updates.lateFeeAmount;
+    if (updates.razorpayKeyId !== undefined) dbUpdates.razorpay_key_id = updates.razorpayKeyId;
 
     // Optimistically update PG config to prevent UI lagging on changes
     applyOptimistic(prev => {
@@ -1209,7 +1260,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             theme: updates.theme as any,
             defaultPaymentDueDate: updates.defaultPaymentDueDate,
             defaultLateFeeDay: updates.defaultLateFeeDay,
-            lateFeeAmount: updates.lateFeeAmount
+            lateFeeAmount: updates.lateFeeAmount,
+            razorpayKeyId: updates.razorpayKeyId
           }]
         };
       }
@@ -1241,7 +1293,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }).select().single();
     if (error) { toast.error(error.message); return; }
     if (bData) {
-      // Create initial config
+      // Create initial config. Note: updatePGConfig can be called subsequently to add more details.
       await supabase.from('pg_configs').insert({ branch_id: bData.id, rules: [], role_permissions: [] });
       
       // Auto-generate a random 8-character invite code for this branch
@@ -1255,7 +1307,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       
       toast.success('Branch added successfully');
       await fetchData();
+      return bData.id;
     }
+    return null;
   };
 
   const updateBranch = async (id: string, updates: Partial<PGBranch>) => {

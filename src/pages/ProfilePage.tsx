@@ -31,6 +31,7 @@ export const ProfilePage = () => {
   const [isViewingSignature, setIsViewingSignature] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [copiedInvite, setCopiedInvite] = useState(false);
+  const [isSubmittingKYC, setIsSubmittingKYC] = useState(false);
 
   // Branch invite code for tenant onboarding
   const branchInvite = userInvites?.find(i => i.branchId === user?.branchId && i.role === 'tenant' && i.status === 'pending');
@@ -128,15 +129,22 @@ export const ProfilePage = () => {
     }
   };
 
-  const handleKYCSubmit = () => {
+  const handleKYCSubmit = async () => {
     if (currentData && kycFile) {
-      if (isTenant) {
-        updateTenant(currentData.id, {}, { type: kycType, file: kycFile.file, url: kycFile.url });
-      } else {
-        updateEmployee(currentData.id, {}, { type: kycType, file: kycFile.file, url: kycFile.url });
+      setIsSubmittingKYC(true);
+      try {
+        if (isTenant) {
+          await updateTenant(currentData.id, {}, { type: kycType, file: kycFile.file, url: kycFile.url });
+        } else {
+          await updateEmployee(currentData.id, {}, { type: kycType, file: kycFile.file, url: kycFile.url });
+        }
+        toast.success('KYC document submitted for verification!');
+        setKycFile(null);
+      } catch (err) {
+        toast.error('Failed to submit KYC document');
+      } finally {
+        setIsSubmittingKYC(false);
       }
-      toast.success('KYC document submitted for verification!');
-      setKycFile(null);
     }
   };
 
@@ -613,9 +621,11 @@ export const ProfilePage = () => {
                     {kycFile && (
                       <button
                         onClick={handleKYCSubmit}
-                        className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
+                        disabled={isSubmittingKYC}
+                        className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                       >
-                        Resubmit KYC
+                        {isSubmittingKYC && <Loader2 className="w-5 h-5 animate-spin" />}
+                        {isSubmittingKYC ? 'Submitting...' : 'Resubmit KYC'}
                       </button>
                     )}
                   </div>
@@ -649,9 +659,11 @@ export const ProfilePage = () => {
                 {kycFile && (
                   <button
                     onClick={handleKYCSubmit}
-                    className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
+                    disabled={isSubmittingKYC}
+                    className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                   >
-                    Submit KYC for Verification
+                    {isSubmittingKYC && <Loader2 className="w-5 h-5 animate-spin" />}
+                    {isSubmittingKYC ? 'Submitting...' : 'Submit KYC for Verification'}
                   </button>
                 )}
               </div>

@@ -38,8 +38,10 @@ export const KYCPage = () => {
     const employee = employees.find(e => e.id === k.employeeId);
     const person = tenant || employee;
 
-    const matchesSearch = person?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      person?.email.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = searchTerm === '' || (
+      person?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      person?.email?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
     const matchesStatus = filterStatus === 'all' || k.status === filterStatus;
     const matchesPersonType = personFilter === 'all' || 
       (personFilter === 'tenant' && !!k.tenantId) || 
@@ -84,8 +86,10 @@ export const KYCPage = () => {
       const employee = employees.find(e => e.id === k.employeeId);
       const person = tenant || employee;
 
-      const matchesSearch = person?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        person?.email.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesSearch = searchTerm === '' || (
+        person?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        person?.email?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
       const matchesStatus = filterStatus === 'all' || filterStatus === 'pending';
       const matchesPersonType = personFilter === 'all' || 
         (personFilter === 'tenant' && !!k.tenantId) || 
@@ -248,7 +252,7 @@ export const KYCPage = () => {
                       {person?.name?.charAt(0) || '?'}
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-gray-900 dark:text-white">{person?.name}</h3>
+                      <h3 className="text-sm font-bold text-gray-900 dark:text-white">{person?.name || 'Unknown Resident'}</h3>
                       <p className="text-[10px] text-indigo-600 font-bold uppercase tracking-wider">{role}</p>
                     </div>
                   </div>
@@ -411,8 +415,11 @@ export const KYCPage = () => {
                   <div className="space-y-6 flex-1">
                     <div>
                       <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1">Person</p>
-                      <p className="text-lg font-bold text-gray-900 dark:text-white">
-                        {tenants.find(t => t.id === selectedKYC.tenantId)?.name || employees.find(e => e.id === selectedKYC.employeeId)?.name}
+                      <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                        {selectedKYC.tenantId ? tenants.find(t => t.id === selectedKYC.tenantId)?.name || 'Unknown Tenant' : employees.find(e => e.id === (selectedKYC as any).employeeId)?.name || 'Unknown Employee'}
+                      </h3>
+                      <p className="text-gray-500 dark:text-gray-400 capitalize">
+                        {selectedKYC.tenantId ? 'Tenant Verification' : 'Employee Verification'}
                       </p>
                     </div>
                     <div>

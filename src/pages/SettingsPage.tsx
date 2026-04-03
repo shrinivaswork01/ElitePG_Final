@@ -37,7 +37,8 @@ export const SettingsPage = () => {
         rolePermissions: pgConfig.rolePermissions || [],
         defaultPaymentDueDate: pgConfig.defaultPaymentDueDate || 1,
         defaultLateFeeDay: pgConfig.defaultLateFeeDay || 5,
-        lateFeeAmount: pgConfig.lateFeeAmount || 50
+        lateFeeAmount: pgConfig.lateFeeAmount || 50,
+        razorpayKeyId: pgConfig.razorpayKeyId || ''
       });
     }
   }, [pgConfig]);
@@ -48,7 +49,8 @@ export const SettingsPage = () => {
     settingsForm.primaryColor !== (pgConfig.primaryColor || GRADIENT_THEME) ||
     settingsForm.defaultPaymentDueDate !== (pgConfig.defaultPaymentDueDate || 1) ||
     settingsForm.defaultLateFeeDay !== (pgConfig.defaultLateFeeDay || 5) ||
-    settingsForm.lateFeeAmount !== (pgConfig.lateFeeAmount || 50)
+    settingsForm.lateFeeAmount !== (pgConfig.lateFeeAmount || 50) ||
+    settingsForm.razorpayKeyId !== (pgConfig.razorpayKeyId || '')
   );
 
   const handleSaveAll = async () => {
@@ -255,6 +257,33 @@ export const SettingsPage = () => {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Payment Integrations Section */}
+      <div className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-200 dark:border-white/5 overflow-hidden shadow-sm">
+        <div className="p-6 border-b border-gray-100 dark:border-white/5">
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white uppercase tracking-tight">Payment Integrations</h3>
+          <p className="text-xs text-gray-500">Configure online collection directly to your branch bank account</p>
+        </div>
+        <div className="p-6 space-y-6">
+          <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+            <div className="text-sm text-blue-800 dark:text-blue-300">
+              <strong>Individual Branch Payments:</strong> Setting your Razorpay Key ID will route all online tenant rent and electricity payments directly to your own Razorpay account. Leave this blank if you do not want to accept online payments.
+            </div>
+          </div>
+          
+          <div className="space-y-2 max-w-2xl">
+            <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Razorpay Key ID</label>
+            <input
+              type="text"
+              value={settingsForm.razorpayKeyId || ''}
+              onChange={(e) => setSettingsForm({ ...settingsForm, razorpayKeyId: e.target.value.trim() })}
+              placeholder="e.g. rzp_live_xxxxxxxxxxxx"
+              className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white font-mono placeholder:font-sans"
+            />
           </div>
         </div>
       </div>

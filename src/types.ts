@@ -289,4 +289,5 @@ export interface PGConfig {
   defaultPaymentDueDate?: number;
   defaultLateFeeDay?: number;
   lateFeeAmount?: number;
+  razorpayKeyId?: string;
 }

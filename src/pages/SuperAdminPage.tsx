@@ -38,7 +38,9 @@ export const SuperAdminPage = () => {
     updateBranchSubscription,
     userInvites,
     tenants,
-    rooms
+    rooms,
+    pgConfigs,
+    updatePGConfig
   } = useApp();
   const { users, register, deleteUser, updateUser } = useAuth();
   const [activeTab, setActiveTab] = useState<'branches' | 'admins' | 'subscriptions'>('branches');
@@ -60,7 +62,7 @@ export const SuperAdminPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
 
   // Branch Form State
-  const [branchForm, setBranchForm] = useState({ name: '', branchName: '', address: '', phone: '' });
+  const [branchForm, setBranchForm] = useState({ name: '', branchName: '', address: '', phone: '', razorpayKeyId: '' });
   
   // Admin Form State
   const [adminForm, setAdminForm] = useState({ name: '', username: '', email: '', branchId: '', password: '123456' });
@@ -84,14 +86,20 @@ export const SuperAdminPage = () => {
     endDate: ''
   });
 
-  const handleAddBranch = (e: React.FormEvent) => {
+  const handleAddBranch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (editingBranch) {
-      updateBranch(editingBranch.id, branchForm);
+      await updateBranch(editingBranch.id, branchForm);
+      if (branchForm.razorpayKeyId !== undefined) {
+        await updatePGConfig({ razorpayKeyId: branchForm.razorpayKeyId }, editingBranch.id);
+      }
     } else {
-      addBranch(branchForm);
+      const newId = await addBranch(branchForm);
+      if (newId && branchForm.razorpayKeyId) {
+        await updatePGConfig({ razorpayKeyId: branchForm.razorpayKeyId }, newId as string);
+      }
     }
-    setBranchForm({ name: '', branchName: '', address: '', phone: '' });
+    setBranchForm({ name: '', branchName: '', address: '', phone: '', razorpayKeyId: '' });
     setIsAddingBranch(false);
     setEditingBranch(null);
   };
@@ -142,11 +150,13 @@ export const SuperAdminPage = () => {
 
   const handleEditBranch = (branch: PGBranch) => {
     setEditingBranch(branch);
+    const existingConfig = pgConfigs?.find(c => c.branchId === branch.id);
     setBranchForm({ 
       name: branch.name, 
       branchName: branch.branchName || '', 
       address: branch.address, 
-      phone: branch.phone 
+      phone: branch.phone,
+      razorpayKeyId: existingConfig?.razorpayKeyId || ''
     });
     setIsAddingBranch(true);
   };
@@ -192,7 +202,7 @@ export const SuperAdminPage = () => {
             <button
               onClick={() => {
                 setEditingBranch(null);
-                setBranchForm({ name: '', branchName: '', address: '', phone: '' });
+                setBranchForm({ name: '', branchName: '', address: '', phone: '', razorpayKeyId: '' });
                 setIsAddingBranch(true);
               }}
               className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl transition-all shadow-sm"
@@ -943,6 +953,17 @@ export const SuperAdminPage = () => {
                     className="w-full px-4 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
                     placeholder="Contact number"
                   />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Razorpay Key ID <span className="text-gray-400 font-normal">(Optional)</span></label>
+                  <input
+                    type="text"
+                    value={branchForm.razorpayKeyId}
+                    onChange={(e) => setBranchForm({ ...branchForm, razorpayKeyId: e.target.value.trim() })}
+                    className="w-full px-4 py-2 bg-indigo-50/50 dark:bg-indigo-500/5 border border-indigo-100 dark:border-indigo-500/20 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-mono"
+                    placeholder="e.g. rzp_live_xxxxx"
+                  />
+                  <p className="text-[10px] text-gray-500 mt-1">Routes tenant payments directly to this branch's gateway account.</p>
                 </div>
                 <div className="flex gap-3 mt-6">
                   <button

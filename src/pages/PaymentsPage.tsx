@@ -62,6 +62,7 @@ export const PaymentsPage = () => {
   const [detailPayment, setDetailPayment] = useState<any | null>(null);
   const [viewerDoc, setViewerDoc] = useState<{ url: string, title: string } | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState<{ isOpen: boolean, paymentId?: string, bulkIds?: string[] } | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [isPoliciesModalOpen, setIsPoliciesModalOpen] = useState(false);
   const [policiesForm, setPoliciesForm] = useState({
@@ -246,7 +247,7 @@ export const PaymentsPage = () => {
             )}
             {['admin', 'manager'].includes(user?.role || '') && (
               <DropdownItem icon={<Trash2 className="w-4 h-4" />} label="Delete Payment" onClick={() => {
-                if (window.confirm('Delete this payment?')) { deletePayment(p.id); refetchPayments(); }
+                setDeleteConfirmation({ isOpen: true, paymentId: p.id });
               }} danger />
             )}
           </DropdownMenu>
@@ -363,6 +364,7 @@ export const PaymentsPage = () => {
   }, [isTenant, tenantData, currentMonth, payments, pgConfig?.defaultPaymentDueDate]);
 
   const handleOnlinePayment = async () => {
+    if (isSubmitting) return;
     if (tenantData && payingDue) {
       const due = payingDue;
 
@@ -426,6 +428,13 @@ export const PaymentsPage = () => {
       if (isOffline) {
         await recordPaymentSuccess('Offline');
       } else {
+        const branchRazorpayKey = pgConfig?.razorpayKeyId;
+
+        if (!branchRazorpayKey) {
+          toast.error('Online payments are not configured by your Branch Admin yet. Please pay offline or contact administration.');
+          return;
+        }
+
         const res = await loadRazorpayScript();
 
         if (!res) {
@@ -434,7 +443,7 @@ export const PaymentsPage = () => {
         }
 
         const options = {
-          key: import.meta.env.VITE_RAZORPAY_KEY || 'rzp_test_SPuhgTcTc6kl88',
+          key: branchRazorpayKey,
           amount: totalAmount * 100, // Amount in paise
           currency: 'INR',
           name: 'ElitePG',
@@ -474,38 +483,65 @@ export const PaymentsPage = () => {
   const handleAddPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPayment.tenantId) {
-      const existingPayment = payments.find(p => p.tenantId === newPayment.tenantId && p.month === newPayment.month && p.paymentType === newPayment.paymentType);
-      if (existingPayment) {
-        toast.error(`A ${newPayment.paymentType} payment record already exists for this tenant for ${newPayment.month}.`);
-        return;
-      }
+      setIsSubmitting(true);
+      try {
+        const tenant = tenants.find(t => t.id === newPayment.tenantId);
+        
+        // --- GUARD: ELECTRICITY BILL CHECK ---
+        let linkedBillId = undefined;
+        if (newPayment.paymentType === 'electricity') {
+          const room = rooms.find(r => r.id === (tenant?.roomId || (tenant as any)?.room_id));
+          if (!room?.meterGroupId) {
+            toast.error("This tenant's room is not assigned to a flat/meter group.");
+            return;
+          }
+          
+          const bill = await fetchElectricityBill(room.meterGroupId, newPayment.month);
+          if (!bill) {
+            toast.error(`No electricity bill generated for ${room.roomNumber} in ${format(parseISO(newPayment.month + '-01'), 'MMMM yyyy')}. Please generate the bill first.`);
+            return;
+          }
+          linkedBillId = bill.id;
+        }
 
-      const tenant = tenants.find(t => t.id === newPayment.tenantId);
-      await addPayment({
-        ...newPayment,
-        branchId: tenant?.branchId || user?.branchId || '',
-        electricityAmount: newPayment.paymentType === 'electricity' ? newPayment.amount : 0,
-        electricity_amount: newPayment.paymentType === 'electricity' ? newPayment.amount : 0,
-        amount: newPayment.paymentType === 'rent' ? newPayment.amount : 0,
-        base_share: 0,
-        ac_share: 0,
-        units_consumed: 0,
-        cost_per_unit: 0,
-      } as any);
-      
-      setIsAddModalOpen(false);
-      setNewPayment({
-        tenantId: '',
-        amount: 0,
-        lateFee: 0,
-        totalAmount: 0,
-        paymentDate: new Date().toISOString().split('T')[0],
-        month: format(new Date(), 'yyyy-MM'),
-        status: 'paid',
-        method: 'Offline',
-        paymentType: 'rent'
-      });
-      refetchPayments();
+        const existingPayment = payments.find(p => p.tenantId === newPayment.tenantId && p.month === newPayment.month && p.paymentType === newPayment.paymentType);
+        if (existingPayment) {
+          toast.error(`A ${newPayment.paymentType} payment record already exists for this tenant for ${newPayment.month}.`);
+          return;
+        }
+
+        await addPayment({
+          ...newPayment,
+          branchId: tenant?.branchId || user?.branchId || '',
+          electricityBillId: linkedBillId,
+          electricityAmount: newPayment.paymentType === 'electricity' ? newPayment.amount : 0,
+          electricity_amount: newPayment.paymentType === 'electricity' ? newPayment.amount : 0,
+          amount: newPayment.paymentType === 'rent' ? newPayment.amount : 0,
+          base_share: 0,
+          ac_share: 0,
+          units_consumed: 0,
+          cost_per_unit: 0,
+        } as any);
+        
+        setIsAddModalOpen(false);
+        setNewPayment({
+          tenantId: '',
+          amount: 0,
+          lateFee: 0,
+          totalAmount: 0,
+          paymentDate: new Date().toISOString().split('T')[0],
+          month: format(new Date(), 'yyyy-MM'),
+          status: 'paid',
+          method: 'Offline',
+          paymentType: 'rent'
+        });
+        refetchPayments();
+      } catch (err) {
+        console.error(err);
+        toast.error("Failed to record payment.");
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -520,7 +556,15 @@ export const PaymentsPage = () => {
         month: paymentToEdit.month,
         status: paymentToEdit.status,
         method: paymentToEdit.method,
-        transactionId: paymentToEdit.transactionId
+        transactionId: paymentToEdit.transactionId,
+        electricityAmount: paymentToEdit.electricityAmount,
+        electricityBillId: paymentToEdit.electricityBillId,
+        baseShare: (paymentToEdit as any).baseShare,
+        acShare: (paymentToEdit as any).acShare,
+        unitsConsumed: (paymentToEdit as any).unitsConsumed,
+        costPerUnit: (paymentToEdit as any).costPerUnit,
+        actualBillUrl: paymentToEdit.actualBillUrl,
+        acBillUrl: paymentToEdit.acBillUrl
       });
       setIsEditModalOpen(false);
       setPaymentToEdit(null);
@@ -1459,10 +1503,18 @@ export const PaymentsPage = () => {
                         className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                       >
                         <option value="">Choose a tenant</option>
-                        {tenants.map(t => (
-                          <option key={t.id} value={t.id}>{t.name}</option>
+                        {tenants
+                          .filter(t => t.status === 'active' || t.status === 'vacating')
+                          .sort((a, b) => a.name.localeCompare(b.name))
+                          .map(t => (
+                          <option key={t.id} value={t.id}>{t.name} (Room {rooms.find(r => r.id === (t.roomId || (t as any).room_id))?.roomNumber || 'N/A'})</option>
                         ))}
                       </select>
+                      {tenants.length === 0 && (
+                        <p className="text-[10px] text-rose-500 mt-1 italic font-semibold animate-pulse">
+                          No active tenants found for this branch. Please ensure tenants are added first.
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -1576,9 +1628,11 @@ export const PaymentsPage = () => {
                   </button>
                   <button
                     type="submit"
-                    className="px-6 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
+                    disabled={isSubmitting}
+                    className="px-6 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >
-                    Record Payment
+                    {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                    {isSubmitting ? 'Recording...' : 'Record Payment'}
                   </button>
                 </div>
               </form>
