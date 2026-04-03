@@ -31,7 +31,7 @@ import {
 import { cn } from '../utils';
 
 export const ReportsPage = () => {
-  const { tenants, payments, complaints, getStats, pgConfig } = useApp();
+  const { tenants, rooms, payments, complaints, getStats, pgConfig } = useApp();
   const stats = getStats();
   
   const extractBaseColor = (colorStr?: string) => {
@@ -65,7 +65,7 @@ export const ReportsPage = () => {
 
   const handleExportExcel = async () => {
     try {
-      await exportToExcel(tenants, [], payments, undefined, stats);
+      await exportToExcel(tenants, rooms, payments, complaints, undefined, stats);
     } catch (error) {
       console.error('Export failed:', error);
     }

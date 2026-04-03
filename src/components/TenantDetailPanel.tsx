@@ -157,12 +157,23 @@ export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
               {/* Room & Rent */}
               <div className="bg-gray-50 dark:bg-white/3 rounded-2xl p-4 grid grid-cols-2 gap-4">
                 <p className="col-span-2 text-xs font-black uppercase tracking-widest text-gray-400">Room & Rent</p>
-                <Field label="Room" value={tenant.rooms?.room_number ? `Room ${tenant.rooms.room_number}` : (tenant.room_number ? `Room ${tenant.room_number}` : (tenant.roomId ? `Room ${rooms.find(r => r.id === tenant.roomId)?.roomNumber || '?'}` : '—'))} />
-                <Field label="Bed" value={tenant.bed_number || tenant.bedNumber ? `Bed ${tenant.bed_number || tenant.bedNumber}` : '—'} />
-                <Field label="Rent" value={tenant.rent_amount || tenant.rentAmount ? `₹${Number(tenant.rent_amount || tenant.rentAmount).toLocaleString()}/mo` : '—'} />
-                <Field label="Due Date" value={tenant.payment_due_date || tenant.paymentDueDate ? `${tenant.payment_due_date || tenant.paymentDueDate}th` : '—'} />
-                <Field label="Deposit" value={tenant.deposit_amount || tenant.depositAmount ? `₹${Number(tenant.deposit_amount || tenant.depositAmount).toLocaleString()}` : '—'} />
-                <Field label="Joining" value={tenant.joining_date || tenant.joiningDate ? format(parseISO(tenant.joining_date || tenant.joiningDate), 'dd MMM yyyy') : '—'} />
+                <Field 
+                  label="Room" 
+                  value={
+                    tenant.rooms?.room_number 
+                      ? `Room ${tenant.rooms.room_number}` 
+                      : (tenant.room_number 
+                        ? `Room ${tenant.room_number}` 
+                        : ( (tenant.roomId || tenant.room_id) 
+                          ? `Room ${rooms.find(r => r.id === (tenant.roomId || tenant.room_id))?.roomNumber || '?'}` 
+                          : '—' ))
+                  } 
+                />
+                <Field label="Bed" value={(tenant.bedNumber ?? tenant.bed_number) ? `Bed ${tenant.bedNumber ?? tenant.bed_number}` : '—'} />
+                <Field label="Rent" value={(tenant.rentAmount ?? tenant.rent_amount) !== undefined ? `₹${Number(tenant.rentAmount ?? tenant.rent_amount).toLocaleString()}/mo` : '—'} />
+                <Field label="Due Date" value={(tenant.paymentDueDate ?? tenant.payment_due_date) ? `${tenant.paymentDueDate ?? tenant.payment_due_date}th` : '—'} />
+                <Field label="Deposit" value={(tenant.depositAmount ?? tenant.deposit_amount) !== undefined ? `₹${Number(tenant.depositAmount ?? tenant.deposit_amount).toLocaleString()}` : '—'} />
+                <Field label="Joining" value={(tenant.joiningDate || tenant.joining_date) ? format(parseISO(tenant.joiningDate || tenant.joining_date), 'dd MMM yyyy') : '—'} />
               </div>
 
               {/* KYC */}
@@ -171,8 +182,8 @@ export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
                   <Shield className="w-5 h-5 text-indigo-400" />
                   <div>
                     <p className="text-xs font-black uppercase tracking-widest text-gray-400">KYC Status</p>
-                    <span className={cn('text-xs font-bold uppercase px-2.5 py-1 rounded-full', kycColor[tenant.kyc_status] || kycColor.unsubmitted)}>
-                      {tenant.kyc_status || 'Unsubmitted'}
+                    <span className={cn('text-xs font-bold uppercase px-2.5 py-1 rounded-full', kycColor[tenant.kycStatus || tenant.kyc_status] || kycColor.unsubmitted)}>
+                      {tenant.kycStatus || tenant.kyc_status || 'Unsubmitted'}
                     </span>
                   </div>
                 </div>

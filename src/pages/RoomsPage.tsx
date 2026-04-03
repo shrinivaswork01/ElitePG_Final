@@ -91,6 +91,31 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
     orderBy: { column: 'room_number', ascending: true }
   });
 
+  // Sync detail panel when paginated data updates (e.g. after edit + refetch)
+  useEffect(() => {
+    if (detailRoom && paginatedRooms && paginatedRooms.length > 0) {
+      const live = paginatedRooms.find((r: any) => r.id === detailRoom.id);
+      if (live && JSON.stringify(live) !== JSON.stringify(detailRoom)) {
+        setDetailRoom(live);
+      } else if (!live) {
+        const globalLive = rooms.find((r: any) => r.id === detailRoom.id);
+        if (globalLive && JSON.stringify(globalLive) !== JSON.stringify(detailRoom)) {
+          setDetailRoom(globalLive);
+        }
+      }
+    }
+  }, [paginatedRooms, rooms, detailRoom]);
+
+  // Sync flat detail panel with global meterGroups state
+  useEffect(() => {
+    if (detailFlat && meterGroups && meterGroups.length > 0) {
+      const live = meterGroups.find((m: any) => m.id === detailFlat.id);
+      if (live && JSON.stringify(live) !== JSON.stringify(detailFlat)) {
+        setDetailFlat(live);
+      }
+    }
+  }, [meterGroups, detailFlat]);
+
   const roomColumns: ColumnDef<any>[] = React.useMemo(() => [
     {
       header: 'Room',

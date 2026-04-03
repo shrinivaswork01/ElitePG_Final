@@ -68,6 +68,7 @@ export const Dashboard = () => {
     tasks,
     salaryPayments,
     branches,
+    meterGroups,
     checkFeatureAccess,
     fetchData,
     requestVacating,
@@ -211,7 +212,7 @@ export const Dashboard = () => {
   const handleDownloadReport = async () => {
     try {
       const branch = (branches || []).find(b => b.id === user?.branchId);
-      await exportToExcel(tenants, rooms, payments, branch, stats);
+      await exportToExcel(tenants, rooms, payments, complaints, meterGroups, branch, stats);
     } catch (error) {
       console.error('Export failed:', error);
     }

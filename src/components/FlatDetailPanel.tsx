@@ -15,8 +15,10 @@ interface FlatDetailPanelProps {
   onManageElectricity?: (flat: MeterGroup) => void;
 }
 
+import { useApp } from '../context/AppContext';
+
 export const FlatDetailPanel = ({
-  flat,
+  flat: initialFlat,
   rooms,
   tenants,
   onClose,
@@ -25,10 +27,15 @@ export const FlatDetailPanel = ({
   onViewRoom,
   onManageElectricity
 }: FlatDetailPanelProps) => {
-  const linkedRooms = rooms.filter(r => r.meterGroupId === flat.id);
-  const totalBeds = linkedRooms.reduce((sum, r) => sum + (r.totalBeds || 0), 0);
+  const { meterGroups } = useApp();
+  
+  // Sync with live context data
+  const flat = meterGroups.find(m => m.id === initialFlat.id) || initialFlat;
+
+  const linkedRooms = rooms.filter(r => (r.meterGroupId || (r as any).meter_group_id) === flat.id);
+  const totalBeds = linkedRooms.reduce((sum, r) => sum + (r.totalBeds || (r as any).total_beds || 0), 0);
   const occupiedBeds = tenants.filter(t => 
-    linkedRooms.some(r => r.id === t.roomId) && t.status === 'active'
+    linkedRooms.some(r => r.id === (t.roomId || (t as any).room_id)) && t.status === 'active'
   ).length;
 
   return (
@@ -141,7 +148,7 @@ export const FlatDetailPanel = ({
                 </div>
               ) : (
                 linkedRooms.map((room) => {
-                  const roomOccupied = tenants.filter(t => t.roomId === room.id && t.status === 'active').length;
+                  const roomOccupied = tenants.filter(t => (t.roomId || (t as any).room_id) === room.id && t.status === 'active').length;
                   return (
                     <button
                       key={room.id}

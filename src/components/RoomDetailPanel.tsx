@@ -23,8 +23,14 @@ const Field = ({ label, value, className }: { label: string; value: React.ReactN
 export const RoomDetailPanel: React.FC<RoomDetailPanelProps> = ({
   room, onClose, onEdit, onDelete, canEdit
 }) => {
-  const { tenants } = useApp();
-  const roomTenants = tenants.filter((t: Tenant) => t.roomId === room?.id && t.status === 'active');
+  const { tenants, rooms } = useApp();
+  
+  // Override with live context object for instant updates
+  room = rooms.find(r => r.id === room?.id) || room;
+
+  const roomTenants = tenants.filter((t: Tenant) => (t.roomId || (t as any).room_id) === room?.id && t.status === 'active');
+  const totalBeds = room?.totalBeds ?? (room as any)?.total_beds ?? 0;
+  const occupiedBeds = roomTenants.length; // Use live count for accuracy
 
   return (
     <AnimatePresence>
@@ -54,9 +60,9 @@ export const RoomDetailPanel: React.FC<RoomDetailPanelProps> = ({
                   <DoorOpen className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-black text-gray-900 dark:text-white">Room {room.roomNumber}</h3>
+                  <h3 className="text-lg font-black text-gray-900 dark:text-white">Room {(room as any).room_number || room.roomNumber}</h3>
                   <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
-                    {room.meterGroup ? `${room.meterGroup.name} (Floor ${room.floor})` : `Floor ${room.floor}`}
+                    {(room.meterGroup || (room as any).meter_groups) ? `${(room.meterGroup || (room as any).meter_groups).name} (Floor ${room.floor})` : `Floor ${room.floor}`}
                   </span>
                 </div>
               </div>
@@ -71,10 +77,10 @@ export const RoomDetailPanel: React.FC<RoomDetailPanelProps> = ({
               {/* Status & Capacity */}
               <div className="bg-gray-50 dark:bg-white/3 rounded-2xl p-4 grid grid-cols-2 gap-4">
                 <p className="col-span-2 text-xs font-black uppercase tracking-widest text-gray-400">Capacity</p>
-                <Field label="Total Beds" value={<div className="flex items-center gap-1.5"><Users className="w-4 h-4 text-emerald-500"/>{room.totalBeds}</div>} />
-                <Field label="Occupied" value={<div className="flex items-center gap-1.5"><Users className="w-4 h-4 text-amber-500"/>{room.occupiedBeds}</div>} />
-                <Field label="Available" value={<span className={cn('font-bold', room.totalBeds - room.occupiedBeds > 0 ? "text-emerald-600" : "text-rose-600")}>
-                  {room.totalBeds - room.occupiedBeds} beds
+                <Field label="Total Beds" value={<div className="flex items-center gap-1.5"><Users className="w-4 h-4 text-emerald-500"/>{totalBeds}</div>} />
+                <Field label="Occupied" value={<div className="flex items-center gap-1.5"><Users className="w-4 h-4 text-amber-500"/>{occupiedBeds}</div>} />
+                <Field label="Available" value={<span className={cn('font-bold', totalBeds - occupiedBeds > 0 ? "text-emerald-600" : "text-rose-600")}>
+                  {totalBeds - occupiedBeds} beds
                 </span>} />
                 <Field label="Type" value={room.type} />
               </div>
@@ -124,7 +130,7 @@ export const RoomDetailPanel: React.FC<RoomDetailPanelProps> = ({
                           </div>
                           <div>
                             <p className="text-sm font-bold text-gray-900 dark:text-white">{t.name}</p>
-                            <p className="text-xs text-gray-500">Bed {t.bedNumber}</p>
+                            <p className="text-xs text-gray-500">Bed {t.bedNumber ?? (t as any).bed_number}</p>
                           </div>
                         </div>
                       </div>
