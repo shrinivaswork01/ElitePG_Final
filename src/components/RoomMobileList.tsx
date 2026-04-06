@@ -148,6 +148,8 @@ interface RoomMobileListProps {
   onBulkDelete: (ids: string[]) => void;
 }
 
+
+
 export const RoomMobileList = ({
   rooms,
   onAdd,
@@ -156,30 +158,28 @@ export const RoomMobileList = ({
   onView,
   onBulkDelete
 }: RoomMobileListProps) => {
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const isSelectionMode = selectedIds.length > 0;
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const isSelectionMode = selectedIds.size > 0;
 
   const toggleSelect = useCallback((id: string) => {
-    setSelectedIds(prev => 
-      prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]
-    );
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }, []);
 
   const handleLongPress = useCallback((id: string) => {
-    if (selectedIds.length === 0) {
-      // Haptic feedback if available
+    if (selectedIds.size === 0) {
       if ('vibrate' in navigator) navigator.vibrate(50);
-      setSelectedIds([id]);
+      setSelectedIds(new Set([id]));
     }
-  }, [selectedIds.length]);
+  }, [selectedIds.size]);
 
-  const clearSelection = useCallback(() => setSelectedIds([]), []);
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
-  const handleAction = (type: 'edit' | 'delete' | 'manage') => {
-    if (selectedIds.length === 0) return;
-    const room = rooms.find(r => r.id === selectedIds[0]);
-    if (!room) return;
-
+  const handleAction = (type: 'edit' | 'delete' | 'manage', room: Room) => {
     if (type === 'edit') onEdit(room);
     else if (type === 'manage') onView(room);
     else if (type === 'delete') {
@@ -188,7 +188,25 @@ export const RoomMobileList = ({
     clearSelection();
   };
 
-  const selectedRooms = rooms.filter(r => selectedIds.includes(r.id));
+  const getSelectedRooms = () => rooms.filter(r => selectedIds.has(r.id));
+  const firstSelected = getSelectedRooms()[0];
+
+  const ActionButton = ({ icon: Icon, label, onClick, primary = false, danger = false }: any) => (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex flex-col items-center justify-center min-w-[72px] p-3 rounded-2xl gap-1.5 transition-all shrink-0",
+        primary
+          ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/30"
+          : danger
+            ? "bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400"
+            : "bg-gray-50 text-gray-700 dark:bg-white/5 dark:text-gray-300 active:bg-gray-100 dark:active:bg-white/10"
+      )}
+    >
+      <Icon className="w-5 h-5" />
+      <span className="text-[10px] font-bold whitespace-nowrap">{label}</span>
+    </button>
+  );
 
   return (
     <div className="relative pb-32">
@@ -197,7 +215,7 @@ export const RoomMobileList = ({
           <RoomMobileCard 
             key={room.id}
             room={room}
-            isSelected={selectedIds.includes(room.id)}
+            isSelected={selectedIds.has(room.id)}
             isSelectionMode={isSelectionMode}
             onSelect={toggleSelect}
             onLongPress={handleLongPress}
@@ -220,76 +238,51 @@ export const RoomMobileList = ({
       <AnimatePresence>
         {isSelectionMode && (
           <motion.div
-            initial={{ y: 100, opacity: 0 }}
+            initial={{ y: 200, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 100, opacity: 0 }}
-            className="fixed bottom-24 left-4 right-4 z-[60]"
+            exit={{ y: 200, opacity: 0 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            className="fixed bottom-4 left-4 right-4 z-[100] bg-white dark:bg-[#1A1A1A] rounded-[2rem] shadow-2xl border border-gray-200 dark:border-white/10 overflow-hidden"
           >
-            <div className="bg-white dark:bg-[#1a1a1a] p-4 rounded-[32px] shadow-2xl border border-indigo-100 dark:border-indigo-500/20 flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <button 
-                  onClick={clearSelection}
-                  className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-full transition-colors"
-                >
-                  <X className="w-5 h-5 text-gray-500" />
-                </button>
-                <div className="text-sm">
-                  <span className="font-black text-indigo-600 dark:text-indigo-400">{selectedIds.length}</span>
-                  <span className="ml-1 font-bold text-gray-500">Selected</span>
-                </div>
-              </div>
+            {/* Header */}
+            <div className="flex justify-between items-center px-6 py-3 border-b border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/5">
+              <span className="text-sm font-black text-indigo-600 dark:text-indigo-400">
+                {selectedIds.size} Selected
+              </span>
+              <button 
+                onClick={clearSelection}
+                className="p-1.5 bg-gray-200 dark:bg-white/10 rounded-full text-gray-600 dark:text-gray-300"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-              <div className="flex items-center gap-2">
-                {selectedIds.length === 1 ? (
-                  <>
-                    <button 
-                      onClick={() => handleAction('manage')}
-                      className="p-3 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-600/20"
-                    >
-                      <CheckCircle2 className="w-5 h-5" />
-                    </button>
-                    <button 
-                      onClick={() => handleAction('edit')}
-                      className="p-3 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-2xl font-bold"
-                    >
-                      <Edit2 className="w-5 h-5" />
-                    </button>
-                    <button 
-                       onClick={() => handleAction('delete')}
-                       className="p-3 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-2xl font-bold"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
-                  </>
-                ) : (
-                  <button 
-                    onClick={() => {
-                        if (window.confirm(`Delete ${selectedIds.length} rooms?`)) {
-                          onBulkDelete(selectedIds);
-                          clearSelection();
-                        }
-                    }}
-                    className="flex items-center gap-2 px-5 py-3 bg-rose-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-rose-600/20"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    Delete All
-                  </button>
-                )}
-              </div>
+            {/* Actions Scroll Area */}
+            <div className="flex overflow-x-auto gap-2 p-3 snap-x hide-scrollbar">
+              {selectedIds.size === 1 ? (
+                <>
+                  <ActionButton icon={CheckCircle2} label="Manage" primary onClick={() => handleAction('manage', firstSelected)} />
+                  <ActionButton icon={Edit2} label="Edit Info" onClick={() => handleAction('edit', firstSelected)} />
+                  <ActionButton icon={Trash2} label="Delete" danger onClick={() => handleAction('delete', firstSelected)} />
+                </>
+              ) : (
+                <ActionButton 
+                  icon={Trash2} 
+                  label="Delete All" 
+                  danger 
+                  onClick={() => {
+                    if (window.confirm(`Delete ${selectedIds.size} rooms?`)) {
+                      onBulkDelete(Array.from(selectedIds));
+                      clearSelection();
+                    }
+                  }} 
+                />
+              )}
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      <motion.button
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-        onClick={onAdd}
-        className="fixed bottom-8 right-6 w-14 h-14 bg-indigo-600 text-white rounded-2xl shadow-2xl flex items-center justify-center z-50 hover:bg-indigo-700 transition-colors"
-      >
-        <Plus className="w-7 h-7" />
-      </motion.button>
     </div>
   );
 };
-
