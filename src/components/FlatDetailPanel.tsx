@@ -39,7 +39,7 @@ export const FlatDetailPanel = ({
   ).length;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
+    <div className="fixed inset-0 z-[60] flex justify-end">
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -53,7 +53,7 @@ export const FlatDetailPanel = ({
         animate={{ x: 0 }}
         exit={{ x: '100%' }}
         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-        className="relative w-full max-w-xl bg-white dark:bg-gray-900 h-full shadow-2xl overflow-hidden flex flex-col"
+        className="relative w-full sm:max-w-xl bg-white dark:bg-gray-900 h-full shadow-2xl overflow-hidden flex flex-col"
       >
         {/* Header */}
         <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between bg-white/80 dark:bg-gray-950/80 backdrop-blur-md sticky top-0 z-10">
@@ -67,6 +67,15 @@ export const FlatDetailPanel = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {onManageElectricity && (
+              <button
+                onClick={() => onManageElectricity(flat)}
+                className="p-2 text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10 rounded-xl transition-all"
+                title="Manage Electricity"
+              >
+                <Zap className="w-5 h-5" />
+              </button>
+            )}
             <button
               onClick={() => onEdit(flat)}
               className="p-2 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-xl transition-all"

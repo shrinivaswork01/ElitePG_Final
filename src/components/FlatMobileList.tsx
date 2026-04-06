@@ -24,6 +24,7 @@ interface FlatMobileCardProps {
   onSelect: (id: string) => void;
   onLongPress: (id: string) => void;
   onClick: (flat: MeterGroup) => void;
+  onEdit: (flat: MeterGroup) => void;
   onManageElectricity: (flat: MeterGroup) => void;
 }
 
@@ -36,6 +37,7 @@ const FlatMobileCard = memo(({
   onSelect,
   onLongPress,
   onClick,
+  onEdit,
   onManageElectricity
 }: FlatMobileCardProps) => {
   const handleLongPress = useCallback((e: any) => {
@@ -128,26 +130,6 @@ const FlatMobileCard = memo(({
               )}
             />
           </div>
-
-          {/* Quick Actions */}
-          {!isSelectionMode && (
-             <div className="flex items-center gap-2">
-                <button
-                  onClick={(e) => { e.stopPropagation(); onManageElectricity(flat); }}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-xl text-[10px] font-black uppercase tracking-widest border border-amber-200/50 dark:border-amber-500/20 active:scale-95 transition-all"
-                >
-                  <Zap className="w-3.5 h-3.5" />
-                  Bill
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); onClick(flat); }}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400 rounded-xl text-[10px] font-black uppercase tracking-widest border border-violet-200/50 dark:border-violet-500/20 active:scale-95 transition-all"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                  Edit
-                </button>
-             </div>
-          )}
         </div>
       </div>
     </motion.div>
@@ -163,6 +145,7 @@ interface FlatMobileListProps {
   onAdd: () => void;
   onEdit: (flat: MeterGroup) => void;
   onDelete: (flat: MeterGroup) => void;
+  onView: (flat: MeterGroup) => void;
   onManageElectricity: (flat: MeterGroup) => void;
   onBulkDelete: (ids: string[]) => void;
 }
@@ -174,6 +157,7 @@ export const FlatMobileList = ({
   onAdd,
   onEdit,
   onDelete,
+  onView,
   onManageElectricity,
   onBulkDelete
 }: FlatMobileListProps) => {
@@ -195,12 +179,13 @@ export const FlatMobileList = ({
 
   const clearSelection = useCallback(() => setSelectedIds([]), []);
 
-  const handleAction = (type: 'edit' | 'delete') => {
+  const handleAction = (type: 'edit' | 'delete' | 'manage') => {
     if (selectedIds.length === 0) return;
     const flat = meterGroups.find(m => m.id === selectedIds[0]);
     if (!flat) return;
 
     if (type === 'edit') onEdit(flat);
+    else if (type === 'manage') onView(flat);
     else if (type === 'delete') {
       if (window.confirm('Delete this flat/group and unlink all rooms?')) onDelete(flat);
     } 
@@ -220,7 +205,8 @@ export const FlatMobileList = ({
             isSelectionMode={isSelectionMode}
             onSelect={toggleSelect}
             onLongPress={handleLongPress}
-            onClick={onEdit}
+            onClick={onView}
+            onEdit={onEdit}
             onManageElectricity={onManageElectricity}
           />
         ))}
@@ -261,6 +247,12 @@ export const FlatMobileList = ({
               <div className="flex items-center gap-2">
                 {selectedIds.length === 1 ? (
                   <>
+                    <button 
+                      onClick={() => handleAction('manage')}
+                      className="p-3 bg-violet-600 text-white rounded-2xl font-bold shadow-lg shadow-violet-600/20"
+                    >
+                      <CheckCircle2 className="w-5 h-5" />
+                    </button>
                     <button 
                       onClick={() => handleAction('edit')}
                       className="p-3 bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400 rounded-2xl font-bold"

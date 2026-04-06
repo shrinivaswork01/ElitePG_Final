@@ -576,6 +576,7 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
             }}
             onEdit={handleEditClick}
             onDelete={(r) => { deleteRoom(r.id); refetch(); }}
+            onView={setDetailRoom}
             onBulkDelete={handleBulkDelete}
           />
         ) : (
@@ -586,6 +587,7 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
             onAdd={() => setIsAddFlatModalOpen(true)}
             onEdit={handleEditFlat}
             onDelete={(f) => { deleteMeterGroup(f.id); }}
+            onView={setDetailFlat}
             onManageElectricity={(f) => { setElectricityFlat(f); }}
             onBulkDelete={async (ids) => {
               for (const id of ids) await deleteMeterGroup(id);

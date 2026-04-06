@@ -42,7 +42,7 @@ export const RoomDetailPanel: React.FC<RoomDetailPanelProps> = ({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+            className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm"
           />
 
           {/* Slide-in Panel */}
@@ -51,7 +51,7 @@ export const RoomDetailPanel: React.FC<RoomDetailPanelProps> = ({
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-            className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-md bg-white dark:bg-[#0f0f0f] shadow-2xl flex flex-col overflow-hidden border-l border-gray-100 dark:border-white/5"
+            className="fixed right-0 top-0 bottom-0 z-[70] w-full sm:max-w-md bg-white dark:bg-[#0f0f0f] shadow-2xl flex flex-col overflow-hidden border-l border-gray-100 dark:border-white/5"
           >
             {/* Header */}
             <div className="px-6 pt-6 pb-4 border-b border-gray-100 dark:border-white/5 flex items-center justify-between shrink-0">

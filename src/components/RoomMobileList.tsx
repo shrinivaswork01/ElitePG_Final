@@ -22,6 +22,7 @@ interface RoomMobileCardProps {
   onSelect: (id: string) => void;
   onLongPress: (id: string) => void;
   onClick: (room: Room) => void;
+  onEdit: (room: Room) => void;
 }
 
 const RoomMobileCard = memo(({
@@ -30,7 +31,8 @@ const RoomMobileCard = memo(({
   isSelectionMode,
   onSelect,
   onLongPress,
-  onClick
+  onClick,
+  onEdit
 }: RoomMobileCardProps) => {
   const handleLongPress = useCallback((e: any) => {
     onLongPress(room.id);
@@ -142,6 +144,7 @@ interface RoomMobileListProps {
   onAdd: () => void;
   onEdit: (room: Room) => void;
   onDelete: (room: Room) => void;
+  onView: (room: Room) => void;
   onBulkDelete: (ids: string[]) => void;
 }
 
@@ -150,6 +153,7 @@ export const RoomMobileList = ({
   onAdd,
   onEdit,
   onDelete,
+  onView,
   onBulkDelete
 }: RoomMobileListProps) => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -177,6 +181,7 @@ export const RoomMobileList = ({
     if (!room) return;
 
     if (type === 'edit') onEdit(room);
+    else if (type === 'manage') onView(room);
     else if (type === 'delete') {
       if (window.confirm('Delete this room?')) onDelete(room);
     } 
@@ -196,7 +201,8 @@ export const RoomMobileList = ({
             isSelectionMode={isSelectionMode}
             onSelect={toggleSelect}
             onLongPress={handleLongPress}
-            onClick={onEdit} // Or view detail? usually Edit is good for rooms
+            onClick={onView} 
+            onEdit={onEdit}
           />
         ))}
       </div>
@@ -236,6 +242,12 @@ export const RoomMobileList = ({
               <div className="flex items-center gap-2">
                 {selectedIds.length === 1 ? (
                   <>
+                    <button 
+                      onClick={() => handleAction('manage')}
+                      className="p-3 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-600/20"
+                    >
+                      <CheckCircle2 className="w-5 h-5" />
+                    </button>
                     <button 
                       onClick={() => handleAction('edit')}
                       className="p-3 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-2xl font-bold"
