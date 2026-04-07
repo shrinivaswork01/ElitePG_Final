@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
-import { Employee, Task, SalaryPayment, KYCData } from '../types';
-import { Navigate } from 'react-router-dom';
+import { Employee, Task, SalaryPayment, KYCData, User, UserRole } from '../types';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { format, parseISO } from 'date-fns';
 import {
   Plus,
@@ -26,7 +26,12 @@ import {
   X,
   Upload,
   FileText,
-  MoreVertical
+  MoreVertical,
+  ShieldCheck,
+  Key,
+  Building2,
+  Check,
+  AlertTriangle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { EmployeeMobileList } from '../components/EmployeeMobileList';
@@ -34,7 +39,8 @@ import { cn } from '../utils';
 import toast from 'react-hot-toast';
 
 export const EmployeesPage = () => {
-  const { user, users, register, authorizeUser, updateUser } = useAuth();
+  const navigate = useNavigate();
+  const { user, users, register, authorizeUser, updateUser, deleteUser } = useAuth();
   const {
     employees,
     addEmployee,
@@ -51,7 +57,9 @@ export const EmployeesPage = () => {
     kycs,
     updateKYC,
     pgConfig,
-    updatePGConfig
+    updatePGConfig,
+    branches,
+    currentBranch
   } = useApp();
 
   if (user?.role === 'tenant') {
@@ -59,7 +67,8 @@ export const EmployeesPage = () => {
   }
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isMobileActionsOpen, setIsMobileActionsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'list' | 'salaries'>('list');
+  const [activeTab, setActiveTab] = useState<'list' | 'salaries' | 'partners'>('list');
+  const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -67,10 +76,21 @@ export const EmployeesPage = () => {
   const [kycToReject, setKycToReject] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const [employeeToDelete, setEmployeeToDelete] = useState<Employee | null>(null);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [salaryToDelete, setSalaryToDelete] = useState<SalaryPayment | null>(null);
   const [isRolesModalOpen, setIsRolesModalOpen] = useState(false);
   const [isVisibilityModalOpen, setIsVisibilityModalOpen] = useState(false);
   const [newRoleName, setNewRoleName] = useState('');
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  
+  const [userFormData, setUserFormData] = useState({
+    name: '',
+    username: '',
+    email: '',
+    password: '',
+    role: 'partner' as UserRole,
+    branchIds: [] as string[]
+  });
 
   // Task Modal State
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
@@ -95,14 +115,15 @@ export const EmployeesPage = () => {
     method: 'UPI'
   });
 
-  const [formData, setFormData] = useState<Omit<Employee, 'id' | 'branchId'>>({
+  const [formData, setFormData] = useState<Omit<Employee, 'id'>>({
     name: '',
     role: 'none',
     email: '',
     phone: '',
     salary: 0,
     joiningDate: new Date().toISOString().split('T')[0],
-    kycStatus: 'unsubmitted'
+    kycStatus: 'unsubmitted',
+    branchId: currentBranch?.id || ''
   });
 
   const [kycFile, setKycFile] = useState<{ type: string, file?: File, url?: string, fileName: string }>({
@@ -126,7 +147,8 @@ export const EmployeesPage = () => {
       phone: '',
       salary: 0,
       joiningDate: new Date().toISOString().split('T')[0],
-      kycStatus: 'unsubmitted'
+      kycStatus: 'unsubmitted',
+      branchId: currentBranch?.id || ''
     });
     setKycFile({
       type: 'Aadhar Card',
@@ -213,7 +235,7 @@ export const EmployeesPage = () => {
     const uUrl = `upi://pay?pa=${upiId}&pn=${encodedName}&am=${salaryFormData.amount}&cu=INR&tn=Salary Payment - ${salaryFormData.month}`;
     
     // Attempt to open the UPI app natively on the user's mobile device
-    window.location.href = uUrl;
+    navigate(uUrl);
 
     // Record the payment
     addSalaryPayment({
@@ -224,6 +246,78 @@ export const EmployeesPage = () => {
     
     setIsSalaryModalOpen(false);
     toast.success('UPI intent launched. Recorded salary payment successfully.');
+  };
+
+  const handleUserSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (editingUser) {
+      await updateUser(editingUser.id, {
+        name: userFormData.name,
+        email: userFormData.email,
+        phone: userFormData.password, // This was used for phone/password in some parts, but let's be careful. Actually SuperAdmin used it as password updates. 
+        // In AuthContext, updateUser takes Partial<User>. 
+        // Let's use it for name, email, role, branchIds.
+        role: userFormData.role,
+        branchIds: userFormData.branchIds
+      });
+      toast.success('User updated successfully');
+    } else {
+      if (!userFormData.password) {
+        toast.error('Password is required for new users');
+        return;
+      }
+      const res = await register({
+        name: userFormData.name,
+        username: userFormData.username,
+        email: userFormData.email,
+        role: userFormData.role,
+        branchIds: userFormData.branchIds,
+        branchId: userFormData.branchIds[0] || currentBranch?.id || '',
+        seenAnnouncements: [],
+        requiresPasswordChange: true
+      }, userFormData.password);
+
+      if (res.success) {
+        toast.success(`${userFormData.role.charAt(0).toUpperCase() + userFormData.role.slice(1)} created successfully`);
+      } else {
+        toast.error(res.message || 'Registration failed');
+        return;
+      }
+    }
+
+    setIsUserModalOpen(false);
+    setEditingUser(null);
+    setUserFormData({
+      name: '',
+      username: '',
+      email: '',
+      password: '',
+      role: user?.role === 'super' ? 'admin' : 'partner',
+      branchIds: []
+    });
+  };
+
+  const handleEditUser = (user: User) => {
+    setEditingUser(user);
+    setUserFormData({
+      name: user.name,
+      username: user.username,
+      email: user.email,
+      password: '', // Don't show password
+      role: user.role,
+      branchIds: user.branchIds || []
+    });
+    setIsUserModalOpen(true);
+  };
+
+  const toggleBranchSelection = (branchId: string) => {
+    setUserFormData(prev => ({
+      ...prev,
+      branchIds: prev.branchIds.includes(branchId)
+        ? prev.branchIds.filter(id => id !== branchId)
+        : [...prev.branchIds, branchId]
+    }));
   };
 
 
@@ -253,7 +347,7 @@ export const EmployeesPage = () => {
     const matchesSearch = e.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       e.role.toLowerCase().includes(searchTerm.toLowerCase());
 
-    if (user?.role === 'admin') return matchesSearch;
+    if (user?.role === 'admin' || user?.role === 'partner') return matchesSearch;
 
     // Staff see only themselves
     return matchesSearch && (e.userId === user?.id || e.email === user?.email);
@@ -276,16 +370,30 @@ export const EmployeesPage = () => {
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Employees</h2>
           <p className="text-gray-500 dark:text-gray-400">Manage your staff and payroll.</p>
         </div>
-        {user?.role === 'admin' && (
+        {(user?.role === 'admin' || user?.role === 'partner') && (
           <>
             <div className="hidden md:flex gap-2">
               <button
                 onClick={() => setActiveTab(activeTab === 'list' ? 'salaries' : 'list')}
                 className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all"
               >
-                {activeTab === 'list' ? <History className="w-5 h-5" /> : <Users className="w-5 h-5" />}
-                {activeTab === 'list' ? 'Salary History' : 'Staff List'}
+                {activeTab === 'list' || activeTab === 'partners' ? <History className="w-5 h-5" /> : <Users className="w-5 h-5" />}
+                {activeTab === 'list' || activeTab === 'partners' ? 'Salary History' : 'Staff List'}
               </button>
+              {(user?.role === 'admin' || user?.role === 'super') && (
+                <button
+                  onClick={() => setActiveTab(activeTab === 'partners' ? 'list' : 'partners')}
+                  className={cn(
+                    "flex items-center gap-2 px-4 py-2.5 border rounded-xl font-semibold transition-all",
+                    activeTab === 'partners' 
+                      ? "bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-600/20" 
+                      : "bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/10"
+                  )}
+                >
+                  <ShieldCheck className="w-5 h-5" />
+                  Partners & Admins
+                </button>
+              )}
               <button
                 onClick={() => setIsRolesModalOpen(true)}
                 className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all"
@@ -308,12 +416,12 @@ export const EmployeesPage = () => {
                 Add Task
               </button>
               <button
-                onClick={() => setIsAddModalOpen(true)}
+                onClick={() => activeTab === 'partners' ? setIsUserModalOpen(true) : setIsAddModalOpen(true)}
                 className="flex items-center gap-2 px-4 py-2.5 text-white rounded-xl font-semibold shadow-lg transition-all"
                 style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
               >
                 <Plus className="w-5 h-5" />
-                Add Employee
+                {activeTab === 'partners' ? 'Add User' : 'Add Employee'}
               </button>
             </div>
             
@@ -454,7 +562,7 @@ export const EmployeesPage = () => {
           </div>
 
         </>
-      ) : (
+      ) : activeTab === 'salaries' ? (
         <div className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden">
           <div className="p-6 border-b border-gray-100 dark:border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex flex-col sm:flex-row items-center gap-4 flex-1">
@@ -569,6 +677,136 @@ export const EmployeesPage = () => {
             )}
           </div>
         </div>
+      ) : (
+        <div className="space-y-6">
+          <div className="bg-white dark:bg-[#111111] p-4 rounded-2xl border border-gray-100 dark:border-white/5 shadow-sm flex flex-col sm:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search partners & admins..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+              />
+            </div>
+            <div className="flex items-center gap-2 px-4 py-2 bg-indigo-50/50 dark:bg-indigo-500/5 border border-indigo-100 dark:border-indigo-500/10 rounded-xl text-xs font-bold text-indigo-600 dark:text-indigo-400">
+              <ShieldCheck className="w-4 h-4" />
+              {users.filter(u => u.role === 'admin' || u.role === 'partner').length} Total Administrators
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {users
+              .filter(u => (u.role === 'admin' || u.role === 'partner') && (
+                u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                u.username.toLowerCase().includes(searchTerm.toLowerCase())
+              ))
+              .map((admin) => (
+                <motion.div
+                  key={admin.id}
+                  layout
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden group hover:shadow-md transition-all relative"
+                >
+                  <div className="p-6">
+                    <div className="flex items-start justify-between mb-6">
+                      <div className="flex items-center gap-4">
+                        <div className="w-14 h-14 bg-gray-50 dark:bg-white/5 rounded-2xl flex items-center justify-center border border-gray-100 dark:border-white/10 relative">
+                          {admin.role === 'admin' ? (
+                            <ShieldCheck className="w-7 h-7 text-indigo-600 dark:text-indigo-400" />
+                          ) : (
+                            <Users className="w-7 h-7 text-emerald-600 dark:text-emerald-400" />
+                          )}
+                          <div className={cn(
+                            "absolute -top-1 -right-1 w-4 h-4 rounded-full border-2 border-white dark:border-[#111111]",
+                            admin.isAuthorized ? "bg-emerald-500" : "bg-amber-500"
+                          )} />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-bold text-gray-900 dark:text-white">{admin.name}</h3>
+                          <div className="flex items-center gap-1.5">
+                            <span className={cn(
+                              "px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider",
+                              admin.role === 'admin' ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600" : "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600"
+                            )}>
+                              {admin.role}
+                            </span>
+                            {!admin.isAuthorized && (
+                              <span className="px-2 py-0.5 bg-amber-50 dark:bg-amber-500/10 text-amber-600 rounded-lg text-[10px] font-bold uppercase">Pending</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => handleEditUser(admin)}
+                          className="p-2 hover:bg-gray-50 dark:hover:bg-white/5 rounded-lg text-gray-400 hover:text-indigo-600 transition-colors"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => setUserToDelete(admin)}
+                          className="p-2 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg text-gray-400 hover:text-rose-600 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400">
+                        <Mail className="w-4 h-4" />
+                        {admin.email}
+                      </div>
+                      <div className="flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400">
+                        <Key className="w-4 h-4" />
+                        @{admin.username}
+                      </div>
+                      <div className="flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400">
+                        <Building2 className="w-4 h-4" />
+                        {admin.branchIds?.length || 0} Managed Branches
+                      </div>
+                    </div>
+
+                    <div className="mt-6 pt-6 border-t border-gray-50 dark:border-white/5">
+                      <div className="flex flex-wrap gap-2">
+                        {admin.branchIds?.map(bId => {
+                          const b = branches.find(br => br.id === bId);
+                          return b ? (
+                            <span key={bId} className="px-2 py-1 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-lg text-[10px] text-gray-600 dark:text-gray-400 font-medium whitespace-nowrap">
+                              {b.name}
+                            </span>
+                          ) : null;
+                        })}
+                        {(!admin.branchIds || admin.branchIds.length === 0) && (
+                          <span className="text-[10px] italic text-gray-400">No branches assigned</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            {users.filter(u => (u.role === 'admin' || u.role === 'partner')).length === 0 && (
+              <div className="col-span-full py-20 bg-gray-50/50 dark:bg-white/5 rounded-[40px] border border-dashed border-gray-200 dark:border-white/10 text-center">
+                <Shield className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">No Partners or Admins</h3>
+                <p className="text-gray-500 max-w-sm mx-auto mt-2">Create property co-owners or subsidiary admins to help manage your properties.</p>
+                <button
+                   onClick={() => {
+                     setUserFormData(prev => ({ ...prev, role: user?.role === 'super' ? 'admin' : 'partner' }));
+                     setIsUserModalOpen(true);
+                   }}
+                   className="mt-6 px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold"
+                >
+                  Add Your First Administrator
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       <AnimatePresence>
@@ -626,6 +864,22 @@ export const EmployeesPage = () => {
                       ))}
                     </select>
                   </div>
+                  {(user?.role === 'admin' || user?.role === 'super' || user?.role === 'partner') && (
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Assign Branch</label>
+                      <select
+                        required
+                        value={formData.branchId}
+                        onChange={(e) => setFormData({ ...formData, branchId: e.target.value })}
+                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                      >
+                        <option value="">Select Branch</option>
+                        {branches.map(branch => (
+                          <option key={branch.id} value={branch.id}>{branch.name} — {branch.branchName}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Email</label>
@@ -1445,7 +1699,7 @@ export const EmployeesPage = () => {
         )}
       </AnimatePresence>
       {/* FAB for Mobile */}
-      {user?.role === 'admin' && (
+      {(user?.role === 'admin' || user?.role === 'partner') && (
         <button
           onClick={() => setIsAddModalOpen(true)}
           className="md:hidden fixed bottom-24 right-6 w-14 h-14 bg-indigo-600 text-white rounded-2xl shadow-2xl flex items-center justify-center z-40 hover:bg-indigo-700 transition-colors"
@@ -1525,6 +1779,234 @@ export const EmployeesPage = () => {
                     <span className="text-xs text-gray-500 truncate">Assign tasks to staff members</span>
                   </div>
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* Add/Edit Partner & Admin Modal */}
+      <AnimatePresence>
+        {isUserModalOpen && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                setIsUserModalOpen(false);
+                setEditingUser(null);
+                setUserFormData({ name: '', username: '', email: '', password: '', role: user?.role === 'super' ? 'admin' : 'partner', branchIds: [] });
+              }}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-lg bg-white dark:bg-[#111111] rounded-[32px] shadow-2xl overflow-hidden border border-white/5 flex flex-col max-h-[90vh]"
+            >
+              <div className="p-8 border-b border-gray-100 dark:border-white/5 flex items-center justify-between sticky top-0 bg-white dark:bg-[#111111] z-10">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                    <UserPlus className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                      {editingUser ? 'Edit Administrator' : `Add New ${user?.role === 'super' ? 'Admin' : 'Partner'}`}
+                    </h3>
+                    <p className="text-xs text-gray-500">
+                      {user?.role === 'super' ? 'Create a system-wide branch administrator.' : 'Create a property co-owner.'}
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => {
+                    setIsUserModalOpen(false);
+                    setEditingUser(null);
+                    setUserFormData({ name: '', username: '', email: '', password: '', role: user?.role === 'super' ? 'admin' : 'partner', branchIds: [] });
+                  }} 
+                  className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors"
+                >
+                  <X className="w-6 h-6 text-gray-400" />
+                </button>
+              </div>
+
+              <form onSubmit={handleUserSubmit} className="flex-1 overflow-y-auto p-8 space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Full Name</label>
+                    <input
+                      required
+                      type="text"
+                      value={userFormData.name}
+                      onChange={(e) => setUserFormData({ ...userFormData, name: e.target.value })}
+                      className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                      placeholder="e.g., John Doe"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Username</label>
+                    <input
+                      required
+                      disabled={!!editingUser}
+                      type="text"
+                      value={userFormData.username}
+                      onChange={(e) => setUserFormData({ ...userFormData, username: e.target.value.toLowerCase().replace(/\s+/g, '') })}
+                      className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white disabled:opacity-50"
+                      placeholder="e.g., john_doe"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Email Address</label>
+                  <input
+                    required
+                    type="email"
+                    value={userFormData.email}
+                    onChange={(e) => setUserFormData({ ...userFormData, email: e.target.value })}
+                    className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                    placeholder="john@example.com"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                    {editingUser ? 'New Password (leave blank to keep current)' : 'Login Password'}
+                  </label>
+                  <div className="relative">
+                    <Key className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      required={!editingUser}
+                      type="password"
+                      value={userFormData.password}
+                      onChange={(e) => setUserFormData({ ...userFormData, password: e.target.value })}
+                      className="w-full pl-11 pr-4 py-3 bg-gray-50 dark:bg-white/5 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                      placeholder="••••••••"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <label className="text-sm font-semibold text-gray-700 dark:text-gray-300 block">Assigned Role</label>
+                  <div className="p-4 rounded-2xl bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10 flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                      {userFormData.role === 'admin' ? <ShieldCheck className="w-6 h-6" /> : <Users className="w-6 h-6" />}
+                    </div>
+                    <div>
+                      <span className="text-sm font-bold block capitalize">{userFormData.role}</span>
+                      <span className="text-[10px] text-gray-500">
+                        {userFormData.role === 'admin' ? 'Full branch administrative permissions' : 'Property co-owner permissions'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Managed Branches</label>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase">{userFormData.branchIds.length} Selected</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[200px] overflow-y-auto p-1">
+                    {branches.map(branch => (
+                      <button
+                        key={branch.id}
+                        type="button"
+                        onClick={() => toggleBranchSelection(branch.id)}
+                        className={cn(
+                          "flex items-center gap-3 p-3 rounded-xl border transition-all text-left group",
+                          userFormData.branchIds.includes(branch.id)
+                            ? "bg-indigo-50 dark:bg-indigo-500/10 border-indigo-200 dark:border-indigo-500/30 text-indigo-600 dark:text-indigo-400"
+                            : "bg-white dark:bg-white/5 border-gray-100 dark:border-white/5 text-gray-600 dark:text-gray-400 hover:border-gray-200"
+                        )}
+                      >
+                        <div className={cn(
+                          "w-5 h-5 rounded-md border flex items-center justify-center transition-colors",
+                          userFormData.branchIds.includes(branch.id) ? "bg-indigo-600 border-indigo-600" : "bg-white dark:bg-white/5 border-gray-200 dark:border-white/10"
+                        )}>
+                          {userFormData.branchIds.includes(branch.id) && <Check className="w-3 h-3 text-white" />}
+                        </div>
+                        <div className="truncate">
+                          <span className="text-sm font-bold block leading-none">{branch.branchName}</span>
+                          <span className="text-[10px] text-gray-400 group-hover:text-gray-500 transition-colors uppercase">{branch.name}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex gap-4 pt-4 sticky bottom-0 bg-white dark:bg-[#111111] py-4 border-t border-gray-100 dark:border-white/5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsUserModalOpen(false);
+                      setEditingUser(null);
+                      setUserFormData({ name: '', username: '', email: '', password: '', role: user?.role === 'super' ? 'admin' : 'partner', branchIds: [] });
+                    }}
+                    className="flex-1 py-4 bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-gray-400 rounded-2xl font-bold hover:bg-gray-100 transition-all border border-gray-100 dark:border-white/10"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-[2] py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-xl shadow-indigo-600/20 hover:bg-indigo-700 transition-all active:scale-[0.98]"
+                    style={{ background: pgConfig?.primaryColor || '#4f46e5' }}
+                  >
+                    {editingUser ? 'Update Permissions' : 'Create Account'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete User Confirmation Modal */}
+      <AnimatePresence>
+        {userToDelete && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => setUserToDelete(null)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative bg-white dark:bg-[#111111] rounded-[32px] shadow-2xl w-full max-w-sm p-8 border border-gray-100 dark:border-white/10"
+            >
+              <div className="flex flex-col items-center text-center gap-6">
+                <div className="w-20 h-20 rounded-[28px] bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center relative">
+                   <div className="absolute inset-0 rounded-[28px] border-2 border-rose-500/20 animate-pulse" />
+                   <Trash2 className="w-10 h-10 text-rose-500" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Delete User?</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-3 leading-relaxed">
+                    You are about to remove <span className="font-bold text-gray-900 dark:text-white">{userToDelete.name}</span>'s access. This action cannot be undone.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-3 w-full mt-2">
+                  <button
+                    onClick={() => {
+                       deleteUser(userToDelete.id);
+                       setUserToDelete(null);
+                       toast.success('Administrator account deleted');
+                    }}
+                    className="w-full py-4 rounded-2xl bg-rose-600 text-white font-bold hover:bg-rose-700 transition-all shadow-lg shadow-rose-600/20"
+                  >
+                    Confirm Deletion
+                  </button>
+                  <button
+                    onClick={() => setUserToDelete(null)}
+                    className="w-full py-4 rounded-2xl bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-gray-400 font-bold hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>

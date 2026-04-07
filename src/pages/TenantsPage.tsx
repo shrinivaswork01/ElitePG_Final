@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { Tenant, TenantStatus } from '../types';
-import { Navigate, useLocation } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { format, parseISO } from 'date-fns';
 import {
   Search,
@@ -37,6 +37,7 @@ import { getTenantElectricityShare } from '../utils/electricityUtils';
 import toast from 'react-hot-toast';
 
 export const TenantsPage = () => {
+  const navigate = useNavigate();
   const { user, users, register, updateUser, authorizeUser } = useAuth();
   const location = useLocation();
   const { tenants, rooms, branches, addTenant, updateTenant, deleteTenant, checkFeatureAccess, currentPlan, uploadVerifiedKYC, kycs, userInvites, pgConfig, requestVacating, completeCheckout } = useApp();
@@ -255,7 +256,10 @@ export const TenantsPage = () => {
     status: 'active',
     vacatingStatus: 'active',
     kycStatus: 'unsubmitted',
-    inviteCode: ''
+    inviteCode: '',
+    tokenAmount: 0,
+    tokenStatus: 'pending',
+    depositStatus: 'pending'
   });
 
   // Effect to set default invite code when modal opens
@@ -562,7 +566,7 @@ export const TenantsPage = () => {
             </p>
           </div>
           <button
-            onClick={() => window.location.href = '/subscription'}
+            onClick={() => navigate('/subscription')}
             className={cn(
               "px-4 py-1.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all",
               isAtLimit
@@ -883,6 +887,38 @@ export const TenantsPage = () => {
                       onChange={(e) => setFormData({ ...formData, depositAmount: Number(e.target.value) })}
                       className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                     />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Deposit Status</label>
+                    <select
+                      value={(formData as any).depositStatus || 'pending'}
+                      onChange={(e) => setFormData({ ...formData, depositStatus: e.target.value as any })}
+                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white capitalize"
+                    >
+                      <option value="pending">Pending</option>
+                      <option value="paid">Paid</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Token Amount (₹)</label>
+                    <input
+                      type="number"
+                      value={(formData as any).tokenAmount || 0}
+                      onChange={(e) => setFormData({ ...formData, tokenAmount: Number(e.target.value) })}
+                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Token Status</label>
+                    <select
+                      value={(formData as any).tokenStatus || 'pending'}
+                      onChange={(e) => setFormData({ ...formData, tokenStatus: e.target.value as any })}
+                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white capitalize"
+                    >
+                      <option value="pending">Pending</option>
+                      <option value="paid">Paid</option>
+                      <option value="refunded">Refunded</option>
+                    </select>
                   </div>
                   {checkFeatureAccess('kyc') && (
                     <div className="space-y-2">

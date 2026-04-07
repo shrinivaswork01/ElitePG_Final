@@ -1,5 +1,5 @@
 import { ReactNode, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   LayoutDashboard,
@@ -21,7 +21,8 @@ import {
   Building2,
   Zap,
   LifeBuoy,
-  ClipboardList
+  ClipboardList,
+  Receipt
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../utils';
@@ -31,9 +32,10 @@ import { AppFeature } from '../types';
 import { ProfilePage } from '../pages/ProfilePage';
 import { UnifiedStaffTasksPage } from '../pages/UnifiedStaffTasksPage';
 import { HelpSupportPage } from '../pages/HelpSupportPage';
+import { BranchSwitcher } from './BranchSwitcher';
 
 interface LayoutProps {
-  children: ReactNode;
+  children?: ReactNode;
 }
 
 export const Layout = ({ children }: LayoutProps) => {
@@ -42,24 +44,35 @@ export const Layout = ({ children }: LayoutProps) => {
   const { pgConfig, checkFeatureAccess, currentBranch } = useApp();
   const location = useLocation();
   const navigate = useNavigate();
+  const { branchId: urlBranchId } = useParams<{ branchId: string }>();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const activeBranchId = urlBranchId || user?.branchId;
+
+  // Helper to prefix internal routes with branchId
+  const getBranchPath = (path: string) => {
+    if (!activeBranchId) return path;
+    // Don't prefix absolute external or specific global routes if needed
+    if (path === '/profile' || path === '/help' || path === '/unauthorized') return path;
+    return `/branch/${activeBranchId}${path === '/' ? '/dashboard' : path}`;
+  };
 
   const navigation = [
-    { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant', 'super'] },
-    { name: 'Tenants', href: '/tenants', icon: Users, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'security'] },
-    { name: 'Rooms', href: '/rooms', icon: DoorOpen, roles: ['admin', 'manager', 'receptionist', 'caretaker'] },
-    { name: ['admin', 'manager', 'super'].includes(user?.role || '') ? 'Payments' : 'My Payments', href: '/payments', icon: CreditCard, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'tenant'] },
-    { name: 'Complaints', href: '/complaints', icon: MessageSquare, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant'] },
-    { name: 'KYC Verification', href: '/kyc', icon: ShieldCheck, roles: ['admin', 'manager', 'receptionist'] },
-    { name: 'Employees', href: '/employees', icon: UserCog, roles: ['admin', 'manager'] },
-    { name: 'Reports', href: '/reports', icon: BarChart3, roles: ['admin', 'manager'] },
-    { name: 'Broadcast', href: '/broadcast', icon: Megaphone, roles: ['admin'] },
-    { name: 'PG Branches', href: '/branches', icon: Building2, roles: ['super'] },
-    { name: 'Tasks', href: '/tasks', icon: ClipboardList, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner'] },
-    { name: 'Profile', href: '/profile', icon: User, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant', 'super'] },
-    { name: 'Subscription', href: '/subscription', icon: Zap, roles: ['admin'] },
-    { name: 'Settings', href: '/settings', icon: UserCog, roles: ['admin'] },
-    { name: 'Help & Support', href: '/help', icon: LifeBuoy, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant', 'super'] },
+    { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant', 'super'] },
+    { name: 'Tenants', href: '/tenants', icon: Users, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker', 'security'] },
+    { name: 'Rooms', href: '/rooms', icon: DoorOpen, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker'] },
+    { name: ['admin', 'manager', 'partner'].includes(user?.role || '') ? 'Payments' : 'My Payments', href: '/payments', icon: CreditCard, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker', 'tenant'] },
+    { name: 'Complaints', href: '/complaints', icon: MessageSquare, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant'] },
+    { name: 'KYC Verification', href: '/kyc', icon: ShieldCheck, roles: ['admin', 'partner', 'manager', 'receptionist'] },
+    { name: 'Employees', href: '/employees', icon: UserCog, roles: ['admin', 'partner', 'manager'] },
+    { name: 'Reports', href: '/reports', icon: BarChart3, roles: ['admin', 'partner', 'manager'] },
+    { name: 'Expenses', href: '/expenses', icon: Receipt, roles: ['admin', 'partner', 'manager'] },
+    { name: 'Broadcast', href: '/broadcast', icon: Megaphone, roles: ['admin', 'partner'] },
+    { name: user?.role === 'super' ? 'Platform Management' : 'My Branches', href: '/branches', icon: Building2, roles: ['super', 'admin', 'partner'] },
+    { name: 'Tasks', href: '/tasks', icon: ClipboardList, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner'] },
+    { name: 'Profile', href: '/profile', icon: User, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant', 'super'] },
+    { name: 'Subscription', href: '/subscription', icon: Zap, roles: ['admin', 'partner'] },
+    { name: 'Settings', href: '/settings', icon: UserCog, roles: ['admin', 'partner'] },
+    { name: 'Help & Support', href: '/help', icon: LifeBuoy, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant', 'super'] },
   ];
 
   const filteredNavigation = navigation.filter(item => {
@@ -86,11 +99,11 @@ export const Layout = ({ children }: LayoutProps) => {
       '/rooms': 'rooms',
       '/payments': 'payments',
       '/complaints': 'complaints',
-      '/kyc': 'kyc',
-      '/employees': 'employees',
+      '/reports': 'reports',
+      '/expenses': 'expenses',
+      '/tasks': 'tasks',
       '/broadcast': 'broadcast',
-      '/analytics': 'analytics',
-      '/reports': 'reports'
+      '/kyc': 'kyc'
     };
 
     const feature = featureMap[item.href];
@@ -99,7 +112,7 @@ export const Layout = ({ children }: LayoutProps) => {
     }
 
     // Dynamic tab visibility from pgConfig (Bypass Admin level routing suppression)
-    if (pgConfig?.rolePermissions && user.role !== 'admin') {
+    if (pgConfig?.rolePermissions && user.role !== 'admin' && user.role !== 'partner') {
       const rolePerms = pgConfig.rolePermissions.find(p => p.role === user.role);
       if (rolePerms) {
         return rolePerms.visibleTabs.includes(item.href);
@@ -107,8 +120,10 @@ export const Layout = ({ children }: LayoutProps) => {
     }
 
     return true;
-    return item;
-  });
+  }).map(item => ({
+    ...item,
+    href: getBranchPath(item.href)
+  }));
 
   const handleLogout = async () => {
     await logout();
@@ -132,9 +147,16 @@ export const Layout = ({ children }: LayoutProps) => {
           </span>
         </div>
 
+        {/* Branch Switcher — Desktop */}
+        {user && ['admin', 'partner', 'super'].includes(user.role) && (
+          <div className="px-4 mb-2">
+            <BranchSwitcher />
+          </div>
+        )}
+
         <nav className="flex-1 px-4 space-y-1 mt-4 overflow-y-auto custom-scrollbar pb-4">
           {filteredNavigation.map((item) => {
-            const isActive = location.pathname === item.href;
+            const isActive = location.pathname === item.href || (item.href === `/branch/${activeBranchId}/dashboard` && location.pathname === `/branch/${activeBranchId}/`);
             return (
               <Link
                 key={item.name}
@@ -267,9 +289,16 @@ export const Layout = ({ children }: LayoutProps) => {
                 </span>
               </div>
 
+              {/* Branch Switcher — Mobile */}
+              {user && ['admin', 'partner', 'super'].includes(user.role) && (
+                <div className="px-4 mb-2">
+                  <BranchSwitcher />
+                </div>
+              )}
+
               <nav className="flex-1 px-4 space-y-1 mt-4 overflow-y-auto custom-scrollbar pb-4">
                 {filteredNavigation.map((item) => {
-                  const isActive = location.pathname === item.href;
+                  const isActive = location.pathname === item.href || (item.href === `/branch/${activeBranchId}/dashboard` && location.pathname === `/branch/${activeBranchId}/`);
                   return (
                     <Link
                       key={item.name}
@@ -334,7 +363,8 @@ export const Layout = ({ children }: LayoutProps) => {
           <div className="flex items-center gap-4">
             <div className="lg:hidden w-10" /> {/* Spacer for mobile menu button */}
             <h1 className="text-lg font-semibold text-gray-900 dark:text-white truncate max-w-[150px] sm:max-w-none">
-              {navigation.find(n => n.href === location.pathname)?.name || 'Dashboard'}
+              {filteredNavigation.find(n => n.href === location.pathname)?.name || 
+               (location.pathname.includes('/dashboard') ? 'Dashboard' : 'Portal')}
             </h1>
           </div>
           <div className="flex items-center gap-2 sm:gap-4">
@@ -372,9 +402,9 @@ export const Layout = ({ children }: LayoutProps) => {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-4 sm:p-8">
+        <div key={user?.branchId} className="flex-1 overflow-y-auto p-4 sm:p-8">
           <div className="max-w-7xl mx-auto">
-            {user?.role === 'admin' && currentBranch?.subscriptionStatus === 'trial' && (
+            {(user?.role === 'admin' || user?.role === 'partner') && currentBranch?.subscriptionStatus === 'trial' && (
               <motion.div
                 initial={{ opacity: 0, y: -20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -398,7 +428,7 @@ export const Layout = ({ children }: LayoutProps) => {
                 </button>
               </motion.div>
             )}
-            {children}
+            {children || <Outlet />}
           </div>
         </div>
       </main>

@@ -172,7 +172,8 @@ export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
                 <Field label="Bed" value={(tenant.bedNumber ?? tenant.bed_number) ? `Bed ${tenant.bedNumber ?? tenant.bed_number}` : '—'} />
                 <Field label="Rent" value={(tenant.rentAmount ?? tenant.rent_amount) !== undefined ? `₹${Number(tenant.rentAmount ?? tenant.rent_amount).toLocaleString()}/mo` : '—'} />
                 <Field label="Due Date" value={(tenant.paymentDueDate ?? tenant.payment_due_date) ? `${tenant.paymentDueDate ?? tenant.payment_due_date}th` : '—'} />
-                <Field label="Deposit" value={(tenant.depositAmount ?? tenant.deposit_amount) !== undefined ? `₹${Number(tenant.depositAmount ?? tenant.deposit_amount).toLocaleString()}` : '—'} />
+                <Field label="Deposit" value={(tenant.depositAmount ?? tenant.deposit_amount) !== undefined ? `₹${Number(tenant.depositAmount ?? tenant.deposit_amount).toLocaleString()} (${tenant.depositStatus || tenant.deposit_status || 'Pending'})` : '—'} />
+                <Field label="Token" value={(tenant.tokenAmount ?? tenant.token_amount) ? `₹${Number(tenant.tokenAmount ?? tenant.token_amount).toLocaleString()} (${tenant.tokenStatus || tenant.token_status || 'Pending'})` : '—'} />
                 <Field label="Joining" value={(tenant.joiningDate || tenant.joining_date) ? format(parseISO(tenant.joiningDate || tenant.joining_date), 'dd MMM yyyy') : '—'} />
               </div>
 

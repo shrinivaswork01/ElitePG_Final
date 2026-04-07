@@ -1,21 +1,19 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   BarChart3,
   TrendingUp,
-  Users,
-  DoorOpen,
   CreditCard,
   FileSpreadsheet,
   AlertCircle,
-  TrendingDown,
-  Info
+  Receipt,
+  PieChart as PieChartIcon,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
+import { MultiSelect } from '../components/MultiSelect';
 import { exportToExcel } from '../utils/exportUtils';
 import {
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -26,98 +24,190 @@ import {
   PieChart,
   Pie,
   Cell,
-  LabelList
+  Legend
 } from 'recharts';
+import { format, subMonths } from 'date-fns';
 import { cn } from '../utils';
 
 export const ReportsPage = () => {
-  const { tenants, rooms, payments, complaints, getStats, pgConfig } = useApp();
-  const stats = getStats();
+  const { user } = useAuth();
+  const { tenants, rooms, payments, complaints, expenses, getStats, pgConfig, currentBranch, rawData, branches } = useApp();
+  const [viewMode, setViewMode] = useState<'active' | 'combined'>('active');
+
+  const canViewCombined = user?.role === 'super' || user?.role === 'admin' || user?.role === 'partner';
+  const shouldRenderCombined = viewMode === 'combined' && canViewCombined;
+
+  // Branch access filtering for combined view
+  const userBranchIds = user?.branchIds || (user?.branchId ? [user.branchId] : []);
+  const relevantBranchIds = useMemo(() => 
+    user?.role === 'super' ? branches.map(b => b.id) : userBranchIds,
+    [user, branches, userBranchIds]
+  );
   
-  const extractBaseColor = (colorStr?: string) => {
-    if (!colorStr) return '#4f46e5';
-    if (!colorStr.includes('gradient')) return colorStr;
-    const match = colorStr.match(/(?:#[a-fA-F0-9]{3,8}|rgba?\([^\)]+\)|hsla?\([^\)]+\))/);
-    return match ? match[0] : '#4f46e5';
+  const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>(relevantBranchIds);
+
+  // Sync selectedBranchIds if branches load after initial mount
+  React.useEffect(() => {
+    if (selectedBranchIds.length === 0 && relevantBranchIds.length > 0) {
+      setSelectedBranchIds(relevantBranchIds);
+    }
+  }, [relevantBranchIds, selectedBranchIds.length]);
+
+  // Helper to extract data
+  const getRelevantData = (dataArray: any[]) => {
+    if (!dataArray) return [];
+    if (!shouldRenderCombined) {
+       return dataArray.filter(item => item.branchId === currentBranch?.id || item.branch_id === currentBranch?.id);
+    }
+    // Combined mode - Filter by SPECIFICALLY selected branches
+    return dataArray.filter(item => selectedBranchIds.includes(item.branchId || item.branch_id));
   };
 
-  const themeColor = extractBaseColor(pgConfig?.primaryColor);
-  const COLORS = [themeColor, '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+  const currentPayments = shouldRenderCombined ? getRelevantData(rawData.payments || payments) : payments;
+  const currentExpenses = shouldRenderCombined ? getRelevantData(rawData.expenses || expenses) : (expenses || []);
 
-  // Trend Calculations
-  const revHistory = stats.revenueHistory || [];
-  const currRev = revHistory[revHistory.length - 1]?.revenue || 0;
-  const prevRev = revHistory[revHistory.length - 2]?.revenue || 0;
-  const revTrend = prevRev === 0 ? 0 : Math.round(((currRev - prevRev) / prevRev) * 100);
-
-  const occupancyRate = (tenants.length + stats.vacantBeds) === 0 ? 0 : Math.round((tenants.length / (tenants.length + stats.vacantBeds)) * 100);
+  const themeColor = pgConfig?.primaryColor || '#4f46e5';
+  const expenseColor = '#f43f5e'; // Rose for expenses
   
-  const occupancyData = [
-    { name: 'Occupied', value: tenants.length },
-    { name: 'Vacant', value: stats.vacantBeds },
-  ];
+  const currentMonthStr = format(new Date(), 'yyyy-MM');
 
-  const categories = ['Plumbing', 'Electrical', 'Internet', 'Cleaning', 'Other'];
-  const complaintData = categories.map(cat => ({
-    name: cat,
-    value: complaints.filter(c => c.category === cat).length
-  }));
+  // Revenue vs Expenses History (Last 6 Months)
+  const historyData = useMemo(() => {
+    const data = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = subMonths(new Date(), i);
+      const monthStr = format(d, 'yyyy-MM');
+      
+      const rev = currentPayments
+        .filter(p => p.month === monthStr && p.status === 'paid')
+        .reduce((sum, p) => sum + p.totalAmount, 0);
+
+      const exp = currentExpenses
+        .filter(e => e.month === monthStr && e.status !== 'rejected')
+        .reduce((sum, e) => sum + e.amount, 0);
+
+      data.push({
+        name: format(d, 'MMM yyyy'),
+        revenue: rev,
+        expenses: exp,
+        profit: rev - exp,
+        monthStr
+      });
+    }
+    return data;
+  }, [currentPayments, currentExpenses]);
+
+  // Current Month Totals
+  const currentMonthData = historyData[historyData.length - 1];
+  const prevMonthData = historyData[historyData.length - 2];
+
+  const calcTrend = (curr: number, prev: number) => prev === 0 ? 0 : Math.round(((curr - prev) / prev) * 100);
+  const revTrend = calcTrend(currentMonthData.revenue, prevMonthData.revenue);
+  const expTrend = calcTrend(currentMonthData.expenses, prevMonthData.expenses);
+  const profTrend = calcTrend(currentMonthData.profit, prevMonthData.profit);
+
+  // Expense Categories for current month
+  const expenseByCategory = useMemo(() => {
+    const currentMonthExpenses = currentExpenses.filter(e => e.month === currentMonthStr && e.status !== 'rejected');
+    const grouped = currentMonthExpenses.reduce((acc, curr) => {
+      acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
+      return acc;
+    }, {} as Record<string, number>);
+    
+    return Object.entries(grouped)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [currentExpenses, currentMonthStr]);
+
+  const COLORS = ['#4f46e5', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b', '#10b981', '#64748b'];
 
   const handleExportExcel = async () => {
     try {
-      await exportToExcel(tenants, rooms, payments, complaints, undefined, stats);
+      await exportToExcel(
+         shouldRenderCombined ? getRelevantData(rawData.tenants) : tenants, 
+         shouldRenderCombined ? getRelevantData(rawData.rooms) : rooms, 
+         currentPayments, 
+         shouldRenderCombined ? getRelevantData(rawData.complaints) : complaints, 
+         shouldRenderCombined ? [] : getRelevantData(rawData.meterGroups), 
+         shouldRenderCombined ? undefined : currentBranch, 
+         branches, // Added branches array as required by updated util
+         getStats(),
+         currentExpenses
+      );
     } catch (error) {
       console.error('Export failed:', error);
     }
   };
 
-  const topStats = [
-    { 
-      label: 'Total Revenue', 
-      value: `₹${stats.monthlyRevenue.toLocaleString()}`, 
-      icon: CreditCard, 
-      trend: revTrend >= 0 ? `+${revTrend}% ↑` : `${revTrend}% ↓`,
-      trendColor: revTrend >= 0 ? 'text-emerald-500' : 'text-rose-500',
-      color: 'text-emerald-600', 
-      bg: 'bg-emerald-50 dark:bg-emerald-500/10' 
-    },
-    { 
-      label: 'Occupancy Rate', 
-      value: `${occupancyRate}%`, 
-      icon: Users, 
-      trend: 'Stable',
-      trendColor: 'text-gray-400',
-      color: 'text-indigo-600', 
-      bg: 'bg-indigo-50 dark:bg-indigo-500/10' 
-    },
-    { 
-      label: 'Open Complaints', 
-      value: stats.openComplaints, 
-      icon: BarChart3, 
-      trend: stats.openComplaints > 5 ? 'Alert Needs Attention' : 'Manageable',
-      trendColor: stats.openComplaints > 5 ? 'text-rose-500 font-black' : 'text-emerald-500',
-      color: 'text-amber-600', 
-      bg: 'bg-amber-50 dark:bg-amber-500/10' 
-    },
-    { 
-      label: 'Vacant Beds', 
-      value: stats.vacantBeds, 
-      icon: DoorOpen, 
-      trend: stats.vacantBeds < 3 ? 'Almost Full' : 'Available',
-      trendColor: stats.vacantBeds < 3 ? 'text-amber-500' : 'text-emerald-500',
-      color: 'text-rose-600', 
-      bg: 'bg-rose-50 dark:bg-rose-500/10' 
-    },
-  ];
+  // Detailed Transaction Logs (Revenue + Expenses)
+  const detailedLogs = useMemo(() => {
+     const revenue = currentPayments.map(p => ({
+        type: 'revenue',
+        branch_name: (branches.find(b => b.id === (p.branchId || p.branch_id))?.name || 'Unknown'),
+        date: p.paymentDate || p.createdAt || p.month,
+        category: p.paymentType || 'Rent',
+        description: `Room ${p.roomId} - ${p.tenantName || 'Tenant'}`,
+        amount: p.totalAmount
+     }));
+
+     const exps = currentExpenses.map(e => ({
+        type: 'expense',
+        branch_name: (branches.find(b => b.id === (e.branchId || e.branch_id))?.name || 'Unknown'),
+        date: e.date,
+        category: e.category,
+        description: e.description,
+        amount: -e.amount
+     }));
+
+     return [...revenue, ...exps].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [currentPayments, currentExpenses, branches]);
 
   return (
     <div className="space-y-8 pb-20">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">Reports & Analytics</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">Professional performance breakdown of your property</p>
+          <h2 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight flex items-center gap-3">
+            Reports & Analytics
+          </h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">
+            {shouldRenderCombined ? 'Combined overview for all branches' : `Overview for ${currentBranch?.name || 'Active Branch'}`}
+          </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
+          {canViewCombined && (
+             <div className="flex bg-gray-100 dark:bg-white/5 rounded-xl p-1">
+               <button
+                 onClick={() => setViewMode('active')}
+                 className={cn(
+                   "px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
+                   viewMode === 'active' ? "bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow" : "text-gray-500"
+                 )}
+               >
+                 Active Branch
+               </button>
+               <button
+                 onClick={() => setViewMode('combined')}
+                 className={cn(
+                   "px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
+                   viewMode === 'combined' ? "bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow" : "text-gray-500"
+                 )}
+               >
+                 Combined View
+               </button>
+             </div>
+          )}
+          {shouldRenderCombined && (
+             <MultiSelect
+               options={branches
+                 .filter(b => relevantBranchIds.includes(b.id))
+                 .map(b => ({ id: b.id, label: b.name, subLabel: b.branchName }))
+               }
+               selectedIds={selectedBranchIds}
+               onChange={setSelectedBranchIds}
+               placeholder="Filter Branches"
+               className="sm:w-56"
+             />
+          )}
           <button
             onClick={handleExportExcel}
             className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-2xl text-sm font-black hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
@@ -130,288 +220,274 @@ export const ReportsPage = () => {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {topStats.map((stat, i) => (
-          <motion.div
-            key={stat.label}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.1 }}
-            className="bg-white dark:bg-[#0d0d0d] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden"
-          >
-            <div className={`w-12 h-12 ${stat.bg} rounded-2xl flex items-center justify-center ${stat.color} mb-4`}>
-              <stat.icon className="w-6 h-6" />
-            </div>
-            <p className="text-[10px] font-black text-gray-400 tracking-[0.05em] mb-1">{stat.label}</p>
-            <div className="flex items-baseline gap-2 font-display">
-              <h3 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">{stat.value}</h3>
-              <span className={cn("text-[10px] font-black tracking-tighter", stat.trendColor)}>{stat.trend}</span>
-            </div>
-            <div className="absolute top-0 right-0 w-24 h-24 blur-[60px] rounded-full opacity-10" style={{ background: themeColor }} />
-          </motion.div>
-        ))}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <motion.div className="bg-white dark:bg-[#0d0d0d] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden">
+          <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-600 mb-4">
+            <CreditCard className="w-6 h-6" />
+          </div>
+          <p className="text-[10px] font-black text-gray-400 tracking-[0.05em] mb-1 uppercase">Total Revenue (This Month)</p>
+          <div className="flex items-baseline gap-2 font-display">
+            <h3 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">₹{currentMonthData.revenue.toLocaleString()}</h3>
+            <span className={cn("text-[10px] font-black tracking-tighter", revTrend >= 0 ? 'text-emerald-500' : 'text-rose-500')}>
+              {revTrend >= 0 ? `+${revTrend}% ↑` : `${revTrend}% ↓`}
+            </span>
+          </div>
+        </motion.div>
+
+        <motion.div className="bg-white dark:bg-[#0d0d0d] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden">
+          <div className="w-12 h-12 bg-rose-50 dark:bg-rose-500/10 rounded-2xl flex items-center justify-center text-rose-600 mb-4">
+            <Receipt className="w-6 h-6" />
+          </div>
+          <p className="text-[10px] font-black text-gray-400 tracking-[0.05em] mb-1 uppercase">Total Expenses (This Month)</p>
+          <div className="flex items-baseline gap-2 font-display">
+            <h3 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">₹{currentMonthData.expenses.toLocaleString()}</h3>
+            <span className={cn("text-[10px] font-black tracking-tighter", expTrend <= 0 ? 'text-emerald-500' : 'text-rose-500')}>
+              {expTrend > 0 ? `+${expTrend}% ↑` : `${expTrend}% ↓`}
+            </span>
+          </div>
+        </motion.div>
+
+        <motion.div className="bg-white dark:bg-[#0d0d0d] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden">
+          <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-500/10 rounded-2xl flex items-center justify-center text-emerald-600 mb-4">
+            <TrendingUp className="w-6 h-6" />
+          </div>
+          <p className="text-[10px] font-black text-gray-400 tracking-[0.05em] mb-1 uppercase">Net Profit (This Month)</p>
+          <div className="flex items-baseline gap-2 font-display">
+            <h3 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">₹{currentMonthData.profit.toLocaleString()}</h3>
+            <span className={cn("text-[10px] font-black tracking-tighter", profTrend >= 0 ? 'text-emerald-500' : 'text-rose-500')}>
+              {profTrend >= 0 ? `+${profTrend}% ↑` : `${profTrend}% ↓`}
+            </span>
+          </div>
+        </motion.div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* Revenue Trend */}
+        {/* Revenue vs Expenses Area Chart */}
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-white dark:bg-[#0d0d0d] p-8 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm min-h-[450px] flex flex-col"
+          className="lg:col-span-2 bg-white dark:bg-[#0d0d0d] p-8 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm min-h-[450px] flex flex-col"
         >
           <div className="flex items-center justify-between mb-8">
              <div>
                <h3 className="text-xl font-black text-gray-900 dark:text-white flex items-center gap-2 tracking-tight font-display">
-                <TrendingUp className="w-5 h-5" style={{ color: themeColor }} />
-                Revenue Trend
+                <BarChart3 className="w-5 h-5 text-indigo-500" />
+                Financial Overview
               </h3>
-              <div className="flex items-center gap-2 mt-1">
-                <p className="text-[10px] font-black text-emerald-500 tracking-widest flex items-center gap-1">
-                   <TrendingUp className="w-3 h-3" />
-                   {revTrend >= 0 ? `+${revTrend}% Growth` : `${revTrend}% Down`}
-                </p>
-                <span className="text-[10px] font-bold text-gray-400 tracking-widest">Compared to last period</span>
-              </div>
+              <p className="text-[10px] font-bold text-gray-400 tracking-widest mt-1">Revenue vs Expenses (6 Months)</p>
              </div>
-            <select className="bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl text-[10px] font-black text-gray-500 outline-none px-4 py-2 tracking-widest cursor-pointer">
-              <option>Last 6 Months</option>
-              <option>Last Year</option>
-            </select>
           </div>
           <div className="flex-1 w-full">
-            {revHistory.length === 0 || revHistory.every(d => d.revenue === 0) ? (
+            {historyData.every(d => d.revenue === 0 && d.expenses === 0) ? (
               <div className="h-full flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-gray-100 dark:border-white/5 rounded-3xl">
-                <CreditCard className="w-10 h-10 text-gray-200 mb-3" />
-                <p className="text-sm font-black text-gray-400 tracking-widest">No revenue data available</p>
+                <AlertCircle className="w-10 h-10 text-gray-200 mb-3" />
+                <p className="text-sm font-black text-gray-400 tracking-widest">No financial data available</p>
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={revHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <AreaChart data={historyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
-                    <linearGradient id="colorRevenueRep" x1="0" y1="0" x2="0" y2="1">
+                    <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor={themeColor} stopOpacity={0.8} />
                       <stop offset="95%" stopColor={themeColor} stopOpacity={0.05} />
                     </linearGradient>
+                    <linearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={expenseColor} stopOpacity={0.8} />
+                      <stop offset="95%" stopColor={expenseColor} stopOpacity={0.05} />
+                    </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} strokeOpacity={0.1} />
-                    <XAxis
-                      dataKey="name"
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fill: '#94A3B8', fontSize: 10, fontWeight: 800, fontFamily: 'Inter' }}
-                      dy={10}
-                      tickFormatter={(value) => {
-                        const [year, month] = value.split('-');
-                        const date = new Date(parseInt(year), parseInt(month) - 1);
-                        return date.toLocaleString('default', { month: 'short' });
-                      }}
-                    />
-                    <YAxis
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fill: '#94A3B8', fontSize: 10, fontWeight: 800, fontFamily: 'Inter' }}
-                      tickFormatter={(value) => `₹${value >= 1000 ? (value / 1000) + 'k' : value}`}
-                    />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94A3B8', fontSize: 10, fontWeight: 800, fontFamily: 'Inter' }} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94A3B8', fontSize: 10, fontWeight: 800, fontFamily: 'Inter' }} tickFormatter={(value) => `₹${value >= 1000 ? (value / 1000) + 'k' : value}`} />
                   <Tooltip
-                    contentStyle={{ 
-                      backgroundColor: `${themeColor}EE`, 
-                      backdropFilter: 'blur(10px)',
-                      border: 'none',
-                      borderRadius: '20px', 
-                      color: '#fff',
-                      boxShadow: `0 10px 30px -10px ${themeColor}66`
-                    }}
-                    itemStyle={{ color: '#fff', fontSize: '14px', fontWeight: 'bold' }}
-                    labelStyle={{ color: 'rgba(255,255,255,0.7)', fontSize: '10px', marginBottom: '4px', fontWeight: '900', textTransform: 'uppercase' }}
+                    contentStyle={{ backgroundColor: '#111', border: 'none', borderRadius: '16px', color: '#fff' }}
+                    itemStyle={{ color: '#fff', fontSize: '12px', fontWeight: 'bold' }}
                   />
-                  <Area
-                    type="monotone"
-                    dataKey="revenue"
-                    stroke={themeColor}
-                    strokeWidth={5}
-                    fillOpacity={1}
-                    fill="url(#colorRevenueRep)"
-                    animationDuration={2000}
-                  />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', color: '#94a3b8' }} />
+                  <Area type="monotone" dataKey="revenue" name="Revenue" stroke={themeColor} strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
+                  <Area type="monotone" dataKey="expenses" name="Expenses" stroke={expenseColor} strokeWidth={3} fillOpacity={1} fill="url(#colorExpense)" />
                 </AreaChart>
               </ResponsiveContainer>
             )}
           </div>
         </motion.div>
 
-        {/* Occupancy Distribution */}
+        {/* Expenses by Category Pie Chart */}
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.2 }}
           className="bg-white dark:bg-[#0d0d0d] p-8 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm min-h-[450px] relative"
         >
-          <h3 className="text-xl font-black text-gray-900 dark:text-white flex items-center gap-2 mb-8 tracking-tight font-display">
-            <Users className="w-5 h-5" style={{ color: themeColor }} />
-            Occupancy Distribution
+          <h3 className="text-xl font-black text-gray-900 dark:text-white flex items-center gap-2 mb-2 tracking-tight font-display">
+            <PieChartIcon className="w-5 h-5 text-rose-500" />
+            Expenses Breakdown
           </h3>
-          <div className="h-[280px] w-full flex items-center justify-center relative">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={occupancyData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={75}
-                  outerRadius={105}
-                  paddingAngle={8}
-                  dataKey="value"
-                  animationBegin={200}
-                  animationDuration={1500}
-                >
-                  <Cell fill={themeColor} />
-                  <Cell fill={`${themeColor}22`} />
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="absolute flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-4xl font-black text-gray-900 dark:text-white leading-none font-display">
-                {occupancyRate}%
-              </span>
-              <span className="text-[10px] font-black text-gray-400 tracking-[0.1em] mt-1">Occupied</span>
-            </div>
+          <p className="text-[10px] font-bold text-gray-400 tracking-widest mb-6">Current Month Categories</p>
+          
+          <div className="h-[250px] w-full flex items-center justify-center relative">
+            {expenseByCategory.length === 0 ? (
+               <div className="text-center text-gray-500 text-sm">No expenses recorded</div>
+            ) : (
+               <>
+                 <ResponsiveContainer width="100%" height="100%">
+                   <PieChart>
+                     <Pie
+                       data={expenseByCategory}
+                       cx="50%"
+                       cy="50%"
+                       innerRadius={60}
+                       outerRadius={90}
+                       paddingAngle={5}
+                       dataKey="value"
+                     >
+                       {expenseByCategory.map((entry, index) => (
+                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                       ))}
+                     </Pie>
+                     <Tooltip 
+                        contentStyle={{ backgroundColor: '#111', border: 'none', borderRadius: '12px', color: '#fff' }}
+                        itemStyle={{ fontSize: '12px', fontWeight: 'bold', textTransform: 'capitalize' }}
+                     />
+                   </PieChart>
+                 </ResponsiveContainer>
+                 <div className="absolute flex flex-col items-center justify-center pointer-events-none">
+                   <span className="text-lg font-black text-gray-900 dark:text-white leading-none font-display">
+                     ₹{currentMonthData.expenses >= 1000 ? (currentMonthData.expenses / 1000).toFixed(1) + 'k' : currentMonthData.expenses}
+                   </span>
+                 </div>
+               </>
+            )}
           </div>
           
-          <div className="flex flex-col items-center mt-6 space-y-4">
-             <div className="grid grid-cols-2 gap-8 w-full max-w-xs font-display">
-                <div className="text-center p-4 bg-gray-50/50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/5">
-                   <p className="text-[10px] font-black text-emerald-500 tracking-widest mb-1">Occupied</p>
-                   <p className="text-2xl font-black text-gray-900 dark:text-white">{tenants.length}</p>
-                </div>
-                <div className="text-center p-4 bg-gray-50/50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/5">
-                   <p className="text-[10px] font-black text-rose-500 tracking-widest mb-1">Vacant</p>
-                   <p className="text-2xl font-black text-gray-900 dark:text-white">{stats.vacantBeds}</p>
-                </div>
-             </div>
-             <p className="text-[10px] font-black text-gray-400 tracking-widest flex items-center gap-2">
-                <Info className="w-3 h-3" />
-                Total Property Capacity: {tenants.length + stats.vacantBeds} Beds
-             </p>
-          </div>
-        </motion.div>
-
-        {/* Complaints by Category Fix */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.3 }}
-          className="bg-white dark:bg-[#0d0d0d] p-8 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm min-h-[450px]"
-        >
-          <div className="flex items-center justify-between mb-8">
-            <h3 className="text-xl font-black text-gray-900 dark:text-white flex items-center gap-2 tracking-tight font-display">
-              <BarChart3 className="w-5 h-5" style={{ color: themeColor }} />
-              Complaints by Category
-            </h3>
-            {stats.openComplaints > 0 && (
-               <span className="px-3 py-1 bg-rose-50 dark:bg-rose-500/10 text-rose-500 text-[10px] font-black rounded-lg tracking-widest font-sans">
-                  Action Required
-               </span>
-            )}
-          </div>
-          <div className="h-[300px] w-full">
-            {complaintData.every(d => d.value === 0) ? (
-               <div className="h-full flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-gray-100 dark:border-white/5 rounded-3xl">
-                  <AlertCircle className="w-8 h-8 text-emerald-500 mb-2 opacity-50" />
-                  <p className="text-xs font-black text-gray-400 tracking-widest">No complaints data</p>
-                  <p className="text-[10px] text-gray-400 mt-1 font-black tracking-widest">Everything looks perfect!</p>
+          <div className="flex flex-col gap-2 mt-4 max-h-[120px] overflow-y-auto pr-2 custom-scrollbar">
+            {expenseByCategory.map((cat, idx) => (
+               <div key={cat.name} className="flex justify-between items-center text-xs">
+                 <div className="flex items-center gap-2">
+                   <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[idx % COLORS.length] }}></div>
+                   <span className="text-gray-600 dark:text-gray-300 capitalize">{cat.name}</span>
+                 </div>
+                 <span className="font-bold text-gray-900 dark:text-white">₹{cat.value.toLocaleString()}</span>
                </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={complaintData} barGap={4} barSize={40}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} strokeOpacity={0.05} />
-                  <XAxis
-                    dataKey="name"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: '#94A3B8', fontSize: 10, fontWeight: 800, fontFamily: 'Inter' }}
-                  />
-                  <YAxis hide />
-                  <Tooltip
-                    cursor={{ fill: `${themeColor}05` }}
-                    contentStyle={{ backgroundColor: '#111', border: 'none', borderRadius: '16px', color: '#fff', fontSize: '10px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}
-                  />
-                  <Bar dataKey="value" radius={[10, 10, 10, 10]}>
-                    {complaintData.map((entry, index) => (
-                      <Cell 
-                        key={`cell-${index}`} 
-                        fill={entry.value > 0 ? themeColor : `${themeColor}22`} 
-                      />
-                    ))}
-                    <LabelList 
-                      dataKey="value" 
-                      position="top" 
-                      style={{ fill: '#94A3B8', fontSize: '10px', fontWeight: '900', fontFamily: 'Inter' }} 
-                      formatter={(val: number) => val === 0 ? '' : val}
-                    />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            )}
+            ))}
           </div>
         </motion.div>
 
-        {/* Flat-wise Occupancy */}
+        {/* Table summary of profits */}
         <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.4 }}
-          className="bg-white dark:bg-[#0d0d0d] p-8 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm min-h-[450px]"
-        >
-          <div className="flex items-center justify-between mb-8">
-            <h3 className="text-xl font-black text-gray-900 dark:text-white flex items-center gap-2 tracking-tight font-display">
-              <DoorOpen className="w-5 h-5" style={{ color: themeColor }} />
-              Flat-wise Occupancy
-            </h3>
-             <span className="text-[10px] font-black text-gray-400 tracking-[0.05em]">
-               {stats.occupancyByFlat.length} Total Flats
-             </span>
-          </div>
-          <div className="space-y-7 pr-2">
-            {stats.occupancyByFlat.map((flat, i) => {
-               const percentage = flat.total === 0 ? 0 : Math.round((flat.occupied / flat.total) * 100);
-               return (
-                <div key={flat.name} className="space-y-2 group">
-                  <div className="flex justify-between items-end">
-                    <div className="flex items-center gap-3">
-                       <div className="w-8 h-8 rounded-xl bg-gray-50/50 dark:bg-white/5 flex items-center justify-center text-[10px] font-black text-gray-400 transition-all group-hover:scale-110" 
-                            style={{ color: percentage > 70 ? themeColor : undefined }}>
-                          {flat.name.charAt(0)}
-                       </div>
-                       <div>
-                         <span className="text-[10px] font-black text-gray-400 tracking-[0.05em] block mb-0.5">Location</span>
-                         <span className="text-xs font-black text-gray-700 dark:text-gray-200 uppercase tracking-tight font-display">{flat.name}</span>
-                       </div>
-                    </div>
-                    <div className="text-right">
-                       <span className="text-xs font-black text-gray-900 dark:text-white block font-display">{percentage}%</span>
-                       <span className="text-[10px] font-black text-gray-400 tracking-widest">{flat.occupied} / {flat.total} Beds</span>
-                    </div>
-                  </div>
-                  <div className="h-2.5 bg-gray-100 dark:bg-white/5 rounded-full overflow-hidden p-0.5 border border-gray-100/50 dark:border-white/5 relative">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${percentage}%` }}
-                      transition={{ duration: 1.5, delay: 0.5 + i * 0.1 }}
-                      className="h-full rounded-full relative"
-                      style={{ background: `linear-gradient(to right, ${themeColor}, ${themeColor}CC)` }}
-                    >
-                       <div className="absolute inset-x-0 top-0 h-[40%] bg-white/20" />
-                    </motion.div>
-                  </div>
-                </div>
-               );
-            })}
-          </div>
-        </motion.div>
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="col-span-1 lg:col-span-3 bg-white dark:bg-[#0d0d0d] rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden"
+         >
+           <div className="p-6 border-b border-gray-100 dark:border-white/5">
+              <h3 className="text-lg font-black text-gray-900 dark:text-white flex items-center gap-2 font-display">
+                 <FileSpreadsheet className="w-5 h-5 text-indigo-500" />
+                 Monthly Financial Summary
+              </h3>
+           </div>
+           <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-[600px]">
+                 <thead>
+                    <tr className="bg-gray-50/50 dark:bg-white/[0.02] border-b border-gray-100 dark:border-white/5">
+                       <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase tracking-widest">Month</th>
+                       <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase tracking-widest text-right">Revenue</th>
+                       <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase tracking-widest text-right">Expenses</th>
+                       <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase tracking-widest text-right">Net Profit</th>
+                       <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase tracking-widest text-right">Margin</th>
+                    </tr>
+                 </thead>
+                 <tbody>
+                    {[...historyData].reverse().map((row, i) => (
+                       <tr key={row.monthStr} className="border-b border-gray-50 dark:border-white/5 hover:bg-gray-50/50 dark:hover:bg-white/[0.02] transition-colors">
+                          <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">{row.name}</td>
+                          <td className="px-6 py-4 font-medium text-emerald-600 dark:text-emerald-400 text-right">₹{row.revenue.toLocaleString()}</td>
+                          <td className="px-6 py-4 font-medium text-rose-600 dark:text-rose-400 text-right">₹{row.expenses.toLocaleString()}</td>
+                          <td className="px-6 py-4 font-bold text-gray-900 dark:text-white text-right">₹{row.profit.toLocaleString()}</td>
+                          <td className="px-6 py-4 text-right">
+                            <span className={cn(
+                               "px-2 py-1 text-[10px] font-black rounded-lg",
+                               row.profit > 0 ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400" : (row.profit < 0 ? "bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400" : "bg-gray-100 text-gray-500")
+                            )}>
+                               {row.revenue > 0 ? Math.round((row.profit / row.revenue) * 100) : 0}%
+                            </span>
+                          </td>
+                       </tr>
+                    ))}
+                 </tbody>
+              </table>
+           </div>
+         </motion.div>
+
+         {/* Detailed Transaction Logs Section */}
+         <motion.div
+           initial={{ opacity: 0, scale: 0.95 }}
+           animate={{ opacity: 1, scale: 1 }}
+           transition={{ delay: 0.3 }}
+           className="col-span-1 lg:col-span-3 bg-white dark:bg-[#0d0d0d] rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden"
+         >
+           <div className="p-6 border-b border-gray-100 dark:border-white/5 flex items-center justify-between">
+              <h3 className="text-xl font-black text-gray-900 dark:text-white flex items-center gap-2 font-display">
+                 <Receipt className="w-5 h-5 text-indigo-500" />
+                 Detailed Transaction Logs
+              </h3>
+              <p className="text-[10px] font-bold text-gray-400 tracking-widest uppercase italic">Showing {detailedLogs.length} Records</p>
+           </div>
+           <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-[800px]">
+                 <thead>
+                    <tr className="bg-gray-50/50 dark:bg-white/[0.02] border-b border-gray-100 dark:border-white/5">
+                       <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase tracking-widest">Branch Name</th>
+                       <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase tracking-widest">Date</th>
+                       <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase tracking-widest">Category</th>
+                       <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase tracking-widest">Description</th>
+                       <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase tracking-widest text-right">Amount</th>
+                    </tr>
+                 </thead>
+                 <tbody>
+                    {detailedLogs.slice(0, 50).map((log, i) => (
+                       <tr key={i} className="border-b border-gray-50 dark:border-white/5 hover:bg-gray-50/50 dark:hover:bg-white/[0.02] transition-colors group">
+                          <td className="px-6 py-4">
+                             <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/5 flex items-center justify-center text-[10px] font-black group-hover:bg-indigo-50 dark:group-hover:bg-indigo-500/10 transition-colors">
+                                   {log.branch_name.charAt(0)}
+                                </div>
+                                <span className="font-bold text-gray-900 dark:text-white text-sm">{log.branch_name}</span>
+                             </div>
+                          </td>
+                          <td className="px-6 py-4 text-xs font-medium text-gray-500 dark:text-gray-400">{log.date ? format(new Date(log.date), 'dd MMM yyyy') : 'N/A'}</td>
+                          <td className="px-6 py-4">
+                             <span className={cn(
+                                "px-2 py-1 text-[10px] font-black rounded-lg uppercase tracking-wider",
+                                log.type === 'revenue' ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400" : "bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400"
+                             )}>
+                                {log.category}
+                             </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300 italic">{log.description}</td>
+                          <td className={cn(
+                             "px-6 py-4 font-black text-right transition-all group-hover:scale-105",
+                             log.amount >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
+                          )}>
+                             {log.amount >= 0 ? '+' : ''}₹{Math.abs(log.amount).toLocaleString()}
+                          </td>
+                       </tr>
+                    ))}
+                    {detailedLogs.length === 0 && (
+                       <tr>
+                          <td colSpan={5} className="px-6 py-12 text-center text-gray-400 font-bold tracking-widest italic">No transactions found for selected criteria</td>
+                       </tr>
+                    )}
+                 </tbody>
+              </table>
+              {detailedLogs.length > 50 && (
+                 <div className="p-4 bg-gray-50/30 dark:bg-white/[0.01] text-center border-t border-gray-100 dark:border-white/5">
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Showing latest 50 records. Export to Excel for full history.</p>
+                 </div>
+              )}
+           </div>
+         </motion.div>
       </div>
     </div>
   );
 };
-

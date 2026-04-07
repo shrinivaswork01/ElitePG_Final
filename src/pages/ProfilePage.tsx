@@ -22,7 +22,7 @@ export const ProfilePage = () => {
     phone: user?.phone || '',
     avatar: user?.avatar || '',
     password: user?.password || '',
-    signatureUrl: (user?.role === 'admin' || user?.role === 'super') 
+    signatureUrl: (user?.role === 'admin' || user?.role === 'partner' || user?.role === 'super') 
       ? (currentBranch?.officialSignatureUrl || user?.signatureUrl || '')
       : (user?.signatureUrl || ''),
   });
@@ -365,7 +365,7 @@ export const ProfilePage = () => {
                             <Trash2 className="w-4 h-4" />
                           </button>
                           
-                          {(user?.role === 'admin' || user?.role === 'super') && (
+                          {(user?.role === 'admin' || user?.role === 'partner' || user?.role === 'super') && (
                             <button
                               type="button"
                               onClick={handleSetOfficialSignature}
@@ -464,7 +464,7 @@ export const ProfilePage = () => {
         </motion.div>
       )}
 
-      {user?.role === 'admin' && currentPlan && (
+      {(user?.role === 'admin' || user?.role === 'partner') && currentPlan && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}

@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useMemo, useCallback } from 'react';
+import { useParams } from 'react-router-dom';
 import { format } from 'date-fns';
-import { Tenant, Room, Payment, Complaint, Employee, KYCData, Announcement, SalaryPayment, Task, PGConfig, PGBranch, RolePermissions, SubscriptionPlan, AppFeature, KYCStatus, UserInvite, MeterGroup } from '../types';
+import { Tenant, Room, Payment, Complaint, Employee, KYCData, Announcement, SalaryPayment, Task, PGConfig, PGBranch, RolePermissions, SubscriptionPlan, AppFeature, KYCStatus, UserInvite, MeterGroup, Expense, ExpenseStatus } from '../types';
 import { uploadToSupabase, deleteFromSupabase } from '../utils/storage';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
@@ -23,6 +24,7 @@ interface AppContextType {
   subscriptionPlans: SubscriptionPlan[];
   userInvites: UserInvite[];
   superSignatureUrl: string | null;
+  expenses: Expense[];
 
   // Actions
   addTenant: (tenant: Omit<Tenant, 'id' | 'branchId'>, kycDoc?: { type: string, file?: File, url?: string }, rentAgreementDoc?: { file?: File, url?: string }) => Promise<void>;
@@ -66,14 +68,18 @@ interface AppContextType {
   updateTask: (id: string, updates: Partial<Task>) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
 
+  addExpense: (expense: Omit<Expense, 'id' | 'branchId' | 'createdAt' | 'editedAt'>) => Promise<void>;
+  updateExpense: (id: string, updates: Partial<Expense>) => Promise<void>;
+  deleteExpense: (id: string) => Promise<void>;
+
   updatePGConfig: (updates: Partial<PGConfig>, branchId?: string) => Promise<void>;
 
   addBranch: (branch: Omit<PGBranch, 'id' | 'createdAt' | 'planId' | 'subscriptionStatus' | 'subscriptionEndDate'>) => Promise<string | null>;
   updateBranch: (id: string, updates: Partial<PGBranch>) => Promise<void>;
   deleteBranch: (id: string) => Promise<void>;
 
-  addSubscriptionPlan: (plan: Omit<SubscriptionPlan, 'id'>) => Promise<void>;
-  updateSubscriptionPlan: (id: string, updates: Partial<SubscriptionPlan>) => Promise<void>;
+  addSubscriptionPlan: (plan: Omit<SubscriptionPlan, 'id'>) => Promise<boolean>;
+  updateSubscriptionPlan: (id: string, updates: Partial<SubscriptionPlan>) => Promise<boolean>;
   deleteSubscriptionPlan: (id: string) => Promise<void>;
   updateBranchSubscription: (branchId: string, planId: string, status: 'active' | 'expired' | 'trial', endDate: string, razorpayCustomerId?: string, razorpaySubscriptionId?: string) => Promise<void>;
   checkFeatureAccess: (feature: AppFeature) => boolean;
@@ -94,6 +100,8 @@ interface AppContextType {
   };
   currentBranch: PGBranch | undefined;
   currentPlan: SubscriptionPlan | undefined;
+  rawData: any;
+  isAppLoading: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -118,7 +126,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       branches: [],
       subscriptionPlans: [],
       userInvites: [],
-      superSignatureUrl: null
+      superSignatureUrl: null,
+      expenses: []
     };
 
     if (cached) {
@@ -133,35 +142,52 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return defaults;
   });
 
+  const [isAppLoading, setIsAppLoading] = useState(true);
+
+  const { branchId: urlBranchId } = useParams<{ branchId: string }>();
   const userId = user?.id;
   const userRole = user?.role;
-  const userBranchId = user?.branchId;
+  const activeBranchId = urlBranchId || user?.branchId;
 
   const fetchData = useCallback(async () => {
     // We only fetch data if user is logged in
     if (!userId) {
-      setData({ tenants: [], rooms: [], payments: [], complaints: [], employees: [], kycs: [], announcements: [], salaryPayments: [], tasks: [], pgConfigs: [], branches: [], subscriptionPlans: [], userInvites: [], superSignatureUrl: null });
+      setData({ tenants: [], rooms: [], payments: [], complaints: [], employees: [], kycs: [], announcements: [], salaryPayments: [], tasks: [], pgConfigs: [], branches: [], subscriptionPlans: [], userInvites: [], superSignatureUrl: null, expenses: [] });
+      setIsAppLoading(false);
       localStorage.removeItem('elite_pg_cached_data');
       return;
     }
 
+    setIsAppLoading(true);
     try {
       const isSuper = userRole === 'super';
       const isTenant = userRole === 'tenant';
-      const branchId = userBranchId;
-      const branchFilter = isSuper ? {} : { branch_id: branchId };
+      const branchId = activeBranchId;
+      
+      if (!branchId && !isSuper) {
+         console.warn("No branchId found for non-super user");
+         return;
+      }
+      
+      // Multi-branch support: get all branch IDs this user owns
+      const userBranchIds: string[] = user?.branchIds || (branchId ? [branchId] : []);
+      const isMultiBranch = userBranchIds.length > 1;
+      
+      // Helper: applies correct branch filter to a Supabase query
+      const branchQuery = (query: any) => {
+        if (isSuper) return query;
+        // Admins/Partners should fetch ALL their branches for combined reports and switcher context
+        if (userRole === 'admin' || userRole === 'partner') {
+          return query.in('branch_id', userBranchIds);
+        }
+        return query.eq('branch_id', branchId);
+      };
 
       let activeTenantId = null;
       if (isTenant) {
         const { data: tenant } = await supabase.from('tenants').select('id').eq('user_id', userId).maybeSingle();
         activeTenantId = tenant?.id;
       }
-
-      const tenantFilter = isTenant ? { user_id: userId } : branchFilter;
-      const paymentFilter = isTenant ? { tenant_id: activeTenantId } : branchFilter;
-      const complaintFilter = isTenant ? { tenant_id: activeTenantId } : branchFilter;
-      // Admins should see all KYC regardless of kycFilter if it's potentially mismatching branch_id, but we keep it for performance
-      const kycFilter = isTenant ? { tenant_id: activeTenantId } : branchFilter;
 
       const [
         { data: branches },
@@ -178,23 +204,34 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         { data: tasks },
         { data: pgConfigs },
         { data: userInvites },
-        { data: superUserSignature }
+        { data: superUserSignature },
+        { data: expenses }
       ] = await Promise.all([
-        supabase.from('pg_branches').select('*').match(isSuper ? {} : { id: branchId }),
+        // Branches: super gets all, admin gets their owned branches, others get their single branch
+        isSuper 
+          ? supabase.from('pg_branches').select('*')
+          : supabase.from('pg_branches').select('*').in('id', userBranchIds), // Keep all owned branches for the switcher, but other data is filtered
         supabase.from('subscription_plans').select('*'),
-        supabase.from('tenants').select('*, users(is_authorized)').match(tenantFilter),
-        supabase.from('rooms').select('*, meter_groups(id, name, floor, branch_id, created_at)').match(branchFilter),
-        supabase.from('meter_groups').select('*').match(branchFilter),
-        supabase.from('payments').select('*').match(paymentFilter),
-        supabase.from('complaints').select('*').match(complaintFilter),
-        supabase.from('employees').select('*').match(branchFilter),
+        isTenant
+          ? supabase.from('tenants').select('*, users(is_authorized)').eq('user_id', userId)
+          : branchQuery(supabase.from('tenants').select('*, users(is_authorized)')),
+        branchQuery(supabase.from('rooms').select('*, meter_groups(id, name, floor, branch_id, created_at)')),
+        branchQuery(supabase.from('meter_groups').select('*')),
+        isTenant
+          ? supabase.from('payments').select('*').eq('tenant_id', activeTenantId)
+          : branchQuery(supabase.from('payments').select('*')),
+        isTenant
+          ? supabase.from('complaints').select('*').eq('tenant_id', activeTenantId)
+          : branchQuery(supabase.from('complaints').select('*')),
+        branchQuery(supabase.from('employees').select('*')),
         supabase.from('kyc_documents').select('*'), // Filtered locally in filteredData for better resilience and legacy support
-        supabase.from('announcements').select('*').match(branchFilter),
-        supabase.from('salary_payments').select('*').match(branchFilter),
-        supabase.from('tasks').select('*').match(branchFilter),
-        supabase.from('pg_configs').select('*').match(branchFilter),
-        supabase.from('user_invites').select('*').match(branchFilter),
-        supabase.from('users').select('signature_url').eq('role', 'super').maybeSingle()
+        branchQuery(supabase.from('announcements').select('*')),
+        branchQuery(supabase.from('salary_payments').select('*')),
+        branchQuery(supabase.from('tasks').select('*')),
+        branchQuery(supabase.from('pg_configs').select('*')),
+        branchQuery(supabase.from('user_invites').select('*')),
+        supabase.from('users').select('signature_url').eq('role', 'super').maybeSingle(),
+        branchQuery(supabase.from('expenses').select('*'))
       ]);
 
       const newData = {
@@ -207,7 +244,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         })),
         subscriptionPlans: (plans || []).map(p => ({
           id: p.id, name: p.name, price: p.price, annualPrice: p.annual_price || 0, features: p.features,
-          maxTenants: p.max_tenants, maxRooms: p.max_rooms,
+          maxTenants: p.max_tenants, maxRooms: p.max_rooms, maxBranches: p.max_branches || 1,
           razorpayMonthlyPlanId: p.razorpay_plan_id, razorpayAnnualPlanId: p.razorpay_annual_plan_id
         })),
         tenants: (tenants || []).map(t => ({
@@ -269,58 +306,58 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         userInvites: (userInvites || []).map(i => ({
           id: i.id, inviteCode: i.invite_code, email: i.email, branchId: i.branch_id, role: i.role as any, status: i.status as any, createdAt: i.created_at
         })),
+        expenses: (expenses || []).map(e => ({
+          id: e.id, branchId: e.branch_id, category: e.category, title: e.title, description: e.description,
+          amount: e.amount, date: e.date, receiptUrl: e.receipt_url, createdBy: e.created_by,
+          approvedBy: e.approved_by, rejectedBy: e.rejected_by, status: e.status as 'saved'|'pending'|'approved'|'rejected', month: e.month,
+          editedBy: e.edited_by, editedAt: e.edited_at, createdAt: e.created_at
+        })),
         superSignatureUrl: superUserSignature?.signature_url || null
       };
       
-      setData(newData);
-      localStorage.setItem('elite_pg_cached_data', JSON.stringify(newData));
-    } catch (e) {
-      console.error(e);
-    }
+    setData(newData);
+    localStorage.setItem('elite_pg_cached_data', JSON.stringify(newData));
+  } catch (e) {
+    console.error(e);
+  } finally {
+    setIsAppLoading(false);
+  }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, userRole, userBranchId]);
+  }, [userId, userRole, activeBranchId, JSON.stringify(user?.branchIds)]);
 
   useEffect(() => {
     fetchData();
 
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-
-    // Subscribe to realtime database changes so any actions by other admins cleanly sync UI cross-tabs
     const subscription = supabase
       .channel('public-schema-changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public' },
-        () => {
-          // Debounce: cancel any pending fetch triggered by a previous event
-          if (debounceTimer) clearTimeout(debounceTimer);
-          debounceTimer = setTimeout(() => {
-            fetchData();
-          }, 800);
-        }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public' }, () => {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => fetchData(), 800);
+      })
       .subscribe();
 
     return () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       supabase.removeChannel(subscription);
     };
-  }, [fetchData]);
+  }, [fetchData, activeBranchId]);
 
   // Filtered data based on branchId
   const filteredData = useMemo(() => {
     if (!user) return {
-      tenants: [], rooms: [], meterGroups: [], payments: [], complaints: [], employees: [], kycs: [], announcements: [], salaryPayments: [], tasks: [], pgConfig: null, subscriptionPlans: [], branches: [], userInvites: []
+      tenants: [], rooms: [], meterGroups: [], payments: [], complaints: [], employees: [], kycs: [], announcements: [], salaryPayments: [], tasks: [], expenses: [], pgConfig: null, subscriptionPlans: [], branches: [], userInvites: []
     };
 
     if (user.role === 'super') return {
       ...data,
       pgConfig: (data.pgConfigs || [])[0] || null,
       subscriptionPlans: data.subscriptionPlans || [],
-      branches: data.branches || []
+      branches: data.branches || [],
+      expenses: data.expenses || []
     };
 
-    const branchId = user.branchId;
+    const branchId = activeBranchId;
     const branch = (data.branches || []).find((b: PGBranch) => b.id === branchId);
     const plan = (data.subscriptionPlans || []).find((p: SubscriptionPlan) => p.id === branch?.planId);
 
@@ -347,6 +384,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       announcements: (data.announcements || []).filter((a: Announcement) => a.branchId === branchId),
       salaryPayments: (data.salaryPayments || []).filter((p: SalaryPayment) => p.branchId === branchId),
       tasks: (data.tasks || []).filter((t: Task) => t.branchId === branchId),
+      expenses: (data.expenses || []).filter((e: Expense) => e.branchId === branchId),
       pgConfig: (data.pgConfigs || []).find((c: PGConfig) => c.branchId === branchId) || null,
       subscriptionPlans: data.subscriptionPlans || [],
       branches: data.branches || [],
@@ -362,11 +400,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     // Implicit core modules strictly required for any PG to function
     if (['tenants', 'rooms', 'payments', 'complaints'].includes(feature)) return true;
 
-    if (!user?.branchId) return false;
-    const branch = data.branches.find((b: PGBranch) => b.id === user.branchId);
-    if (!branch || (branch.subscriptionStatus !== 'active' && branch.subscriptionStatus !== 'trial')) return false;
+    // Use active branch from context/url to check features
+    const branch = filteredData.currentBranch || data.branches.find((b: PGBranch) => b.id === user?.branchId);
+    
+    if (!branch || (branch.subscriptionStatus !== 'active' && branch.subscriptionStatus !== 'trial')) {
+      // If no subscription or inactive, only core modules are visible
+      return false;
+    }
+    
     const plan = data.subscriptionPlans.find((p: SubscriptionPlan) => p.id === branch.planId);
-    return plan?.features.includes(feature) || false;
+    return plan?.features?.includes(feature) || false;
   };
 
   // Optimistic state updater - applies changes to local state immediately,
@@ -431,7 +474,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       rent_amount: tenant.rentAmount, deposit_amount: tenant.depositAmount, joining_date: tenant.joiningDate,
       payment_due_date: tenant.paymentDueDate, status: tenant.status, kyc_status: kycStatus,
       branch_id: branchId, user_id: newUserId || null, invite_code: (tenant as any).inviteCode || null,
-      is_ac_user: isAcUser
+      is_ac_user: isAcUser,
+      token_amount: tenant.tokenAmount,
+      token_status: tenant.tokenStatus,
+      deposit_status: tenant.depositStatus
     }).select().single();
     if (error) { toast.error(error.message); return; }
 
@@ -466,7 +512,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const newTenant: Tenant = {
       ...tenant, id: createdTenant.id, branchId, kycStatus, userId: tenant.userId || undefined,
       rentAgreementUrl: finalRentAgreementUrl || undefined,
-      isAcUser: (createdTenant as any).is_ac_user || false
+      isAcUser: (createdTenant as any).is_ac_user || false,
+      tokenAmount: tenant.tokenAmount,
+      tokenStatus: tenant.tokenStatus,
+      depositStatus: tenant.depositStatus
     };
     applyOptimistic(prev => ({ ...prev, tenants: [...prev.tenants, newTenant] }));
 
@@ -520,6 +569,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.rentAmount !== undefined) dbUpdates.rent_amount = updates.rentAmount;
     if (updates.isAcUser !== undefined && updates.roomId === undefined) dbUpdates.is_ac_user = updates.isAcUser;
     if (updates.depositAmount !== undefined) dbUpdates.deposit_amount = updates.depositAmount;
+    if (updates.tokenAmount !== undefined) dbUpdates.token_amount = updates.tokenAmount;
+    if (updates.tokenStatus !== undefined) dbUpdates.token_status = updates.tokenStatus;
+    if (updates.depositStatus !== undefined) dbUpdates.deposit_status = updates.depositStatus;
     if (updates.joiningDate !== undefined) dbUpdates.joining_date = updates.joiningDate;
     if (updates.paymentDueDate !== undefined) dbUpdates.payment_due_date = updates.paymentDueDate;
     if (updates.status !== undefined) dbUpdates.status = updates.status;
@@ -868,8 +920,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await refetch(supabase.from('complaints').delete().eq('id', id), 'Complaint deleted'); 
   };
 
-  const addEmployee = async (employee: Omit<Employee, 'id' | 'kycStatus' | 'branchId'>, kycDoc?: { type: string, file?: File, url?: string }) => {
-    const targetBranch = filteredData.currentBranch?.id || user?.branchId;
+  const addEmployee = async (employee: Omit<Employee, 'id' | 'kycStatus'>, kycDoc?: { type: string, file?: File, url?: string }) => {
+    const targetBranch = employee.branchId || filteredData.currentBranch?.id || user?.branchId;
     if (!targetBranch) { toast.error("No active branch selected."); return false; }
     
     const isAdmin = ['super', 'admin', 'manager'].includes(user?.role || '');
@@ -965,6 +1017,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.joiningDate !== undefined) dbUpdates.joining_date = updates.joiningDate;
     if (updates.kycStatus !== undefined) dbUpdates.kyc_status = updates.kycStatus;
     if (updates.userId !== undefined) dbUpdates.user_id = updates.userId;
+    if (updates.branchId !== undefined) dbUpdates.branch_id = updates.branchId;
     if (kycDoc) dbUpdates.kyc_status = newKycStatus;
 
     // Optimistically update local state immediately
@@ -1220,6 +1273,75 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await refetch(supabase.from('tasks').delete().eq('id', id), 'Task deleted'); 
   };
 
+  // === Expenses Operations ===
+
+  const addExpense = async (expense: Omit<Expense, 'id' | 'branchId' | 'createdAt' | 'editedAt'>) => {
+    const branchId = user?.branchId || data.branches[0]?.id;
+    if (!branchId) return;
+    
+    applyOptimistic(prev => ({
+       ...prev,
+       expenses: [...(prev.expenses || []), { ...expense, id: `temp-${Date.now()}`, branchId, createdAt: new Date().toISOString() }]
+    }));
+
+    await refetch(supabase.from('expenses').insert({
+      branch_id: branchId,
+      category: expense.category,
+      title: expense.title,
+      description: expense.description,
+      amount: expense.amount,
+      date: expense.date,
+      receipt_url: expense.receiptUrl,
+      created_by: expense.createdBy,
+      approved_by: expense.approvedBy,
+      rejected_by: expense.rejectedBy,
+      status: expense.status || 'saved',
+      month: expense.month
+    }), 'Expense added successfully');
+  };
+
+  const updateExpense = async (id: string, updates: Partial<Expense>) => {
+    applyOptimistic(prev => ({
+      ...prev,
+      expenses: (prev.expenses || []).map((e: any) => e.id === id ? { ...e, ...updates } : e)
+    }));
+
+    const dbUpdates: any = {};
+    if (updates.category !== undefined) dbUpdates.category = updates.category;
+    if (updates.title !== undefined) dbUpdates.title = updates.title;
+    if (updates.description !== undefined) dbUpdates.description = updates.description;
+    if (updates.amount !== undefined) dbUpdates.amount = updates.amount;
+    if (updates.date !== undefined) dbUpdates.date = updates.date;
+    if (updates.receiptUrl !== undefined) dbUpdates.receipt_url = updates.receiptUrl;
+    if (updates.approvedBy !== undefined) dbUpdates.approved_by = updates.approvedBy;
+    if (updates.rejectedBy !== undefined) dbUpdates.rejected_by = updates.rejectedBy;
+    if (updates.status !== undefined) dbUpdates.status = updates.status;
+    if (updates.month !== undefined) dbUpdates.month = updates.month;
+    if (updates.editedBy !== undefined) dbUpdates.edited_by = updates.editedBy;
+    if (updates.editedAt !== undefined) dbUpdates.edited_at = updates.editedAt;
+
+    await refetch(supabase.from('expenses').update(dbUpdates).eq('id', id), 'Expense updated');
+  };
+
+  const deleteExpense = async (id: string) => {
+    const expense = data.expenses?.find((e: any) => e.id === id);
+    
+    applyOptimistic(prev => ({
+      ...prev,
+      expenses: (prev.expenses || []).filter((e: any) => e.id !== id)
+    }));
+
+    await refetch(supabase.from('expenses').delete().eq('id', id), 'Expense deleted');
+    
+    if (expense && expense.receiptUrl) {
+      try {
+        await deleteFromSupabase('receipts', expense.receiptUrl);
+      } catch (err) {
+        console.error("Failed to delete receipt from storage", err);
+      }
+    }
+  };
+
   const updatePGConfig = async (updates: Partial<PGConfig>, branchId?: string) => {
     const targetBranch = branchId || filteredData.currentBranch?.id || user?.branchId;
     if (!targetBranch) { toast.error("No active branch selected."); return; }
@@ -1325,9 +1447,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const deleteBranch = async (id: string) => { await refetch(supabase.from('pg_branches').delete().eq('id', id), 'Branch removed'); };
 
   const addSubscriptionPlan = async (plan: Omit<SubscriptionPlan, 'id'>) => {
-    await refetch(supabase.from('subscription_plans').insert({
+    return await refetch(supabase.from('subscription_plans').insert({
       name: plan.name, price: plan.price, annual_price: plan.annualPrice, features: plan.features,
-      max_tenants: plan.maxTenants, max_rooms: plan.maxRooms,
+      max_tenants: plan.maxTenants, max_rooms: plan.maxRooms, max_branches: plan.maxBranches || 1,
       razorpay_plan_id: plan.razorpayMonthlyPlanId, razorpay_annual_plan_id: plan.razorpayAnnualPlanId
     }), 'Plan created');
   };
@@ -1339,10 +1461,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.features !== undefined) dbUpdates.features = updates.features;
     if (updates.maxTenants !== undefined) dbUpdates.max_tenants = updates.maxTenants;
     if (updates.maxRooms !== undefined) dbUpdates.max_rooms = updates.maxRooms;
+    if (updates.maxBranches !== undefined) dbUpdates.max_branches = updates.maxBranches;
     if (updates.annualPrice !== undefined) dbUpdates.annual_price = updates.annualPrice;
     if (updates.razorpayMonthlyPlanId !== undefined) dbUpdates.razorpay_plan_id = updates.razorpayMonthlyPlanId;
     if (updates.razorpayAnnualPlanId !== undefined) dbUpdates.razorpay_annual_plan_id = updates.razorpayAnnualPlanId;
-    await refetch(supabase.from('subscription_plans').update(dbUpdates).eq('id', id), 'Plan updated');
+    return await refetch(supabase.from('subscription_plans').update(dbUpdates).eq('id', id), 'Plan updated');
   };
 
   const deleteSubscriptionPlan = async (id: string) => { await refetch(supabase.from('subscription_plans').delete().eq('id', id), 'Plan deleted'); };
@@ -1375,11 +1498,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const kycs = filteredData.kycs || [];
     const complaints = filteredData.complaints || [];
 
-    const monthlyRevenue = payments
-      .filter((p: Payment) => p.month === currentMonth && p.status === 'paid')
-      .reduce((sum: number, p: Payment) => sum + p.totalAmount, 0);
+    const monthlyRevenue = (payments || [])
+      .filter((p: Payment) => p && p.month === currentMonth && p.status === 'paid')
+      .reduce((sum: number, p: Payment) => sum + (p.totalAmount || 0), 0);
 
-    const totalActiveTenants = tenants.filter((t: Tenant) => t.status === 'active').length;
+    const totalActiveTenants = (tenants || []).filter((t: Tenant) => t && t.status === 'active').length;
     let globalTotalBeds = 0;
     rooms.forEach((r: Room) => {
       globalTotalBeds += r.totalBeds;
@@ -1395,9 +1518,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       d.setMonth(d.getMonth() - i);
       const monthStr = format(d, 'yyyy-MM');
 
-      const monthRev = payments
-        .filter((p: Payment) => p.month === monthStr && p.status === 'paid')
-        .reduce((sum: number, p: Payment) => sum + p.totalAmount, 0);
+      const monthRev = (payments || [])
+        .filter((p: Payment) => p && p.month === monthStr && p.status === 'paid')
+        .reduce((sum: number, p: Payment) => sum + (p.totalAmount || 0), 0);
 
       revenueHistory.push({ name: monthStr, revenue: monthRev });
     }
@@ -1459,13 +1582,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       updateSalaryPayment,
       deleteSalaryPayment,
       addTask, updateTask, deleteTask,
+      addExpense, updateExpense, deleteExpense,
       updatePGConfig,
       addBranch, updateBranch, deleteBranch,
       addSubscriptionPlan, updateSubscriptionPlan, deleteSubscriptionPlan,
       updateBranchSubscription,
       checkFeatureAccess,
       fetchData,
-      getStats
+      getStats,
+      rawData: data,
+      isAppLoading
     }}>
       {children}
     </AppContext.Provider>

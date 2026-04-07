@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { Room, MeterGroup } from '../types';
-import { Navigate, useLocation } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import {
   Plus,
   DoorOpen,
@@ -31,6 +31,7 @@ import { cn } from '../utils';
 import toast from 'react-hot-toast';
 
 export const RoomsPage = () => {
+  const navigate = useNavigate();
   const { user } = useAuth();
 const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroups, addMeterGroup, updateMeterGroup, deleteMeterGroup, pgConfig } = useApp();
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
@@ -520,7 +521,7 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
             </p>
           </div>
           <button
-            onClick={() => window.location.href = '/subscription'}
+            onClick={() => navigate('/subscription')}
             className={cn(
               "px-4 py-1.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all",
               isAtLimit

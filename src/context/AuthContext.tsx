@@ -16,6 +16,7 @@ interface AuthContextType {
   markAnnouncementAsRead: (announcementId: string) => Promise<void>;
   authorizeUser: (userId: string) => Promise<void>;
   deleteUser: (userId: string) => Promise<void>;
+  switchBranch: (branchId: string) => void;
   isAuthenticated: boolean;
   isInitializing: boolean;
   googleAuthStatus: 'user_not_found' | 'user_already_exists' | null;
@@ -31,6 +32,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return saved ? JSON.parse(saved) : null;
   });
   const [isInitializing, setIsInitializing] = useState(true);
+  const [isMetadataLoading, setIsMetadataLoading] = useState(false);
   const provisioningRef = useRef(false);
 
   const fetchUsers = async () => {
@@ -52,6 +54,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       requiresPasswordChange: u.requires_password_change || false,
       password: u.password,
       branchId: u.branch_id,
+      branchIds: u.branch_ids || (u.branch_id ? [u.branch_id] : []),
       provider: u.provider || 'local',
       google_id: u.google_id,
       seenAnnouncements: u.seen_announcements || [],
@@ -68,7 +71,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         await setActiveUser(refreshedUser);
       }
     }
+    
+    // Crucial: Only release initialization lock after metadata resolution is 100% complete
     setIsInitializing(false);
+    setIsMetadataLoading(false);
   };
 
   const [googleAuthStatus, setGoogleAuthStatus] = useState<'user_not_found' | 'user_already_exists' | null>(null);
@@ -98,7 +104,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     }
     
-    const isSuperOrAdmin = baseUser.role === 'admin' || baseUser.role === 'super';
+    const isSuperOrAdmin = baseUser.role === 'admin' || baseUser.role === 'super' || baseUser.role === 'partner';
     const finalUser: User = {
       ...baseUser,
       isAuthorized: isSuperOrAdmin ? true : baseUser.isAuthorized,
@@ -327,6 +333,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               isAuthorized: targetUser.is_authorized,
               password: targetUser.password,
               branchId: targetUser.branch_id,
+              branchIds: targetUser.branch_ids || (targetUser.branch_id ? [targetUser.branch_id] : []),
               provider: targetUser.provider || 'local',
               google_id: targetUser.google_id,
               seenAnnouncements: targetUser.seen_announcements || []
@@ -397,6 +404,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       requiresPasswordChange: data.requires_password_change || false,
       password: data.password,
       branchId: data.branch_id,
+      branchIds: data.branch_ids || (data.branch_id ? [data.branch_id] : []),
       provider: data.provider || 'local',
       google_id: data.google_id,
       seenAnnouncements: data.seen_announcements || []
@@ -426,7 +434,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     const newId = crypto.randomUUID();
-    let newIsAuthorized = (userData.role === 'admin' || userData.requiresPasswordChange) ? true : false;
+    let newIsAuthorized = (userData.role === 'admin' || userData.role === 'partner' || userData.requiresPasswordChange) ? true : false;
     let finalBranchId = userData.branchId;
     let finalRole = userData.role;
 
@@ -448,7 +456,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } else {
         return { success: false, message: 'Invalid or expired invite code' };
       }
-    } else if (userData.role !== 'admin' && userData.role !== 'super' && !userData.requiresPasswordChange) {
+    } else if (userData.role !== 'admin' && userData.role !== 'partner' && userData.role !== 'super' && !userData.requiresPasswordChange) {
       return { success: false, message: 'An invite code is required to create an account.' };
     }
 
@@ -610,6 +618,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (updates.isAuthorized !== undefined) dbUpdates.is_authorized = updates.isAuthorized;
     if (updates.password !== undefined) dbUpdates.password = updates.password;
     if (updates.branchId !== undefined) dbUpdates.branch_id = updates.branchId;
+    if (updates.branchIds !== undefined) dbUpdates.branch_ids = updates.branchIds;
     if (updates.seenAnnouncements !== undefined) dbUpdates.seen_announcements = updates.seenAnnouncements;
     if (updates.signatureUrl !== undefined) dbUpdates.signature_url = updates.signatureUrl;
 
@@ -631,6 +640,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const switchBranch = (branchId: string) => {
+    if (!user) return;
+    // Only allow switching to branches the user owns
+    const allowed = user.branchIds || (user.branchId ? [user.branchId] : []);
+    if (user.role === 'super' || allowed.includes(branchId)) {
+      const updatedUser = { ...user, branchId };
+      setUser(updatedUser);
+      localStorage.setItem('elite_pg_user', JSON.stringify(updatedUser));
+    }
+  };
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -645,8 +665,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       markAnnouncementAsRead,
       authorizeUser,
       deleteUser,
+      switchBranch,
       isAuthenticated: !!user,
-      isInitializing,
+      isInitializing: isInitializing || isMetadataLoading,
       googleAuthStatus,
       clearGoogleAuthStatus
     }}>

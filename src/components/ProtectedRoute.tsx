@@ -1,7 +1,6 @@
 import { ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useApp } from '../context/AppContext';
 import { UserRole } from '../types';
 
 interface ProtectedRouteProps {
@@ -11,7 +10,6 @@ interface ProtectedRouteProps {
 
 export const ProtectedRoute = ({ children, allowedRoles }: ProtectedRouteProps) => {
   const { user, isAuthenticated, isInitializing } = useAuth();
-  const { checkFeatureAccess } = useApp();
   const location = useLocation();
 
   // Show spinner while auth state is being initialized (prevents flash of Access Denied
@@ -26,7 +24,7 @@ export const ProtectedRoute = ({ children, allowedRoles }: ProtectedRouteProps) 
 
   // Force password change: if user needs to set a new password, redirect to login
   // which handles the password setup flow. Admin/super are exempt.
-  const isAdminOrSuper = user?.role === 'admin' || user?.role === 'super';
+  const isAdminOrSuper = user?.role === 'admin' || user?.role === 'super' || user?.role === 'partner';
   if (user?.requiresPasswordChange && !isAdminOrSuper) {
     return <Navigate to="/login" state={{ forcePasswordChange: true, from: location }} replace />;
   }

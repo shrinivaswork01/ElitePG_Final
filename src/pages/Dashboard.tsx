@@ -52,6 +52,7 @@ import { ElectricityBreakdownCard } from '../components/ElectricityBreakdownCard
 import { DocumentViewerModal } from '../components/DocumentViewerModal';
 import { ElectricityShare, Payment } from '../types';
 import { PaymentDetailPanel } from '../components/PaymentDetailPanel';
+import { StatsSkeleton, ChartSkeleton } from '../components/Skeleton';
 
 export const Dashboard = () => {
   const {
@@ -74,7 +75,8 @@ export const Dashboard = () => {
     requestVacating,
     completeCheckout,
     userInvites,
-    currentBranch
+    currentBranch,
+    isAppLoading
   } = useApp();
   const { user, markAnnouncementAsRead } = useAuth();
   const [viewerDoc, setViewerDoc] = React.useState<{ url: string, title: string } | null>(null);
@@ -201,8 +203,8 @@ export const Dashboard = () => {
     }
   }
 
-  const isAdmin = user?.role === 'admin';
-  const isManagerial = ['admin', 'manager', 'caretaker', 'receptionist'].includes(user?.role || '');
+  const isAdmin = user?.role === 'admin' || user?.role === 'partner';
+  const isManagerial = ['admin', 'partner', 'manager', 'caretaker', 'receptionist'].includes(user?.role || '');
   const canSendWhatsApp = checkFeatureAccess('whatsapp');
   const canViewReports = checkFeatureAccess('reports');
 
@@ -278,6 +280,26 @@ export const Dashboard = () => {
   };
 
   // Electricity dashboard fetch removed. Payments will automatically sync.
+
+  if (isAppLoading) {
+    return (
+      <div className="p-4 sm:p-8">
+        <div className="max-w-7xl mx-auto space-y-8">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="space-y-2">
+              <div className="h-8 w-48 bg-gray-200 dark:bg-white/5 animate-pulse rounded-lg" />
+              <div className="h-4 w-32 bg-gray-200 dark:bg-white/5 animate-pulse rounded-lg" />
+            </div>
+          </div>
+          <StatsSkeleton />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+             <ChartSkeleton />
+             <ChartSkeleton />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">

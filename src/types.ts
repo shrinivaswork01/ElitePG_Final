@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export type UserRole = 'super' | 'admin' | 'manager' | 'caretaker' | 'tenant' | 'cleaner' | 'security' | 'none' | (string & {});
+export type UserRole = 'super' | 'admin' | 'partner' | 'manager' | 'caretaker' | 'tenant' | 'cleaner' | 'security' | 'none' | (string & {});
 
-export type AppFeature = 'tenants' | 'rooms' | 'payments' | 'complaints' | 'kyc' | 'employees' | 'broadcast' | 'analytics' | 'whatsapp' | 'reports' | 'multi-branch';
+export type AppFeature = 'tenants' | 'rooms' | 'payments' | 'complaints' | 'kyc' | 'employees' | 'broadcast' | 'analytics' | 'whatsapp' | 'reports' | 'multi-branch' | 'expenses' | 'tasks';
 
 export interface SubscriptionPlan {
   id: string;
@@ -15,6 +15,7 @@ export interface SubscriptionPlan {
   features: AppFeature[];
   maxTenants: number;
   maxRooms: number;
+  maxBranches: number;
   razorpayMonthlyPlanId?: string; // Razorpay plan ID for monthly billing
   razorpayAnnualPlanId?: string;  // Razorpay plan ID for annual billing
 }
@@ -51,7 +52,8 @@ export interface User {
   isAuthorized: boolean;
   requiresPasswordChange?: boolean;
   password?: string;
-  branchId?: string; // Optional for super admin, required for others
+  branchId?: string; // ACTIVE branch (runtime selection)
+  branchIds?: string[]; // ALL branches this user owns/manages
   provider?: 'local' | 'google';
   google_id?: string;
   signatureUrl?: string;
@@ -96,6 +98,10 @@ export interface Tenant {
   bedNumber: number;
   rentAmount: number;
   depositAmount: number;
+  tokenAmount?: number;
+  tokenStatus?: 'paid' | 'pending' | 'refunded';
+  depositStatus?: 'paid' | 'pending' | 'refunded';
+  depositRefundDate?: string;
   joiningDate: string;
   paymentDueDate: number; // Day of month (1-31)
   status: TenantStatus;
@@ -290,4 +296,55 @@ export interface PGConfig {
   defaultLateFeeDay?: number;
   lateFeeAmount?: number;
   razorpayKeyId?: string;
+}
+
+// === Financial Management Types ===
+
+export type ExpenseCategory = 'apex' | 'capital' | 'operational' | 'maintenance' | 'salary' | 'utility' | 'other';
+export type ExpenseStatus = 'saved' | 'pending' | 'approved' | 'rejected';
+
+export interface Expense {
+  id: string;
+  branchId: string;
+  category: ExpenseCategory;
+  title: string;
+  description?: string;
+  amount: number;
+  date: string;
+  receiptUrl?: string;
+  createdBy: string;
+  approvedBy?: string[];
+  rejectedBy?: string[];
+  status: ExpenseStatus;
+  month: string;
+  editedBy?: string;
+  editedAt?: string;
+  createdAt: string;
+}
+
+export interface Partner {
+  id: string;
+  userId: string;
+  branchIds: string[];
+  sharePercentage: number;
+  name: string;
+  email: string;
+  phone?: string;
+  createdAt: string;
+}
+
+export interface ProfitDistribution {
+  id: string;
+  branchId: string;
+  month: string;
+  totalRevenue: number;
+  totalExpenses: number;
+  netProfit: number;
+  distributions: {
+    partnerId: string;
+    partnerName: string;
+    sharePercentage: number;
+    amount: number;
+  }[];
+  createdAt: string;
 }

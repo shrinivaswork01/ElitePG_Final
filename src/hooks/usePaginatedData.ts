@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 
@@ -14,11 +15,14 @@ export interface UsePaginatedDataOptions {
 
 export function usePaginatedData<T>(options: UsePaginatedDataOptions) {
   const { user } = useAuth();
+  const { branchId: urlBranchId } = useParams<{ branchId: string }>();
   const [data, setData] = useState<T[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [error, setError] = useState<Error | null>(null);
+
+  const activeBranchId = urlBranchId || user?.branchId;
 
   // Use refs to keep track of previous fetch parameters to prevent infinite loops 
   // without dropping useful cached states.
@@ -28,7 +32,7 @@ export function usePaginatedData<T>(options: UsePaginatedDataOptions) {
   
   // Create stable signature for fetch request
   const fetchSignature = JSON.stringify({
-    branchId: user?.branchId,
+    branchId: activeBranchId,
     table: options.table,
     select: options.select,
     page,
@@ -53,8 +57,8 @@ export function usePaginatedData<T>(options: UsePaginatedDataOptions) {
         .select(options.select || '*', { count: 'exact' });
 
       // Apply branch filtering
-      if (!isSuper && user.branchId) {
-        query = query.eq('branch_id', user.branchId);
+      if (!isSuper && activeBranchId) {
+        query = query.eq('branch_id', activeBranchId);
       }
 
       // Apply exact matched filters
@@ -105,7 +109,7 @@ export function usePaginatedData<T>(options: UsePaginatedDataOptions) {
         setIsLoading(false);
       }
     }
-  }, [fetchSignature, user]); // Only re-fetch if stringified signature changes
+  }, [fetchSignature, user, activeBranchId]); // Only re-fetch if signature or branch changes
 
   useEffect(() => {
     isMounted.current = true;
@@ -137,3 +141,4 @@ export function usePaginatedData<T>(options: UsePaginatedDataOptions) {
     limit: fetchLimit
   };
 }
+

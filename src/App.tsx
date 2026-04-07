@@ -1,6 +1,6 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider } from './context/AppContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -8,6 +8,8 @@ import { RoleGuard } from './components/RoleGuard';
 import { PermissionGuard } from './components/PermissionGuard';
 import { Layout } from './components/Layout';
 import { Toaster } from 'react-hot-toast';
+import { LoadingScreen } from './components/LoadingScreen';
+import { FeatureGuard } from './components/FeatureGuard';
 import { LoginPage } from './pages/LoginPage';
 import { Dashboard } from './pages/Dashboard';
 import { TenantsPage } from './pages/TenantsPage';
@@ -26,12 +28,43 @@ import { SubscriptionPage } from './pages/SubscriptionPage';
 import { HelpSupportPage } from './pages/HelpSupportPage';
 import { TasksPage } from './pages/TasksPage';
 import { UpdatePasswordPage } from './pages/UpdatePasswordPage';
+import { ExpensesPage } from './pages/ExpensesPage';
+
+const RootRedirect = () => {
+  const { user, isInitializing } = useAuth();
+  if (isInitializing) return <LoadingScreen />;
+  if (!user) return <Navigate to="/login" replace />;
+  
+  const defaultBranchId = user.branchId || user.branchIds?.[0];
+  if (!defaultBranchId) {
+    if (user.role === 'super') return <Navigate to="/branch/all/branches" replace />;
+    return <Navigate to="/unauthorized" replace />;
+  }
+
+  // Super-admin or Admin: favor branches/management view if no specific branch was picked
+  if (user.role === 'super') {
+    return <Navigate to={`/branch/${defaultBranchId}/dashboard`} replace />;
+  }
+  
+  return <Navigate to={`/branch/${defaultBranchId}/dashboard`} replace />;
+};
+
+const BranchLayoutWrapper = () => {
+  const { branchId } = useParams();
+  if (!branchId) return <Navigate to="/" replace />;
+  
+  return (
+    <AppProvider key={branchId}>
+      <Layout />
+    </AppProvider>
+  );
+};
 
 export default function App() {
   return (
-    <AuthProvider>
-      <ThemeProvider>
-        <AppProvider>
+    <Router>
+      <AuthProvider>
+        <ThemeProvider>
           <Toaster
             position="top-right"
             toastOptions={{
@@ -44,185 +77,145 @@ export default function App() {
               },
             }}
           />
-          <Router>
-            <Routes>
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/signup" element={<LoginPage isSignUp={true} />} />
-              <Route path="/update-password" element={<UpdatePasswordPage />} />
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/signup" element={<LoginPage isSignUp={true} />} />
+            <Route path="/update-password" element={<UpdatePasswordPage />} />
+            <Route path="/" element={<RootRedirect />} />
 
-              <Route path="/" element={
-                <ProtectedRoute>
-                  <Layout>
-                    <Dashboard />
-                  </Layout>
-                </ProtectedRoute>
+            {/* Branch-Specific Hierarchical Routes */}
+            <Route path="/branch/:branchId" element={
+              <ProtectedRoute>
+                <BranchLayoutWrapper />
+              </ProtectedRoute>
+            }>
+              <Route index element={<Navigate to="dashboard" replace />} />
+              <Route path="dashboard" element={<Dashboard />} />
+              <Route path="tenants" element={
+                <RoleGuard requiredLevel={2}>
+                  <PermissionGuard requiredPermission="tenants">
+                    <TenantsPage />
+                  </PermissionGuard>
+                </RoleGuard>
               } />
-
-              <Route path="/tenants" element={
-                <ProtectedRoute>
-                  <RoleGuard requiredLevel={2}>
-                    <PermissionGuard requiredPermission="tenants">
-                      <Layout>
-                        <TenantsPage />
-                      </Layout>
-                    </PermissionGuard>
-                  </RoleGuard>
-                </ProtectedRoute>
+              <Route path="rooms" element={
+                <RoleGuard requiredLevel={2}>
+                  <PermissionGuard requiredPermission="rooms">
+                    <RoomsPage />
+                  </PermissionGuard>
+                </RoleGuard>
               } />
-
-              <Route path="/rooms" element={
-                <ProtectedRoute>
-                  <RoleGuard requiredLevel={2}>
-                    <PermissionGuard requiredPermission="rooms">
-                      <Layout>
-                        <RoomsPage />
-                      </Layout>
-                    </PermissionGuard>
-                  </RoleGuard>
-                </ProtectedRoute>
+              <Route path="payments" element={
+                <RoleGuard requiredLevel={1}>
+                  <PermissionGuard requiredPermission="payments">
+                    <PaymentsPage />
+                  </PermissionGuard>
+                </RoleGuard>
               } />
-
-              <Route path="/payments" element={
-                <ProtectedRoute>
-                  <RoleGuard requiredLevel={1}>
-                    <PermissionGuard requiredPermission="payments">
-                      <Layout>
-                        <PaymentsPage />
-                      </Layout>
-                    </PermissionGuard>
-                  </RoleGuard>
-                </ProtectedRoute>
+              <Route path="complaints" element={
+                <RoleGuard requiredLevel={1}>
+                  <PermissionGuard requiredPermission="complaints">
+                    <ComplaintsPage />
+                  </PermissionGuard>
+                </RoleGuard>
               } />
-
-              <Route path="/complaints" element={
-                <ProtectedRoute>
-                  <RoleGuard requiredLevel={1}>
-                    <PermissionGuard requiredPermission="complaints">
-                      <Layout>
-                        <ComplaintsPage />
-                      </Layout>
-                    </PermissionGuard>
-                  </RoleGuard>
-                </ProtectedRoute>
+              <Route path="kyc" element={
+                <RoleGuard requiredLevel={2}>
+                  <PermissionGuard requiredPermission="kyc">
+                    <KYCPage />
+                  </PermissionGuard>
+                </RoleGuard>
               } />
-
-              <Route path="/kyc" element={
-                <ProtectedRoute>
-                  <RoleGuard requiredLevel={2}>
-                    <PermissionGuard requiredPermission="kyc">
-                      <Layout>
-                        <KYCPage />
-                      </Layout>
-                    </PermissionGuard>
-                  </RoleGuard>
-                </ProtectedRoute>
+              <Route path="employees" element={
+                <RoleGuard requiredLevel={2}>
+                  <PermissionGuard requiredPermission="employees">
+                    <EmployeesPage />
+                  </PermissionGuard>
+                </RoleGuard>
               } />
-
-              <Route path="/employees" element={
-                <ProtectedRoute>
-                  <RoleGuard requiredLevel={2}>
-                    <PermissionGuard requiredPermission="employees">
-                      <Layout>
-                        <EmployeesPage />
-                      </Layout>
-                    </PermissionGuard>
-                  </RoleGuard>
-                </ProtectedRoute>
+              <Route path="broadcast" element={
+                <RoleGuard requiredLevel={3}>
+                  <BroadcastPage />
+                </RoleGuard>
               } />
-
-              <Route path="/broadcast" element={
-                <ProtectedRoute>
-                  <RoleGuard requiredLevel={3}>
-                    <Layout>
-                      <BroadcastPage />
-                    </Layout>
-                  </RoleGuard>
-                </ProtectedRoute>
+              <Route path="reports" element={
+                <RoleGuard requiredLevel={2}>
+                  <PermissionGuard requiredPermission="reports">
+                    <ReportsPage />
+                  </PermissionGuard>
+                </RoleGuard>
               } />
-
-              <Route path="/reports" element={
-                <ProtectedRoute>
-                  <RoleGuard requiredLevel={2}>
-                    <PermissionGuard requiredPermission="reports">
-                      <Layout>
-                        <ReportsPage />
-                      </Layout>
-                    </PermissionGuard>
-                  </RoleGuard>
-                </ProtectedRoute>
+              <Route path="settings" element={
+                <RoleGuard requiredLevel={3}>
+                  <SettingsPage />
+                </RoleGuard>
               } />
-
-              <Route path="/settings" element={
-                <ProtectedRoute>
-                  <RoleGuard requiredLevel={3}>
-                    <Layout>
-                      <SettingsPage />
-                    </Layout>
-                  </RoleGuard>
-                </ProtectedRoute>
+              <Route path="subscription" element={
+                <RoleGuard requiredLevel={3}>
+                  <SubscriptionPage />
+                </RoleGuard>
               } />
-
-              <Route path="/subscription" element={
-                <ProtectedRoute>
-                  <RoleGuard requiredLevel={3}>
-                    <Layout>
-                      <SubscriptionPage />
-                    </Layout>
-                  </RoleGuard>
-                </ProtectedRoute>
+              <Route path="branches" element={
+                <RoleGuard requiredLevel={3}>
+                  <SuperAdminPage />
+                </RoleGuard>
               } />
-
-              <Route path="/branches" element={
-                <ProtectedRoute>
-                  <RoleGuard requiredLevel={4}>
-                    <Layout>
-                      <SuperAdminPage />
-                    </Layout>
-                  </RoleGuard>
-                </ProtectedRoute>
+              <Route path="tasks" element={
+                <RoleGuard requiredLevel={2}>
+                  <PermissionGuard requiredPermission="tasks">
+                    <FeatureGuard feature="tasks">
+                      <TasksPage />
+                    </FeatureGuard>
+                  </PermissionGuard>
+                </RoleGuard>
               } />
+              <Route path="expenses" element={
+                <RoleGuard requiredLevel={2}>
+                  <PermissionGuard requiredPermission="expenses">
+                    <FeatureGuard feature="expenses">
+                      <ExpensesPage />
+                    </FeatureGuard>
+                  </PermissionGuard>
+                </RoleGuard>
+              } />
+              <Route path="*" element={<Navigate to="dashboard" replace />} />
+            </Route>
 
-              <Route path="/profile" element={
-                <ProtectedRoute>
+            {/* Global non-branch routes */}
+            <Route path="/profile" element={
+              <ProtectedRoute>
+                {/* Fallback to non-branch AppProvider if needed, or just standard layout */}
+                <AppProvider>
                   <Layout>
                     <ProfilePage />
                   </Layout>
-                </ProtectedRoute>
-              } />
-              
-              <Route path="/help" element={
-                <ProtectedRoute>
-                  <Layout>
+                </AppProvider>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/help" element={
+              <ProtectedRoute>
+                <AppProvider>
+                   <Layout>
                     <HelpSupportPage />
                   </Layout>
-                </ProtectedRoute>
-              } />
+                </AppProvider>
+              </ProtectedRoute>
+            } />
 
-              <Route path="/tasks" element={
-                <ProtectedRoute>
-                  <RoleGuard requiredLevel={2}>
-                    <PermissionGuard requiredPermission="tasks">
-                      <Layout>
-                        <TasksPage />
-                      </Layout>
-                    </PermissionGuard>
-                  </RoleGuard>
-                </ProtectedRoute>
-              } />
+            <Route path="/unauthorized" element={
+              <ProtectedRoute>
+                <Layout>
+                  <UnauthorizedPage />
+                </Layout>
+              </ProtectedRoute>
+            } />
 
-              <Route path="/unauthorized" element={
-                <ProtectedRoute>
-                  <Layout>
-                    <UnauthorizedPage />
-                  </Layout>
-                </ProtectedRoute>
-              } />
-
-              <Route path="*" element={<Navigate to="/login" replace />} />
-            </Routes>
-          </Router>
-        </AppProvider>
-      </ThemeProvider>
-    </AuthProvider>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </ThemeProvider>
+      </AuthProvider>
+    </Router>
   );
 }
+

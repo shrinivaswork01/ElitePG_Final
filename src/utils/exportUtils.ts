@@ -8,9 +8,11 @@ export const exportToExcel = async (
   rooms: Room[],
   payments: Payment[],
   complaints: any[],
-  meterGroups: MeterGroup[],
+  meterGroups: MeterGroup[] | undefined,
   branch: PGBranch | undefined,
-  stats: any
+  branches: PGBranch[] = [],
+  stats: any,
+  expenses: any[] = []
 ) => {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'ElitePG';
@@ -28,8 +30,9 @@ export const exportToExcel = async (
   const totalBeds = rooms.reduce((sum, r) => sum + (r.totalBeds || (r as any).total_beds || 0), 0);
   const activeTenantsCount = tenants.filter(t => t.status === 'active').length;
   const occupancyPercentage = totalBeds > 0 ? (activeTenantsCount / totalBeds) * 100 : 0;
-  const totalRevenue = payments.filter(p => p.status === 'paid').reduce((sum, p) => sum + p.totalAmount, 0);
-  const pendingPayments = payments.filter(p => p.status === 'pending').reduce((sum, p) => sum + p.totalAmount, 0);
+  const totalRevenue = payments.filter(p => p.status === 'paid').reduce((sum, p) => sum + (p.totalAmount || (p as any).total_amount || 0), 0);
+  const totalExpenses = expenses.filter(e => e.status !== 'rejected').reduce((sum, e) => sum + (e.amount || 0), 0);
+  const pendingPayments = payments.filter(p => p.status === 'pending').reduce((sum, p) => sum + (p.totalAmount || (p as any).total_amount || 0), 0);
 
   summarySheet.addRows([
     { metric: 'Total Tenants (Record)', value: tenants.length },
@@ -39,6 +42,8 @@ export const exportToExcel = async (
     { metric: 'Total Bed Capacity', value: totalBeds },
     { metric: 'Occupancy Percentage', value: `${occupancyPercentage.toFixed(2)}%` },
     { metric: 'Total Revenue Collected (INR)', value: totalRevenue },
+    { metric: 'Total Expenses (INR)', value: totalExpenses },
+    { metric: 'Net Profit (INR)', value: totalRevenue - totalExpenses },
     { metric: 'Total Pending Dues (INR)', value: pendingPayments },
   ]);
 
@@ -51,6 +56,7 @@ export const exportToExcel = async (
   const tenantsSheet = workbook.addWorksheet('Tenants');
   tenantsSheet.columns = [
     { header: 'Name', key: 'name', width: 20 },
+    { header: 'Branch', key: 'branchName', width: 25 },
     { header: 'Phone', key: 'phone', width: 15 },
     { header: 'Email', key: 'email', width: 25 },
     { header: 'Room No', key: 'room', width: 10 },
@@ -65,8 +71,10 @@ export const exportToExcel = async (
 
   tenants.forEach(t => {
     const room = rooms.find(r => r.id === (t.roomId || (t as any).room_id));
+    const tBranch = branches.find(b => b.id === (t.branchId || (t as any).branch_id)) || branch;
     tenantsSheet.addRow({
       name: t.name,
+      branchName: tBranch?.name || 'Unknown',
       phone: t.phone,
       email: t.email || '—',
       room: room ? ((room as any).room_number || room.roomNumber) : '—',
@@ -88,6 +96,7 @@ export const exportToExcel = async (
   const roomsSheet = workbook.addWorksheet('Rooms');
   roomsSheet.columns = [
     { header: 'Room Number', key: 'roomNumber', width: 15 },
+    { header: 'Branch', key: 'branchName', width: 25 },
     { header: 'Floor', key: 'floor', width: 10 },
     { header: 'Total Beds', key: 'totalBeds', width: 12 },
     { header: 'Occupied Beds', key: 'occupiedBeds', width: 15 },
@@ -102,8 +111,10 @@ export const exportToExcel = async (
     const tBeds = r.totalBeds || (r as any).total_beds || 0;
     const vacant = tBeds - occupied;
     const occupancy = tBeds > 0 ? (occupied / tBeds) * 100 : 0;
+    const rBranch = branches.find(b => b.id === (r.branchId || (r as any).branch_id)) || branch;
     roomsSheet.addRow({
       roomNumber: (r as any).room_number || r.roomNumber,
+      branchName: rBranch?.name || 'Unknown',
       floor: r.floor,
       totalBeds: tBeds,
       occupiedBeds: occupied,
@@ -121,6 +132,7 @@ export const exportToExcel = async (
   const paymentsSheet = workbook.addWorksheet('Payments');
   paymentsSheet.columns = [
     { header: 'Tenant Name', key: 'tenantName', width: 20 },
+    { header: 'Branch', key: 'branchName', width: 25 },
     { header: 'Month', key: 'month', width: 12 },
     { header: 'Type', key: 'type', width: 12 },
     { header: 'Amount', key: 'amount', width: 15 },
@@ -130,8 +142,10 @@ export const exportToExcel = async (
 
   payments.forEach(p => {
     const tenant = tenants.find(t => t.id === (p.tenantId || (p as any).tenant_id));
+    const pBranch = branches.find(b => b.id === (p.branchId || (p as any).branch_id)) || branch;
     paymentsSheet.addRow({
       tenantName: tenant?.name || 'Unknown',
+      branchName: pBranch?.name || 'Unknown',
       month: p.month,
       type: p.paymentType || (p as any).payment_type,
       amount: p.totalAmount || (p as any).total_amount,
@@ -147,6 +161,7 @@ export const exportToExcel = async (
   const complaintsSheet = workbook.addWorksheet('Complaints');
   complaintsSheet.columns = [
     { header: 'Tenant Name', key: 'tenantName', width: 25 },
+    { header: 'Branch', key: 'branchName', width: 25 },
     { header: 'Title', key: 'title', width: 30 },
     { header: 'Category', key: 'category', width: 15 },
     { header: 'Priority', key: 'priority', width: 12 },
@@ -156,8 +171,10 @@ export const exportToExcel = async (
 
   (complaints || []).forEach((c: any) => {
     const tenant = tenants.find(t => t.id === (c.tenantId || (c as any).tenant_id));
+    const cBranch = branches.find(b => b.id === (c.branchId || (c as any).branch_id)) || branch;
     complaintsSheet.addRow({
       tenantName: tenant?.name || 'Unknown',
+      branchName: cBranch?.name || 'Unknown',
       title: c.title,
       category: c.category,
       priority: (c.priority || '').toUpperCase(),
@@ -173,6 +190,7 @@ export const exportToExcel = async (
   electricitySheet.columns = [
     { header: 'Flat / Meter Group', key: 'flat', width: 20 },
     { header: 'Tenant', key: 'tenant', width: 20 },
+    { header: 'Branch', key: 'branchName', width: 25 },
     { header: 'Room No', key: 'room', width: 10 },
     { header: 'Month', key: 'month', width: 12 },
     { header: 'Base Share', key: 'base', width: 15 },
@@ -189,9 +207,12 @@ export const exportToExcel = async (
     const room = rooms.find(r => r.id === (tenant?.roomId || (tenant as any)?.room_id));
     const flat = meterGroups.find(m => m.id === (room?.meterGroupId || (room as any)?.meter_group_id));
 
+    const eBranch = branches.find(b => b.id === (p.branchId || (p as any).branch_id)) || branch;
+
     electricitySheet.addRow({
       flat: flat?.name || 'Standard/Individual',
       tenant: tenant?.name || 'Unknown',
+      branchName: eBranch?.name || 'Unknown',
       room: room ? ((room as any).room_number || room.roomNumber) : '—',
       month: p.month,
       base: p.baseShare || 0,
@@ -207,6 +228,34 @@ export const exportToExcel = async (
     electricitySheet.getColumn(key).numFmt = '"₹"#,##0.00';
   });
 
+  // --- 7. EXPENSES SHEET ---
+  const expensesSheet = workbook.addWorksheet('Expenses');
+  expensesSheet.columns = [
+    { header: 'Title', key: 'title', width: 25 },
+    { header: 'Branch', key: 'branchName', width: 25 },
+    { header: 'Category', key: 'category', width: 20 },
+    { header: 'Amount', key: 'amount', width: 15 },
+    { header: 'Status', key: 'status', width: 15 },
+    { header: 'Date', key: 'date', width: 15 },
+    { header: 'Month', key: 'month', width: 15 },
+  ];
+
+  expenses.forEach(e => {
+     const eBranch = branches.find(b => b.id === (e.branchId || (e as any).branch_id)) || branch;
+     expensesSheet.addRow({
+       title: e.title,
+       branchName: eBranch?.name || 'Unknown',
+       category: e.category,
+       amount: e.amount,
+       status: e.status,
+       date: e.date,
+       month: e.month
+     });
+  });
+
+  expensesSheet.getRow(1).font = { bold: true };
+  expensesSheet.getColumn('amount').numFmt = '"₹"#,##0.00';
+
   // --- FINALIZATION ---
   const buffer = await workbook.xlsx.writeBuffer();
   const fileType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8';
@@ -214,3 +263,57 @@ export const exportToExcel = async (
   const blob = new Blob([buffer], { type: fileType });
   saveAs(blob, fileName);
 };
+
+export const exportExpensesExcel = async (
+  expenses: any[],
+  branches: PGBranch[],
+  currentTimeRange: string = 'All Time'
+) => {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'ElitePG';
+  workbook.created = new Date();
+
+  const sheet = workbook.addWorksheet('Expenses Export');
+  
+  sheet.columns = [
+    { header: 'Date', key: 'date', width: 15 },
+    { header: 'Branch', key: 'branch', width: 25 },
+    { header: 'Category', key: 'category', width: 20 },
+    { header: 'Title / Description', key: 'description', width: 40 },
+    { header: 'Amount (INR)', key: 'amount', width: 15 },
+    { header: 'Status', key: 'status', width: 15 },
+    { header: 'Month', key: 'month', width: 15 },
+  ];
+
+  // Formatting header
+  sheet.getRow(1).font = { bold: true };
+  sheet.getRow(1).fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FFE0E7FF' } // Light Indigo
+  };
+
+  expenses.forEach(e => {
+    const branch = branches.find(b => b.id === (e.branchId || e.branch_id));
+    sheet.addRow({
+      date: e.date,
+      branch: branch ? branch.name : 'Unknown',
+      category: e.category,
+      description: e.title + (e.description ? ` - ${e.description}` : ''),
+      amount: e.amount,
+      status: (e.status || 'saved').toUpperCase(),
+      month: e.month
+    });
+  });
+
+  // Currency formatting
+  sheet.getColumn('amount').numFmt = '"₹"#,##0.00';
+
+  // Finalization
+  const buffer = await workbook.xlsx.writeBuffer();
+  const fileType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8';
+  const fileName = `ElitePG_Expenses_${currentTimeRange.replace(/\s+/g, '_')}_${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
+  const blob = new Blob([buffer], { type: fileType });
+  saveAs(blob, fileName);
+};
+

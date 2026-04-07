@@ -103,7 +103,7 @@ export const HelpSupportPage = () => {
       );
     }
 
-    if (user?.role === 'admin') {
+    if (user?.role === 'admin' || user?.role === 'partner') {
       // Show Super Admin details
       const superAdmin = users.find(u => u.role === 'super');
       return (

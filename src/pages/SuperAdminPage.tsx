@@ -40,22 +40,23 @@ export const SuperAdminPage = () => {
     tenants,
     rooms,
     pgConfigs,
-    updatePGConfig
+    updatePGConfig,
+    payments
   } = useApp();
-  const { users, register, deleteUser, updateUser } = useAuth();
-  const [activeTab, setActiveTab] = useState<'branches' | 'admins' | 'subscriptions'>('branches');
+  const { users, register, deleteUser, updateUser, user } = useAuth();
+  
+  const primaryBranch = branches.find(b => b.id === user?.branchId) || branches.find(b => user?.branchIds?.includes(b.id));
+  const currentPlan = subscriptionPlans.find(plan => plan.id === primaryBranch?.planId);
+  
+  const [activeTab, setActiveTab] = useState<'branches' | 'subscriptions'>('branches');
   const [isAddingBranch, setIsAddingBranch] = useState(false);
-  const [isAddingAdmin, setIsAddingAdmin] = useState(false);
   const [isAddingPlan, setIsAddingPlan] = useState(false);
   const [isAssigningPlan, setIsAssigningPlan] = useState(false);
   
   const [editingBranch, setEditingBranch] = useState<PGBranch | null>(null);
-  const [editingAdmin, setEditingAdmin] = useState<User | null>(null);
   const [editingPlan, setEditingPlan] = useState<SubscriptionPlan | null>(null);
   const [selectedBranch, setSelectedBranch] = useState<PGBranch | null>(null);
   
-  // New Filter States
-  const [adminStatusFilter, setAdminStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [adminBranchFilter, setAdminBranchFilter] = useState('all');
   const [billingInterval, setBillingInterval] = useState<'monthly' | 'yearly'>('monthly');
 
@@ -63,9 +64,6 @@ export const SuperAdminPage = () => {
 
   // Branch Form State
   const [branchForm, setBranchForm] = useState({ name: '', branchName: '', address: '', phone: '', razorpayKeyId: '' });
-  
-  // Admin Form State
-  const [adminForm, setAdminForm] = useState({ name: '', username: '', email: '', branchId: '', password: '123456' });
 
   // Plan Form State
   const [planForm, setPlanForm] = useState<Omit<SubscriptionPlan, 'id'>>({
@@ -75,6 +73,7 @@ export const SuperAdminPage = () => {
     features: ['tenants', 'rooms', 'payments', 'complaints'],
     maxTenants: 20,
     maxRooms: 10,
+    maxBranches: 1,
     razorpayMonthlyPlanId: '',
     razorpayAnnualPlanId: ''
   });
@@ -88,6 +87,15 @@ export const SuperAdminPage = () => {
 
   const handleAddBranch = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (user?.role === 'admin' || user?.role === 'partner') {
+      const allowedCount = currentPlan?.maxBranches || 1;
+      const userOwnedBranches = branches.filter((b) => user.branchIds?.includes(b.id)) || [];
+      if (!editingBranch && userOwnedBranches.length >= allowedCount) {
+        toast.error(`You have reached your limit of ${allowedCount} branches.`);
+        return;
+      }
+    }
+
     if (editingBranch) {
       await updateBranch(editingBranch.id, branchForm);
       if (branchForm.razorpayKeyId !== undefined) {
@@ -98,21 +106,35 @@ export const SuperAdminPage = () => {
       if (newId && branchForm.razorpayKeyId) {
         await updatePGConfig({ razorpayKeyId: branchForm.razorpayKeyId }, newId as string);
       }
+      
+      // If admin or partner, auto-assign this new branch to their branchIds
+      if (newId && (user?.role === 'admin' || user?.role === 'partner') && user.id) {
+         const updatedBranchIds = [...(user.branchIds || []), newId as string];
+         await updateUser(user.id, { branchIds: updatedBranchIds });
+      }
     }
     setBranchForm({ name: '', branchName: '', address: '', phone: '', razorpayKeyId: '' });
     setIsAddingBranch(false);
     setEditingBranch(null);
   };
 
-  const handleAddPlan = (e: React.FormEvent) => {
+  const handleAddPlan = async (e: React.FormEvent) => {
     e.preventDefault();
+    let success = false;
+    
+    // Explicitly exclude 'id' from planForm to avoid conflicts during update
+    const { id, ...planData } = planForm as any;
+
     if (editingPlan) {
-      updateSubscriptionPlan(editingPlan.id, planForm);
+      success = await updateSubscriptionPlan(editingPlan.id, planData);
     } else {
-      addSubscriptionPlan(planForm);
+      success = await addSubscriptionPlan(planData);
     }
-    setIsAddingPlan(false);
-    setEditingPlan(null);
+
+    if (success) {
+      setIsAddingPlan(false);
+      setEditingPlan(null);
+    }
   };
 
   const handleAssignPlan = (e: React.FormEvent) => {
@@ -122,30 +144,6 @@ export const SuperAdminPage = () => {
     }
     setIsAssigningPlan(false);
     setSelectedBranch(null);
-  };
-
-  const handleAddAdmin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editingAdmin) {
-      updateUser(editingAdmin.id, {
-        name: adminForm.name,
-        username: adminForm.username,
-        email: adminForm.email,
-        branchId: adminForm.branchId,
-        password: adminForm.password
-      });
-    } else {
-      await register({
-        name: adminForm.name,
-        username: adminForm.username,
-        email: adminForm.email,
-        role: 'admin',
-        branchId: adminForm.branchId
-      }, adminForm.password);
-    }
-    setAdminForm({ name: '', username: '', email: '', branchId: '', password: '123456' });
-    setIsAddingAdmin(false);
-    setEditingAdmin(null);
   };
 
   const handleEditBranch = (branch: PGBranch) => {
@@ -161,31 +159,9 @@ export const SuperAdminPage = () => {
     setIsAddingBranch(true);
   };
 
-  const handleEditAdmin = (admin: User) => {
-    setEditingAdmin(admin);
-    setAdminForm({ 
-      name: admin.name, 
-      username: admin.username, 
-      email: admin.email, 
-      branchId: admin.branchId || '', 
-      password: admin.password || '123456' 
-    });
-    setIsAddingAdmin(true);
-  };
-
-  const adminUsers = users.filter(u => u.role === 'admin');
-  
-  const filteredAdmins = adminUsers.filter(u => {
-    const matchesSearch = u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         u.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = adminStatusFilter === 'all' ? true : (adminStatusFilter === 'active' ? u.isAuthorized : !u.isAuthorized);
-    const matchesBranch = adminBranchFilter === 'all' ? true : u.branchId === adminBranchFilter;
-    return matchesSearch && matchesStatus && matchesBranch;
-  });
-
   const getRevenuePerPlan = (planId: string) => {
     const branchIds = branches.filter(b => b.planId === planId).map(b => b.id);
-    return (useApp().payments || [])
+    return (payments || [])
       .filter(p => p.status === 'paid' && branchIds.includes(p.branchId))
       .reduce((sum, p) => sum + p.totalAmount, 0);
   };
@@ -194,10 +170,52 @@ export const SuperAdminPage = () => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">Super Admin Panel</h2>
-          <p className="text-gray-500 dark:text-gray-400">Manage PG branches and system administrators</p>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
+            {user?.role === 'super' ? 'Super Admin Panel' : 'Manage My Branches'}
+          </h2>
+          <p className="text-gray-500 dark:text-gray-400">
+            {user?.role === 'super' ? 'Manage PG branches and system administrators' : 'Add and manage your PG properties'}
+          </p>
         </div>
         <div className="flex gap-2">
+          {user?.role === 'super' && (
+            <>
+              <button
+                onClick={() => setActiveTab('branches')}
+                className={cn(
+                  "px-4 py-2 rounded-xl text-sm font-bold transition-all",
+                  activeTab === 'branches' ? "bg-indigo-600 text-white shadow-sm" : "bg-white dark:bg-[#111111] text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5"
+                )}
+              >
+                PG Branches
+              </button>
+              <button
+                onClick={() => setActiveTab('subscriptions')}
+                className={cn(
+                  "px-4 py-2 rounded-xl text-sm font-bold transition-all",
+                  activeTab === 'subscriptions' ? "bg-indigo-600 text-white shadow-sm" : "bg-white dark:bg-[#111111] text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5"
+                )}
+              >
+                Subscriptions
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Header Actions */}
+      <div className="flex flex-col sm:flex-row justify-between gap-4 bg-white dark:bg-[#111111] p-4 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
+        <div className="flex-1 relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder={`Search ${activeTab}...`}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-11 pr-4 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+          />
+        </div>
+        <div className="flex gap-3">
           {activeTab === 'branches' && (
             <button
               onClick={() => {
@@ -207,21 +225,8 @@ export const SuperAdminPage = () => {
               }}
               className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl transition-all shadow-sm"
             >
-              <Plus className="w-4 h-4" />
-              Add Branch
-            </button>
-          )}
-          {activeTab === 'admins' && (
-            <button
-              onClick={() => {
-                setEditingAdmin(null);
-                setAdminForm({ name: '', username: '', email: '', branchId: '', password: '123456' });
-                setIsAddingAdmin(true);
-              }}
-              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl transition-all shadow-sm"
-            >
-              <UserPlus className="w-4 h-4" />
-              Create Admin
+              <Building2 className="w-4 h-4" />
+              New Branch
             </button>
           )}
           {activeTab === 'subscriptions' && (
@@ -234,6 +239,7 @@ export const SuperAdminPage = () => {
                   features: ['tenants', 'rooms', 'payments', 'complaints'],
                   maxTenants: 20,
                   maxRooms: 10,
+                  maxBranches: 1,
                   annualPrice: 0,
                   razorpayMonthlyPlanId: '',
                   razorpayAnnualPlanId: ''
@@ -249,52 +255,6 @@ export const SuperAdminPage = () => {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-gray-200 dark:border-white/5">
-        <button
-          onClick={() => setActiveTab('branches')}
-          className={cn(
-            "px-6 py-3 text-sm font-medium transition-colors relative",
-            activeTab === 'branches' ? "text-indigo-600 dark:text-indigo-400" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-          )}
-        >
-          Branches
-          {activeTab === 'branches' && <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 dark:bg-indigo-400" />}
-        </button>
-        <button
-          onClick={() => setActiveTab('admins')}
-          className={cn(
-            "px-6 py-3 text-sm font-medium transition-colors relative",
-            activeTab === 'admins' ? "text-indigo-600 dark:text-indigo-400" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-          )}
-        >
-          Admins
-          {activeTab === 'admins' && <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 dark:bg-indigo-400" />}
-        </button>
-        <button
-          onClick={() => setActiveTab('subscriptions')}
-          className={cn(
-            "px-6 py-3 text-sm font-medium transition-colors relative",
-            activeTab === 'subscriptions' ? "text-indigo-600 dark:text-indigo-400" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-          )}
-        >
-          Subscriptions
-          {activeTab === 'subscriptions' && <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 dark:bg-indigo-400" />}
-        </button>
-      </div>
-
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-        <input
-          type="text"
-          placeholder={`Search ${activeTab}...`}
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full pl-12 pr-4 py-3 bg-white dark:bg-[#111111] border border-gray-200 dark:border-white/5 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-        />
-      </div>
-
       {/* Content */}
       <AnimatePresence mode="wait">
         {activeTab === 'branches' && (
@@ -303,100 +263,64 @@ export const SuperAdminPage = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto w-full"
+            className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6"
           >
-            {branches.filter(b => b.name.toLowerCase().includes(searchTerm.toLowerCase())).map((branch) => (
-              <div key={branch.id} className="bg-white dark:bg-[#111111] p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm hover:shadow-md transition-all group">
-                <div className="flex justify-between items-start mb-4">
-                  <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-500/20 rounded-xl flex items-center justify-center text-indigo-600 dark:text-indigo-400">
-                    <Building2 className="w-6 h-6" />
-                  </div>
-                  <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button 
-                      onClick={() => handleEditBranch(branch)}
-                      className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg text-gray-500"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button 
-                      onClick={() => deleteBranch(branch.id)}
-                      className="p-2 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg text-red-600"
-                    >
+            {(user?.role === 'super' ? branches : (branches.filter(b => user?.branchIds?.includes(b.id)))).map((branch) => (
+              <div key={branch.id} className="bg-white dark:bg-[#111111] rounded-[24px] border border-gray-200 dark:border-white/5 overflow-hidden shadow-sm hover:shadow-xl transition-all group relative">
+                <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                  <button onClick={() => handleEditBranch(branch)} className="p-2 bg-white/90 dark:bg-black/50 backdrop-blur block rounded-xl text-indigo-600 dark:text-indigo-400 shadow-sm hover:scale-110 transition-transform">
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                  {user?.role === 'super' && (
+                    <button onClick={() => deleteBranch(branch.id)} className="p-2 bg-white/90 dark:bg-black/50 backdrop-blur block rounded-xl text-red-600 shadow-sm hover:scale-110 transition-transform">
                       <Trash2 className="w-4 h-4" />
                     </button>
-                  </div>
+                  )}
                 </div>
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{branch.name}</h3>
-                <p className="text-sm font-medium text-indigo-600 dark:text-indigo-400 mb-4">{branch.branchName}</p>
-                <div className="space-y-3 text-sm text-gray-500 dark:text-gray-400">
-                  <div className="flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-indigo-400" />
-                    <span className="truncate">{branch.address}</span>
+                
+                <div className="p-6 border-b border-gray-100 dark:border-white/5">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-black text-xl shadow-inner border border-indigo-100 dark:border-indigo-500/20">
+                      {branch.branchName?.charAt(0) || branch.name?.charAt(0) || '?'}
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-black text-gray-900 dark:text-white uppercase tracking-tight">{branch.name}</h3>
+                      <p className="text-xs font-bold text-gray-500">{branch.branchName || 'Main Branch'}</p>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Phone className="w-4 h-4 text-indigo-400" />
-                    {branch.phone}
+                  <div className="space-y-2 mt-4">
+                    <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                      <MapPin className="w-4 h-4" /> <span className="truncate">{branch.address}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                      <Phone className="w-4 h-4" /> <span>{branch.phone}</span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="mt-6 grid grid-cols-3 gap-3">
-                  <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/5 text-center">
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Tenants</p>
-                    <p className="text-sm font-black text-gray-900 dark:text-white">
-                      {(tenants || []).filter(t => t.branchId === branch.id).length}
-                    </p>
-                  </div>
-                  <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/5 text-center">
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Rooms</p>
-                    <p className="text-sm font-black text-gray-900 dark:text-white">
-                      {(rooms || []).filter(r => r.branchId === branch.id).length}
-                    </p>
-                  </div>
-                  <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/5 text-center">
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Occupancy</p>
-                    <p className="text-sm font-black text-indigo-600 dark:text-indigo-400">
-                      {Math.round(((tenants || []).filter(t => t.branchId === branch.id).length / Math.max(1, (rooms || []).filter(r => r.branchId === branch.id).reduce((sum, r) => sum + (r.totalBeds || 1), 0))) * 100)}%
-                    </p>
-                  </div>
-                </div>
-                <div className="mt-6 pt-6 border-t border-gray-100 dark:border-white/5 flex flex-col gap-4">
-                  <div className="flex justify-between items-center text-xs text-indigo-400">
-                    <span className="text-gray-400">Invite Code</span>
-                    <div className="flex items-center gap-1 bg-white/5 px-2 py-1 rounded-md">
-                      <span className="font-mono tracking-wider font-bold">
-                        {userInvites?.find(i => i.branchId === branch.id)?.inviteCode || 'N/A'}
-                      </span>
-                      <button 
-                        onClick={() => {
-                          const code = userInvites?.find(i => i.branchId === branch.id)?.inviteCode;
-                          if (code) {
-                            navigator.clipboard.writeText(`${window.location.origin}/signup?invite=${code}`);
-                            toast.success('Invite link copied!');
-                          }
-                        }}
-                        className="p-1 hover:bg-white/10 rounded ml-1 transition-colors"
-                        title="Copy Invite Link"
-                      >
-                        <UserPlus className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </div>
+                <div className="p-6 bg-gray-50 dark:bg-[#0a0a0a] space-y-4">
                   <div className="flex justify-between items-center">
-                    <span className="text-xs text-gray-400">Subscription</span>
-                    <button 
-                      onClick={() => {
-                        setSelectedBranch(branch);
-                        setAssignForm({
-                          planId: branch.planId || '',
-                          status: branch.subscriptionStatus || 'active',
-                          endDate: branch.subscriptionEndDate || ''
-                        });
-                        setIsAssigningPlan(true);
-                      }}
-                      className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
-                    >
-                      {subscriptionPlans.find(p => p.id === branch.planId)?.name || 'No Plan'}
-                    </button>
+                    <span className="text-xs text-gray-400">Plan</span>
+                    {user?.role === 'super' ? (
+                      <button
+                        onClick={() => {
+                          setSelectedBranch(branch);
+                          setAssignForm({
+                            planId: branch.planId || '',
+                            status: branch.subscriptionStatus || 'trial',
+                            endDate: branch.subscriptionEndDate || ''
+                          });
+                          setIsAssigningPlan(true);
+                        }}
+                        className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
+                      >
+                        {subscriptionPlans.find(p => p.id === branch.planId)?.name || 'Assign Plan'}
+                      </button>
+                    ) : (
+                      <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                        {subscriptionPlans.find(p => p.id === branch.planId)?.name || 'No Plan'}
+                      </span>
+                    )}
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-xs text-gray-400">Status</span>
@@ -409,160 +333,17 @@ export const SuperAdminPage = () => {
                       {branch.subscriptionStatus || 'Inactive'}
                     </span>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-gray-400">ID: {branch.id}</span>
-                    <span className="text-xs font-medium text-indigo-600 dark:text-indigo-400">
-                      {users.filter(u => u.branchId === branch.id).length} Users
-                    </span>
-                  </div>
+                  {user?.role === 'super' && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-gray-400">ID: {branch.id}</span>
+                      <span className="text-xs font-medium text-indigo-600 dark:text-indigo-400">
+                        {users.filter(u => u.branchId === branch.id).length} Users
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
-          </motion.div>
-        )}
-
-        {activeTab === 'admins' && (
-          <motion.div
-            key="admins"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="space-y-6"
-          >
-            {/* Admin Stats Bar */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="bg-white dark:bg-[#111111] p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Total Admins</p>
-                <p className="text-2xl font-black text-gray-900 dark:text-white">{adminUsers.length}</p>
-              </div>
-              <div className="bg-white dark:bg-[#111111] p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Active Now</p>
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-                  <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400">{adminUsers.filter(u => u.isAuthorized).length}</p>
-                </div>
-              </div>
-              <div className="bg-white dark:bg-[#111111] p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Unassigned</p>
-                <p className="text-2xl font-black text-amber-600 dark:text-amber-400">{adminUsers.filter(u => !u.branchId).length}</p>
-              </div>
-            </div>
-
-            {/* Admin Filters */}
-            <div className="flex flex-col sm:flex-row gap-4 bg-white dark:bg-[#111111] p-4 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
-              <div className="flex-1 relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search by name or email..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-11 pr-4 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                />
-              </div>
-              <select
-                value={adminBranchFilter}
-                onChange={(e) => setAdminBranchFilter(e.target.value)}
-                className="px-4 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none min-w-[160px]"
-              >
-                <option value="all">All Branches</option>
-                {branches.map(b => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
-              </select>
-              <div className="flex bg-gray-50 dark:bg-white/5 p-1 rounded-xl border border-gray-200 dark:border-white/5">
-                {(['all', 'active', 'inactive'] as const).map(status => (
-                  <button
-                    key={status}
-                    onClick={() => setAdminStatusFilter(status)}
-                    className={cn(
-                      "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
-                      adminStatusFilter === status ? "bg-white dark:bg-white/10 text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-gray-500 hover:text-gray-700"
-                    )}
-                  >
-                    {status}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="bg-white dark:bg-[#111111] rounded-2xl border border-gray-200 dark:border-white/5 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/5">
-                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Admin Name</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Username</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Branch</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-white/5">
-                  {filteredAdmins.map((admin) => (
-                    <tr key={admin.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-black text-sm border border-indigo-100 dark:border-indigo-500/20">
-                            {admin.name?.charAt(0) || '?'}
-                          </div>
-                          <div>
-                            <p className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-tight">{admin.name}</p>
-                            <p className="text-[10px] font-bold text-gray-400">{admin.email}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-sm font-bold text-gray-500 dark:text-gray-400">{admin.username}</td>
-                      <td className="px-6 py-4">
-                        {branches.find(b => b.id === admin.branchId) ? (
-                          <div className="bg-indigo-50/50 dark:bg-indigo-500/5 px-3 py-1.5 rounded-xl border border-indigo-100/50 dark:border-indigo-500/10 inline-block">
-                             <p className="text-xs font-black text-gray-900 dark:text-white tracking-tight">
-                               {branches.find(b => b.id === admin.branchId)?.name}
-                             </p>
-                             <p className="text-[9px] font-bold text-indigo-600/60 uppercase">
-                               {branches.find(b => b.id === admin.branchId)?.branchName}
-                             </p>
-                          </div>
-                        ) : <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Unassigned</span>}
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={cn(
-                          "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border",
-                          admin.isAuthorized 
-                            ? "bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20"
-                            : "bg-rose-50 text-rose-600 border-rose-100 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20"
-                        )}>
-                          <div className={cn("w-1.5 h-1.5 rounded-full", admin.isAuthorized ? "bg-emerald-500" : "bg-rose-500")} />
-                          {admin.isAuthorized ? 'Authorized' : 'Suspended'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex gap-2">
-                          <button 
-                            onClick={() => handleEditAdmin(admin)}
-                            className="bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-indigo-100 dark:border-indigo-500/20 hover:bg-indigo-100 transition-all"
-                          >
-                            Edit
-                          </button>
-                          <button 
-                            onClick={() => deleteUser(admin.id)}
-                            className="bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-rose-100 dark:border-rose-500/20 hover:bg-rose-100 transition-all"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {filteredAdmins.length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="px-6 py-12 text-center text-gray-400 font-black uppercase tracking-[0.2em] text-xs">No admins found matching current filters</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-            </div>
           </motion.div>
         )}
 
@@ -599,8 +380,9 @@ export const SuperAdminPage = () => {
                 <div className="absolute top-0 right-0 p-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button 
                     onClick={() => {
+                      const { id, ...planData } = plan;
                       setEditingPlan(plan);
-                      setPlanForm({ ...plan });
+                      setPlanForm(planData);
                       setIsAddingPlan(true);
                     }}
                     className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg text-gray-500"
@@ -644,6 +426,10 @@ export const SuperAdminPage = () => {
                   <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
                     <Check className="w-4 h-4 text-green-500" />
                     {plan.maxRooms >= 9999 ? 'Unlimited' : `Up to ${plan.maxRooms}`} Rooms
+                  </div>
+                  <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
+                    <Check className="w-4 h-4 text-green-500" />
+                    {plan.maxBranches >= 9999 ? 'Unlimited' : `Up to ${plan.maxBranches}`} Branches
                   </div>
                   <div className="pt-2">
                     <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Features Included</p>
@@ -742,6 +528,16 @@ export const SuperAdminPage = () => {
                     />
                   </div>
                   <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Max Branches</label>
+                    <input
+                      required
+                      type="number"
+                      value={planForm.maxBranches}
+                      onChange={(e) => setPlanForm({ ...planForm, maxBranches: Number(e.target.value) })}
+                      className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                  </div>
+                  <div className="space-y-2">
                     <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Razorpay Monthly Plan ID</label>
                     <input
                       type="text"
@@ -766,7 +562,7 @@ export const SuperAdminPage = () => {
                 <div className="space-y-3">
                   <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Features Access</label>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {(['tenants', 'rooms', 'payments', 'complaints', 'kyc', 'employees', 'broadcast', 'analytics', 'whatsapp', 'reports', 'multi-branch'] as AppFeature[]).map(feature => (
+                    {(['tenants', 'rooms', 'payments', 'complaints', 'kyc', 'employees', 'broadcast', 'analytics', 'whatsapp', 'reports', 'multi-branch', 'expenses', 'tasks'] as AppFeature[]).map(feature => (
                       <button
                         key={feature}
                         type="button"
@@ -777,13 +573,13 @@ export const SuperAdminPage = () => {
                           setPlanForm({ ...planForm, features });
                         }}
                         className={cn(
-                          "px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all border",
+                          "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.05em] transition-all border",
                           planForm.features.includes(feature)
                             ? "bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-600/20"
-                            : "bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/5 text-gray-500"
+                            : "bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/5 text-gray-400 hover:border-indigo-500/30"
                         )}
                       >
-                        {feature}
+                        {feature.replace('-', ' ')}
                       </button>
                     ))}
                   </div>
@@ -894,6 +690,8 @@ export const SuperAdminPage = () => {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Add/Edit Branch Modal */}
       <AnimatePresence>
         {isAddingBranch && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -981,103 +779,6 @@ export const SuperAdminPage = () => {
                     className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-sm"
                   >
                     {editingBranch ? 'Update Branch' : 'Create Branch'}
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Add/Edit Admin Modal */}
-      <AnimatePresence>
-        {isAddingAdmin && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white dark:bg-[#111111] rounded-2xl p-6 w-full max-w-md border border-gray-200 dark:border-white/5 shadow-2xl"
-            >
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6">
-                {editingAdmin ? 'Edit Admin User' : 'Create Admin User'}
-              </h3>
-              <form onSubmit={handleAddAdmin} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Full Name</label>
-                  <input
-                    required
-                    type="text"
-                    value={adminForm.name}
-                    onChange={(e) => setAdminForm({ ...adminForm, name: e.target.value })}
-                    className="w-full px-4 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                    placeholder="Admin's full name"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Username</label>
-                    <input
-                      required
-                      type="text"
-                      value={adminForm.username}
-                      onChange={(e) => setAdminForm({ ...adminForm, username: e.target.value })}
-                      className="w-full px-4 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                      placeholder="Login username"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
-                    <input
-                      required
-                      type="password"
-                      value={adminForm.password}
-                      onChange={(e) => setAdminForm({ ...adminForm, password: e.target.value })}
-                      className="w-full px-4 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email Address</label>
-                  <input
-                    required
-                    type="email"
-                    value={adminForm.email}
-                    onChange={(e) => setAdminForm({ ...adminForm, email: e.target.value })}
-                    className="w-full px-4 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                    placeholder="admin@example.com"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Assign Branch</label>
-                  <select
-                    required
-                    value={adminForm.branchId}
-                    onChange={(e) => setAdminForm({ ...adminForm, branchId: e.target.value })}
-                    className="w-full px-4 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                  >
-                    <option value="">Select a branch</option>
-                    {branches.map(b => (
-                      <option key={b.id} value={b.id}>{b.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex gap-3 mt-6">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsAddingAdmin(false);
-                      setEditingAdmin(null);
-                    }}
-                    className="flex-1 px-4 py-2 border border-gray-200 dark:border-white/5 text-gray-600 dark:text-gray-400 rounded-xl hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-sm"
-                  >
-                    {editingAdmin ? 'Update Admin' : 'Create Admin'}
                   </button>
                 </div>
               </form>

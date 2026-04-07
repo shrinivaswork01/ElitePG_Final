@@ -274,7 +274,7 @@ export const ComplaintsPage = () => {
                       )}
                     </div>
                     
-                    {user?.role === 'admin' || user?.role === 'manager' ? (
+                    {user?.role === 'admin' || user?.role === 'partner' || user?.role === 'manager' ? (
                       <div className="flex items-center gap-2 mt-4">
                         <UserIcon className="w-3 h-3 text-gray-400" />
                         <select
@@ -301,7 +301,7 @@ export const ComplaintsPage = () => {
 
                 <div className="flex flex-col sm:flex-row items-center gap-4 sm:justify-end">
                   <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto">
-                    {complaint.status !== 'resolved' && (user?.role === 'admin' || user?.role === 'manager' || user?.role === 'caretaker' || (currentUserEmployee?.id && complaint.assignedTo === currentUserEmployee.id)) && (
+                    {complaint.status !== 'resolved' && (user?.role === 'admin' || user?.role === 'partner' || user?.role === 'manager' || user?.role === 'caretaker' || (currentUserEmployee?.id && complaint.assignedTo === currentUserEmployee.id)) && (
                       <button
                         onClick={() => setCompletingComplaint(complaint)}
                         className="px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-xl shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all flex-1 sm:flex-none"
@@ -430,7 +430,7 @@ export const ComplaintsPage = () => {
                       />
                     </div>
                     
-                    {(user?.role === 'admin' || user?.role === 'manager' || user?.role === 'caretaker') && !editingComplaint && (
+                    {(user?.role === 'admin' || user?.role === 'partner' || user?.role === 'manager' || user?.role === 'caretaker') && !editingComplaint && (
                       <div className="space-y-2 sm:col-span-2">
                         <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Reporting For Tenant</label>
                         <select
@@ -477,7 +477,7 @@ export const ComplaintsPage = () => {
                       </select>
                     </div>
 
-                    {editingComplaint && (user?.role === 'admin' || user?.role === 'manager') && (
+                    {editingComplaint && (user?.role === 'admin' || user?.role === 'partner' || user?.role === 'manager') && (
                       <>
                         <div className="space-y-2">
                           <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Assigned To</label>
