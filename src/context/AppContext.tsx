@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useMemo, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { format } from 'date-fns';
-import { Tenant, Room, Payment, Complaint, Employee, KYCData, Announcement, SalaryPayment, Task, PGConfig, PGBranch, RolePermissions, SubscriptionPlan, AppFeature, KYCStatus, UserInvite, MeterGroup, Expense, ExpenseStatus } from '../types';
+import { Tenant, Room, Payment, Complaint, Employee, KYCData, Announcement, SalaryPayment, Task, PGConfig, PGBranch, RolePermissions, SubscriptionPlan, AppFeature, KYCStatus, UserInvite, MeterGroup, Expense, ExpenseStatus, PartnerShare, ProfitDistribution } from '../types';
 import { uploadToSupabase, deleteFromSupabase } from '../utils/storage';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
@@ -25,9 +25,12 @@ interface AppContextType {
   userInvites: UserInvite[];
   superSignatureUrl: string | null;
   expenses: Expense[];
+  tenantDepositLogs: any[];
+  partnerShares: PartnerShare[];
+  profitDistributions: ProfitDistribution[];
 
   // Actions
-  addTenant: (tenant: Omit<Tenant, 'id' | 'branchId'>, kycDoc?: { type: string, file?: File, url?: string }, rentAgreementDoc?: { file?: File, url?: string }) => Promise<void>;
+  addTenant: (tenant: Omit<Tenant, 'id' | 'branchId'> & { branchId?: string }, kycDoc?: { type: string, file?: File, url?: string }, rentAgreementDoc?: { file?: File, url?: string }) => Promise<void>;
   updateTenant: (id: string, updates: Partial<Tenant>, kycDoc?: { type: string, file?: File, url?: string }, rentAgreementDoc?: { file?: File, url?: string }) => Promise<void>;
   deleteTenant: (id: string) => Promise<void>;
   requestVacating: (tenantId: string) => Promise<void>;
@@ -98,6 +101,8 @@ interface AppContextType {
     revenueHistory: { name: string, revenue: number }[];
     occupancyByFlat: { name: string, occupied: number, total: number }[];
   };
+  updatePartnerShareBatch: (branchId: string, shares: { userId: string; ratio: number }[], effectiveFrom: string) => Promise<void>;
+  addProfitDistribution: (distribution: any) => Promise<void>;
   currentBranch: PGBranch | undefined;
   currentPlan: SubscriptionPlan | undefined;
   rawData: any;
@@ -127,7 +132,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       subscriptionPlans: [],
       userInvites: [],
       superSignatureUrl: null,
-      expenses: []
+      expenses: [],
+      tenantDepositLogs: [],
+      partnerShares: [],
+      profitDistributions: []
     };
 
     if (cached) {
@@ -152,7 +160,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const fetchData = useCallback(async () => {
     // We only fetch data if user is logged in
     if (!userId) {
-      setData({ tenants: [], rooms: [], payments: [], complaints: [], employees: [], kycs: [], announcements: [], salaryPayments: [], tasks: [], pgConfigs: [], branches: [], subscriptionPlans: [], userInvites: [], superSignatureUrl: null, expenses: [] });
+      setData({ tenants: [], rooms: [], payments: [], complaints: [], employees: [], kycs: [], announcements: [], salaryPayments: [], tasks: [], pgConfigs: [], branches: [], subscriptionPlans: [], userInvites: [], superSignatureUrl: null, expenses: [], tenantDepositLogs: [], partnerShares: [], profitDistributions: [] });
       setIsAppLoading(false);
       localStorage.removeItem('elite_pg_cached_data');
       return;
@@ -205,7 +213,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         { data: pgConfigs },
         { data: userInvites },
         { data: superUserSignature },
-        { data: expenses }
+        { data: expenses },
+        { data: depositLogs },
+        { data: shares },
+        { data: distributions }
       ] = await Promise.all([
         // Branches: super gets all, admin gets their owned branches, others get their single branch
         isSuper 
@@ -231,7 +242,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         branchQuery(supabase.from('pg_configs').select('*')),
         branchQuery(supabase.from('user_invites').select('*')),
         supabase.from('users').select('signature_url').eq('role', 'super').maybeSingle(),
-        branchQuery(supabase.from('expenses').select('*'))
+        branchQuery(supabase.from('expenses').select('*')),
+        branchQuery(supabase.from('tenant_deposit_logs').select('*')),
+        branchQuery(supabase.from('partner_shares').select('*')),
+        branchQuery(supabase.from('profit_distributions').select('*'))
       ]);
 
       const newData = {
@@ -249,6 +263,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         })),
         tenants: (tenants || []).map(t => ({
           id: t.id, userId: t.user_id, name: t.name, email: t.email, phone: t.phone, roomId: t.room_id, bedNumber: t.bed_number, rentAmount: t.rent_amount, depositAmount: t.deposit_amount, joiningDate: t.joining_date, paymentDueDate: t.payment_due_date, status: t.status, kycStatus: t.kyc_status, rentAgreementUrl: t.rent_agreement_url, inviteCode: t.invite_code, branchId: t.branch_id,
+          tokenAmount: t.token_amount ?? 0,
+          tokenStatus: t.token_status || 'pending',
+          depositStatus: t.deposit_status || 'pending',
+          depositBalance: t.deposit_balance ?? 0,
+          moveInDate: t.move_in_date || null,
           isAuthorized: t.users?.is_authorized ?? true,
           vacatingDate: t.vacating_date,
           exitDate: t.exit_date,
@@ -311,6 +330,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           amount: e.amount, date: e.date, receiptUrl: e.receipt_url, createdBy: e.created_by,
           approvedBy: e.approved_by, rejectedBy: e.rejected_by, status: e.status as 'saved'|'pending'|'approved'|'rejected', month: e.month,
           editedBy: e.edited_by, editedAt: e.edited_at, createdAt: e.created_at
+        })),
+        tenantDepositLogs: (depositLogs || []).map(l => ({
+          id: l.id, tenantId: l.tenant_id, type: l.type, amount: l.amount, status: l.status,
+          date: l.date, note: l.note, paymentId: l.payment_id, branchId: l.branch_id
+        })),
+        partnerShares: (shares || []).map(s => ({
+          id: s.id, userId: s.user_id, branchId: s.branch_id, ratio: s.ratio || s.share_percentage, effectiveFrom: s.effective_from || '2024-01', createdAt: s.created_at
+        })),
+        profitDistributions: (distributions || []).map(d => ({
+          id: d.id, branchId: d.branch_id, month: d.month, totalRevenue: d.total_revenue,
+          totalExpenses: d.total_expenses, netProfit: d.net_profit, distributions: d.distributions
         })),
         superSignatureUrl: superUserSignature?.signature_url || null
       };
@@ -385,6 +415,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       salaryPayments: (data.salaryPayments || []).filter((p: SalaryPayment) => p.branchId === branchId),
       tasks: (data.tasks || []).filter((t: Task) => t.branchId === branchId),
       expenses: (data.expenses || []).filter((e: Expense) => e.branchId === branchId),
+      tenantDepositLogs: (data.tenantDepositLogs || []).filter((l: any) => l.branchId === branchId),
+      partnerShares: (data.partnerShares || []).filter((s: any) => s.branchId === branchId),
+      profitDistributions: (data.profitDistributions || []).filter((d: any) => d.branchId === branchId),
       pgConfig: (data.pgConfigs || []).find((c: PGConfig) => c.branchId === branchId) || null,
       subscriptionPlans: data.subscriptionPlans || [],
       branches: data.branches || [],
@@ -477,7 +510,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       is_ac_user: isAcUser,
       token_amount: tenant.tokenAmount,
       token_status: tenant.tokenStatus,
-      deposit_status: tenant.depositStatus
+      deposit_status: tenant.depositStatus,
+      deposit_balance: tenant.depositStatus === 'paid' ? (tenant.depositAmount || 0) : 0,
+      move_in_date: (tenant as any).moveInDate || null
     }).select().single();
     if (error) { toast.error(error.message); return; }
 
@@ -515,9 +550,51 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       isAcUser: (createdTenant as any).is_ac_user || false,
       tokenAmount: tenant.tokenAmount,
       tokenStatus: tenant.tokenStatus,
-      depositStatus: tenant.depositStatus
+      depositStatus: tenant.depositStatus,
+      depositBalance: tenant.depositStatus === 'paid' ? (tenant.depositAmount || 0) : 0,
+      moveInDate: (tenant as any).moveInDate || undefined,
+      depositLogs: []
     };
     applyOptimistic(prev => ({ ...prev, tenants: [...prev.tenants, newTenant] }));
+
+    // Handle Deposit/Token Logs and Payments
+    const logsToInsert: any[] = [];
+    if (tenant.tokenAmount > 0) {
+      logsToInsert.push({
+        tenant_id: createdTenant.id, branch_id: branchId, type: 'token',
+        amount: tenant.tokenAmount, status: tenant.tokenStatus || 'pending',
+        date: tenant.joiningDate, note: 'Initial Token Payment'
+      });
+    }
+    if (tenant.depositAmount > 0) {
+      logsToInsert.push({
+        tenant_id: createdTenant.id, branch_id: branchId, type: 'deposit',
+        amount: tenant.depositAmount, status: tenant.depositStatus || 'pending',
+        date: tenant.joiningDate, note: 'Security Deposit'
+      });
+    }
+
+    if (logsToInsert.length > 0) {
+      const { data: insertedLogs } = await supabase.from('tenant_deposit_logs').insert(logsToInsert).select();
+      
+      // If any log is "paid", record a corresponding payment for revenue tracking
+      for (const log of (insertedLogs || [])) {
+        if (log.status === 'paid') {
+          await supabase.from('payments').insert({
+            tenant_id: createdTenant.id,
+            branch_id: branchId,
+            amount: log.amount,
+            total_amount: log.amount,
+            payment_type: log.type === 'token' ? 'token' : 'deposit',
+            payment_date: log.date,
+            month: log.date.substring(0, 7),
+            status: 'paid',
+            method: 'cash',
+            transaction_id: `LOG_${log.id}`
+          });
+        }
+      }
+    }
 
     if (createdTenant && kycDoc && finalKycUrl) {
       if (isAdmin) {
@@ -572,6 +649,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.tokenAmount !== undefined) dbUpdates.token_amount = updates.tokenAmount;
     if (updates.tokenStatus !== undefined) dbUpdates.token_status = updates.tokenStatus;
     if (updates.depositStatus !== undefined) dbUpdates.deposit_status = updates.depositStatus;
+    if (updates.depositBalance !== undefined) dbUpdates.deposit_balance = updates.depositBalance;
+    if ((updates as any).moveInDate !== undefined) dbUpdates.move_in_date = (updates as any).moveInDate;
     if (updates.joiningDate !== undefined) dbUpdates.joining_date = updates.joiningDate;
     if (updates.paymentDueDate !== undefined) dbUpdates.payment_due_date = updates.paymentDueDate;
     if (updates.status !== undefined) dbUpdates.status = updates.status;
@@ -623,6 +702,54 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     const { error } = await supabase.from('tenants').update(dbUpdates).eq('id', id);
     if (error) { toast.error(error.message); fetchData(); return; }
+
+    // Handle Deposit/Token Log and Payment Generation for updates
+    const existingTenant = data.tenants.find((t: any) => t.id === id);
+    const branchId = existingTenant?.branchId || user?.branchId;
+
+    if (existingTenant) {
+      const logsToInsert: any[] = [];
+      const isTokenPaid = updates.tokenStatus === 'paid' && existingTenant.tokenStatus !== 'paid';
+      const isDepositPaid = updates.depositStatus === 'paid' && existingTenant.depositStatus !== 'paid';
+
+      if (isTokenPaid) {
+        logsToInsert.push({
+          tenant_id: id, branch_id: branchId, type: 'token',
+          amount: updates.tokenAmount ?? existingTenant.tokenAmount ?? 0, status: 'paid',
+          date: new Date().toISOString().split('T')[0], note: 'Token marked as paid'
+        });
+      }
+      if (isDepositPaid) {
+        logsToInsert.push({
+          tenant_id: id, branch_id: branchId, type: 'deposit',
+          amount: updates.depositAmount ?? existingTenant.depositAmount ?? 0, status: 'paid',
+          date: new Date().toISOString().split('T')[0], note: 'Deposit marked as paid'
+        });
+        // Auto-set deposit_balance when deposit becomes paid
+        const depositVal = updates.depositAmount ?? existingTenant.depositAmount ?? 0;
+        await supabase.from('tenants').update({ deposit_balance: depositVal }).eq('id', id);
+      }
+
+      if (logsToInsert.length > 0) {
+        const { data: insertedLogs } = await supabase.from('tenant_deposit_logs').insert(logsToInsert).select();
+        
+        for (const log of (insertedLogs || [])) {
+          await supabase.from('payments').insert({
+            tenant_id: id,
+            branch_id: branchId,
+            amount: log.amount,
+            total_amount: log.amount,
+            payment_type: log.type === 'token' ? 'token' : 'deposit',
+            payment_date: log.date,
+            month: log.date.substring(0, 7),
+            status: 'paid',
+            method: 'cash',
+            transaction_id: `LOG_UP_${log.id}`
+          });
+        }
+      }
+    }
+
     if (!kycDoc) toast.success('Tenant updated successfully');
 
     if (kycDoc && finalKycUrl) {
@@ -1564,6 +1691,45 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [filteredData]);
 
+  const updatePartnerShareBatch = async (branchId: string, shares: { userId: string; ratio: number }[], effectiveFrom: string) => {
+    // Validate total = 100%
+    const total = shares.reduce((sum, s) => sum + s.ratio, 0);
+    if (total !== 100) {
+      toast.error(`Total partner share must equal 100% (Current: ${total}%)`);
+      return;
+    }
+
+    const { error } = await supabase.from('partner_shares').upsert(
+      shares.map(s => ({
+        branch_id: branchId,
+        user_id: s.userId,
+        ratio: s.ratio,
+        share_percentage: s.ratio, // Keep for backward compatibility if needed by other views
+        effective_from: effectiveFrom
+      })),
+      { onConflict: 'branch_id,user_id,effective_from' }
+    );
+    
+    if (error) { toast.error(error.message); return; }
+    toast.success(`Share ratios updated effective from ${effectiveFrom}`);
+    fetchData();
+  };
+
+  const addProfitDistribution = async (distribution: any) => {
+    const { error } = await supabase.from('profit_distributions').insert({
+      branch_id: distribution.branchId,
+      month: distribution.month,
+      total_revenue: distribution.totalRevenue,
+      total_expenses: distribution.totalExpenses,
+      net_profit: distribution.netProfit,
+      distributions: distribution.distributions
+    });
+    
+    if (error) { toast.error(error.message); return; }
+    toast.success('Profit Distribution recorded');
+    fetchData();
+  };
+
   const getStats = useCallback(() => computedStats, [computedStats]);
 
   return (
@@ -1590,6 +1756,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       checkFeatureAccess,
       fetchData,
       getStats,
+      updatePartnerShareBatch, addProfitDistribution,
       rawData: data,
       isAppLoading
     }}>

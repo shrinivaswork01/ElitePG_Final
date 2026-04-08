@@ -114,6 +114,16 @@ export interface Tenant {
   vacatingDate?: string;
   exitDate?: string;
   vacatingStatus: 'active' | 'notice_given' | 'vacated';
+  depositBalance?: number; // Running deposit balance (decreases with adjustments)
+  moveInDate?: string; // Physical move-in date (vs joiningDate = booking date)
+  depositLogs?: {
+    id: string;
+    type: 'deposit' | 'token';
+    amount: number;
+    status: 'paid' | 'refunded' | 'pending';
+    date: string;
+    note?: string;
+  }[];
 }
 
 export interface MeterGroup {
@@ -164,6 +174,8 @@ export interface Payment {
   costPerUnit?: number;
   actualBillUrl?: string;
   acBillUrl?: string;
+  category?: 'rent' | 'electricity' | 'deposit' | 'token' | 'adjust' | 'share_payout' | 'other';
+  referenceId?: string; // e.g. Tenant ID or Expense ID for context
 }
 
 export interface ElectricityBill {
@@ -330,6 +342,15 @@ export interface Partner {
   name: string;
   email: string;
   phone?: string;
+  createdAt: string;
+}
+
+export interface PartnerShare {
+  id: string;
+  userId: string;
+  branchId: string;
+  ratio: number;
+  effectiveFrom: string; // YYYY-MM
   createdAt: string;
 }
 

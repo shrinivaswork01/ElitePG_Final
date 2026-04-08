@@ -31,7 +31,8 @@ import {
   Key,
   Building2,
   Check,
-  AlertTriangle
+  AlertTriangle,
+  TrendingUp
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { EmployeeMobileList } from '../components/EmployeeMobileList';
@@ -59,7 +60,9 @@ export const EmployeesPage = () => {
     pgConfig,
     updatePGConfig,
     branches,
-    currentBranch
+    currentBranch,
+    partnerShares,
+    updatePartnerShareBatch
   } = useApp();
 
   if (user?.role === 'tenant') {
@@ -82,6 +85,9 @@ export const EmployeesPage = () => {
   const [isVisibilityModalOpen, setIsVisibilityModalOpen] = useState(false);
   const [newRoleName, setNewRoleName] = useState('');
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [isRatioModalOpen, setIsRatioModalOpen] = useState(false);
+  const [ratioFormData, setRatioFormData] = useState<{ userId: string; ratio: number }[]>([]);
+  const [effectiveFromMonth, setEffectiveFromMonth] = useState(format(new Date(), 'yyyy-MM'));
   
   const [userFormData, setUserFormData] = useState({
     name: '',
@@ -320,6 +326,35 @@ export const EmployeesPage = () => {
     }));
   };
 
+  const handleOpenRatioModal = () => {
+    if (!currentBranch) return;
+    const branchPartners = users.filter(u => (u.role === 'admin' || u.role === 'partner') && u.branchIds?.includes(currentBranch.id));
+    
+    // Get latest active shares for this branch to pre-fill
+    const currentMonth = format(new Date(), 'yyyy-MM');
+    const branchShares = partnerShares
+      .filter(s => s.branchId === currentBranch.id && s.effectiveFrom <= currentMonth)
+      .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom));
+    
+    const latestMonth = branchShares[0]?.effectiveFrom;
+    const latestShares = branchShares.filter(s => s.effectiveFrom === latestMonth);
+
+    const initialRatios = branchPartners.map(p => {
+      const existing = latestShares.find(s => s.userId === p.id);
+      return { userId: p.id, ratio: existing?.ratio || 0 };
+    });
+
+    setRatioFormData(initialRatios);
+    setEffectiveFromMonth(format(new Date(), 'yyyy-MM'));
+    setIsRatioModalOpen(true);
+  };
+
+  const handleSaveRatios = async () => {
+    if (!currentBranch) return;
+    await updatePartnerShareBatch(currentBranch.id, ratioFormData, effectiveFromMonth);
+    setIsRatioModalOpen(false);
+  };
+
 
   const handleKYCAction = (kycId: string, action: 'verify' | 'reject', reason?: string) => {
     if (action === 'verify') {
@@ -415,6 +450,15 @@ export const EmployeesPage = () => {
                 <ClipboardList className="w-5 h-5 text-indigo-500" />
                 Add Task
               </button>
+              {activeTab === 'partners' && user?.role === 'admin' && (
+                <button
+                  onClick={handleOpenRatioModal}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 dark:bg-emerald-500/5 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-500/10 rounded-xl font-bold hover:bg-emerald-100 dark:hover:bg-emerald-500/10 transition-all"
+                >
+                  <TrendingUp className="w-5 h-5" />
+                  Edit Ratios
+                </button>
+              )}
               <button
                 onClick={() => activeTab === 'partners' ? setIsUserModalOpen(true) : setIsAddModalOpen(true)}
                 className="flex items-center gap-2 px-4 py-2.5 text-white rounded-xl font-semibold shadow-lg transition-all"
@@ -769,6 +813,23 @@ export const EmployeesPage = () => {
                         <Building2 className="w-4 h-4" />
                         {admin.branchIds?.length || 0} Managed Branches
                       </div>
+                      {admin.role === 'partner' && currentBranch && (
+                        <div className="flex items-center gap-3 text-sm">
+                           <TrendingUp className="w-4 h-4 text-emerald-500" />
+                           <span className="text-gray-500">Profit Share:</span>
+                           <span className="font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded-lg">
+                              {(() => {
+                                const currentMonth = format(new Date(), 'yyyy-MM');
+                                const branchShares = partnerShares
+                                  .filter(s => s.branchId === currentBranch.id && s.effectiveFrom <= currentMonth)
+                                  .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom));
+                                const latestMonth = branchShares[0]?.effectiveFrom;
+                                const share = branchShares.find(s => s.effectiveFrom === latestMonth && s.userId === admin.id);
+                                return share ? `${share.ratio}%` : '0%';
+                              })()}
+                           </span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="mt-6 pt-6 border-t border-gray-50 dark:border-white/5">
@@ -2012,7 +2073,116 @@ export const EmployeesPage = () => {
           </div>
         )}
       </AnimatePresence>
+      {/* Partner Ratio Modal */}
+      <AnimatePresence>
+        {isRatioModalOpen && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsRatioModalOpen(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-lg bg-white dark:bg-[#111111] rounded-[2.5rem] shadow-2xl overflow-hidden border border-white/10"
+            >
+              <div className="p-8 border-b border-gray-100 dark:border-white/5 flex items-center justify-between bg-gray-50/50 dark:bg-white/[0.02]">
+                <div>
+                  <h3 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">Set Profit Ratios</h3>
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">For {currentBranch?.name}</p>
+                </div>
+                <button onClick={() => setIsRatioModalOpen(false)} className="p-2 hover:bg-gray-200 dark:hover:bg-white/10 rounded-2xl transition-all">
+                  <X className="w-6 h-6 text-gray-400" />
+                </button>
+              </div>
+
+              <div className="p-8 space-y-8">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between px-2">
+                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Effective From</span>
+                    <input
+                      type="month"
+                      value={effectiveFromMonth}
+                      onChange={(e) => setEffectiveFromMonth(e.target.value)}
+                      className="px-4 py-2 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none text-gray-900 dark:text-white"
+                    />
+                  </div>
+                  
+                  <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                    {ratioFormData.map((item, idx) => {
+                      const partner = users.find(u => u.id === item.userId);
+                      return (
+                        <div key={item.userId} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-white/3 rounded-2xl border border-gray-100 dark:border-white/5">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-black">
+                              {partner?.name?.charAt(0)}
+                            </div>
+                            <div>
+                              <p className="text-sm font-bold text-gray-900 dark:text-white">{partner?.name}</p>
+                              <p className="text-[10px] text-gray-400 font-medium">{partner?.email}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={item.ratio}
+                              onChange={(e) => {
+                                const newRatios = [...ratioFormData];
+                                newRatios[idx].ratio = Number(e.target.value);
+                                setRatioFormData(newRatios);
+                              }}
+                              className="w-20 px-3 py-2 bg-white dark:bg-black/20 border border-gray-200 dark:border-white/10 rounded-xl text-sm font-black text-center focus:ring-2 focus:ring-emerald-500 outline-none text-gray-900 dark:text-white"
+                            />
+                            <span className="text-sm font-black text-gray-400">%</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="pt-6 border-t border-gray-100 dark:border-white/5">
+                   <div className="flex items-center justify-between mb-6">
+                      <span className="text-sm font-black text-gray-500 uppercase tracking-widest">Total Share</span>
+                      <div className={cn(
+                        "flex items-center gap-2 px-4 py-2 rounded-2xl font-black text-lg",
+                        ratioFormData.reduce((sum, r) => sum + r.ratio, 0) === 100 
+                          ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400" 
+                          : "bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400"
+                      )}>
+                         {ratioFormData.reduce((sum, r) => sum + r.ratio, 0)}%
+                         {ratioFormData.reduce((sum, r) => sum + r.ratio, 0) === 100 ? (
+                            <CheckCircle className="w-5 h-5" />
+                         ) : (
+                            <AlertCircle className="w-5 h-5" />
+                         )}
+                      </div>
+                   </div>
+
+                   <button
+                     disabled={ratioFormData.reduce((sum, r) => sum + r.ratio, 0) !== 100}
+                     onClick={handleSaveRatios}
+                     className="w-full py-4 bg-indigo-600 text-white rounded-[1.5rem] font-black text-sm uppercase tracking-widest shadow-xl shadow-indigo-600/20 hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:grayscale"
+                   >
+                     Confirm & Save Ratios
+                   </button>
+                   <p className="text-[10px] text-gray-400 text-center font-bold mt-4 italic uppercase">
+                      Changes will take effect from the selected month.
+                   </p>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
+
 

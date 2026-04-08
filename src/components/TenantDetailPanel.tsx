@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Home, Phone, Mail, Calendar, CreditCard, Shield, FileCheck, MessageCircle, Edit2, Trash2, Zap, FileText, ExternalLink, Upload, Download, Clock, CheckCircle2 } from 'lucide-react';
+import { X, Home, Phone, Mail, Calendar, CreditCard, Shield, FileCheck, MessageCircle, Edit2, Trash2, Zap, FileText, ExternalLink, Upload, Download, Clock, CheckCircle2, History as HistoryIcon } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { cn } from '../utils';
 import { useAuth } from '../context/AuthContext';
@@ -174,8 +174,40 @@ export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
                 <Field label="Due Date" value={(tenant.paymentDueDate ?? tenant.payment_due_date) ? `${tenant.paymentDueDate ?? tenant.payment_due_date}th` : '—'} />
                 <Field label="Deposit" value={(tenant.depositAmount ?? tenant.deposit_amount) !== undefined ? `₹${Number(tenant.depositAmount ?? tenant.deposit_amount).toLocaleString()} (${tenant.depositStatus || tenant.deposit_status || 'Pending'})` : '—'} />
                 <Field label="Token" value={(tenant.tokenAmount ?? tenant.token_amount) ? `₹${Number(tenant.tokenAmount ?? tenant.token_amount).toLocaleString()} (${tenant.tokenStatus || tenant.token_status || 'Pending'})` : '—'} />
+                <Field 
+                  label="Deposit Balance" 
+                  value={
+                    (tenant.depositBalance ?? tenant.deposit_balance) !== undefined && (tenant.depositBalance ?? tenant.deposit_balance) > 0
+                      ? <span className="text-emerald-600 dark:text-emerald-400 font-bold">₹{Number(tenant.depositBalance ?? tenant.deposit_balance).toLocaleString()}</span>
+                      : '₹0'
+                  } 
+                />
                 <Field label="Joining" value={(tenant.joiningDate || tenant.joining_date) ? format(parseISO(tenant.joiningDate || tenant.joining_date), 'dd MMM yyyy') : '—'} />
+                {(tenant.moveInDate || tenant.move_in_date) && (
+                  <Field label="Move-in" value={format(parseISO(tenant.moveInDate || tenant.move_in_date), 'dd MMM yyyy')} />
+                )}
               </div>
+
+              {/* Move-in Summary Card */}
+              {(tenant.moveInDate || tenant.move_in_date) && (tenant.tokenAmount ?? tenant.token_amount ?? 0) > 0 && (tenant.tokenStatus || tenant.token_status) === 'paid' && (
+                <div className="bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-500/10 dark:to-indigo-500/10 rounded-2xl p-4 space-y-2.5 border border-purple-200 dark:border-purple-500/20">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-purple-500">Move-in Summary</p>
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-500">Total Rent</span>
+                      <span className="font-bold text-gray-700 dark:text-gray-300">₹{Number(tenant.rentAmount ?? tenant.rent_amount ?? 0).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-purple-500 font-medium">Token Paid</span>
+                      <span className="font-bold text-purple-600 dark:text-purple-400">− ₹{Number(tenant.tokenAmount ?? tenant.token_amount ?? 0).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between text-sm pt-2 border-t border-purple-200 dark:border-purple-500/20">
+                      <span className="font-black text-purple-800 dark:text-purple-200">First Rent Due</span>
+                      <span className="font-black text-purple-600 dark:text-purple-300">₹{Math.max(0, Number(tenant.rentAmount ?? tenant.rent_amount ?? 0) - Number(tenant.tokenAmount ?? tenant.token_amount ?? 0)).toLocaleString()}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* KYC */}
               <div className="bg-gray-50 dark:bg-white/3 rounded-2xl p-4 flex items-center justify-between transition-all">
@@ -349,11 +381,65 @@ export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
               {/* Payment history button */}
               <button
                 onClick={() => onViewPayments?.(tenant)}
-                className="w-full flex items-center gap-3 p-4 bg-emerald-50 dark:bg-emerald-500/10 rounded-2xl text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition-colors"
+                className="w-full flex items-center gap-3 p-4 bg-emerald-50 dark:bg-emerald-500/10 rounded-2xl text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition-all border border-emerald-100/50 dark:border-emerald-500/10"
               >
-                <CreditCard className="w-5 h-5 shrink-0" />
-                <span className="text-sm font-bold">View Payment History</span>
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+                  <CreditCard className="w-5 h-5" />
+                </div>
+                <div className="flex-1 text-left">
+                  <span className="text-sm font-bold block">Rent & Electricity History</span>
+                  <span className="text-[10px] font-medium opacity-70">View all recurring monthly bills</span>
+                </div>
               </button>
+
+              {/* Security & Token History Log */}
+              <div className="bg-gray-50 dark:bg-white/3 rounded-2xl p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <HistoryIcon className="w-4 h-4 text-indigo-400" />
+                    <span className="text-xs font-black uppercase tracking-widest text-gray-400">Financial History</span>
+                  </div>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase italic">Security & Token Only</span>
+                </div>
+
+                <div className="space-y-3">
+                  {useApp().tenantDepositLogs
+                    .filter((log: any) => log.tenantId === tenant.id)
+                    .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                    .map((log: any) => (
+                      <div key={log.id} className="flex items-center justify-between p-2.5 bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/5">
+                        <div className="flex items-center gap-3">
+                          <div className={cn(
+                            "w-8 h-8 rounded-lg flex items-center justify-center",
+                            log.type === 'token' ? "bg-purple-100 dark:bg-purple-500/10 text-purple-600" : "bg-indigo-100 dark:bg-indigo-500/10 text-indigo-600"
+                          )}>
+                            {log.type === 'token' ? <FileText className="w-4 h-4" /> : <Shield className="w-4 h-4" />}
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-gray-900 dark:text-white capitalize">{log.type}</p>
+                            <p className="text-[10px] text-gray-500 font-medium">{format(parseISO(log.date), 'dd MMM yyyy')}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs font-black text-gray-900 dark:text-white">₹{log.amount.toLocaleString()}</p>
+                          <span className={cn(
+                            "text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md",
+                            log.status === 'paid' ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10" : 
+                            (log.status === 'refunded' ? "bg-rose-50 text-rose-600 dark:bg-rose-500/10" : "bg-amber-50 text-amber-600 dark:bg-amber-500/10")
+                          )}>
+                            {log.status}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  
+                  {useApp().tenantDepositLogs.filter((log: any) => log.tenantId === tenant.id).length === 0 && (
+                    <div className="text-center py-4 border border-dashed border-gray-200 dark:border-white/10 rounded-xl">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase">No security logs found</p>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Footer Actions */}

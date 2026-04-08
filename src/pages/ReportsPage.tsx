@@ -13,6 +13,7 @@ import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { MultiSelect } from '../components/MultiSelect';
 import { exportToExcel } from '../utils/exportUtils';
+import toast from 'react-hot-toast';
 import {
   XAxis,
   YAxis,
@@ -26,12 +27,12 @@ import {
   Cell,
   Legend
 } from 'recharts';
-import { format, subMonths } from 'date-fns';
+import { format, subMonths, parseISO } from 'date-fns';
 import { cn } from '../utils';
 
 export const ReportsPage = () => {
   const { user } = useAuth();
-  const { tenants, rooms, payments, complaints, expenses, getStats, pgConfig, currentBranch, rawData, branches } = useApp();
+  const { tenants, rooms, payments, complaints, expenses, getStats, pgConfig, currentBranch, rawData, branches, updatePartnerShareBatch, addProfitDistribution } = useApp();
   const [viewMode, setViewMode] = useState<'active' | 'combined'>('active');
 
   const canViewCombined = user?.role === 'super' || user?.role === 'admin' || user?.role === 'partner';
@@ -80,11 +81,11 @@ export const ReportsPage = () => {
       
       const rev = currentPayments
         .filter(p => p.month === monthStr && p.status === 'paid')
-        .reduce((sum, p) => sum + p.totalAmount, 0);
+        .reduce((sum, p) => sum + (p.totalAmount || (p as any).total_amount || 0), 0);
 
       const exp = currentExpenses
         .filter(e => e.month === monthStr && e.status !== 'rejected')
-        .reduce((sum, e) => sum + e.amount, 0);
+        .reduce((sum, e) => sum + (e.amount || 0), 0);
 
       data.push({
         name: format(d, 'MMM yyyy'),
@@ -130,7 +131,7 @@ export const ReportsPage = () => {
          shouldRenderCombined ? getRelevantData(rawData.complaints) : complaints, 
          shouldRenderCombined ? [] : getRelevantData(rawData.meterGroups), 
          shouldRenderCombined ? undefined : currentBranch, 
-         branches, // Added branches array as required by updated util
+         branches, 
          getStats(),
          currentExpenses
       );
@@ -219,7 +220,6 @@ export const ReportsPage = () => {
         </div>
       </div>
 
-      {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <motion.div className="bg-white dark:bg-[#0d0d0d] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden">
           <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-600 mb-4">
@@ -263,7 +263,6 @@ export const ReportsPage = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* Revenue vs Expenses Area Chart */}
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -313,7 +312,6 @@ export const ReportsPage = () => {
           </div>
         </motion.div>
 
-        {/* Expenses by Category Pie Chart */}
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -374,7 +372,6 @@ export const ReportsPage = () => {
           </div>
         </motion.div>
 
-        {/* Table summary of profits */}
         <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -417,77 +414,208 @@ export const ReportsPage = () => {
                  </tbody>
               </table>
            </div>
-         </motion.div>
+          </motion.div>
 
-         {/* Detailed Transaction Logs Section */}
-         <motion.div
-           initial={{ opacity: 0, scale: 0.95 }}
-           animate={{ opacity: 1, scale: 1 }}
-           transition={{ delay: 0.3 }}
-           className="col-span-1 lg:col-span-3 bg-white dark:bg-[#0d0d0d] rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden"
-         >
-           <div className="p-6 border-b border-gray-100 dark:border-white/5 flex items-center justify-between">
-              <h3 className="text-xl font-black text-gray-900 dark:text-white flex items-center gap-2 font-display">
-                 <Receipt className="w-5 h-5 text-indigo-500" />
-                 Detailed Transaction Logs
-              </h3>
-              <p className="text-[10px] font-bold text-gray-400 tracking-widest uppercase italic">Showing {detailedLogs.length} Records</p>
-           </div>
-           <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse min-w-[800px]">
-                 <thead>
-                    <tr className="bg-gray-50/50 dark:bg-white/[0.02] border-b border-gray-100 dark:border-white/5">
-                       <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase tracking-widest">Branch Name</th>
-                       <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase tracking-widest">Date</th>
-                       <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase tracking-widest">Category</th>
-                       <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase tracking-widest">Description</th>
-                       <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase tracking-widest text-right">Amount</th>
-                    </tr>
-                 </thead>
-                 <tbody>
-                    {detailedLogs.slice(0, 50).map((log, i) => (
-                       <tr key={i} className="border-b border-gray-50 dark:border-white/5 hover:bg-gray-50/50 dark:hover:bg-white/[0.02] transition-colors group">
-                          <td className="px-6 py-4">
-                             <div className="flex items-center gap-2">
-                                <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/5 flex items-center justify-center text-[10px] font-black group-hover:bg-indigo-50 dark:group-hover:bg-indigo-500/10 transition-colors">
-                                   {log.branch_name.charAt(0)}
-                                </div>
-                                <span className="font-bold text-gray-900 dark:text-white text-sm">{log.branch_name}</span>
-                             </div>
-                          </td>
-                          <td className="px-6 py-4 text-xs font-medium text-gray-500 dark:text-gray-400">{log.date ? format(new Date(log.date), 'dd MMM yyyy') : 'N/A'}</td>
-                          <td className="px-6 py-4">
-                             <span className={cn(
-                                "px-2 py-1 text-[10px] font-black rounded-lg uppercase tracking-wider",
-                                log.type === 'revenue' ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400" : "bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400"
-                             )}>
-                                {log.category}
-                             </span>
-                          </td>
-                          <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300 italic">{log.description}</td>
-                          <td className={cn(
-                             "px-6 py-4 font-black text-right transition-all group-hover:scale-105",
-                             log.amount >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
-                          )}>
-                             {log.amount >= 0 ? '+' : ''}₹{Math.abs(log.amount).toLocaleString()}
-                          </td>
-                       </tr>
-                    ))}
-                    {detailedLogs.length === 0 && (
-                       <tr>
-                          <td colSpan={5} className="px-6 py-12 text-center text-gray-400 font-bold tracking-widest italic">No transactions found for selected criteria</td>
-                       </tr>
-                    )}
-                 </tbody>
-              </table>
-              {detailedLogs.length > 50 && (
-                 <div className="p-4 bg-gray-50/30 dark:bg-white/[0.01] text-center border-t border-gray-100 dark:border-white/5">
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Showing latest 50 records. Export to Excel for full history.</p>
-                 </div>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.3 }}
+            className="col-span-1 lg:col-span-3 bg-white dark:bg-[#0d0d0d] rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden"
+          >
+            <div className="p-6 border-b border-gray-100 dark:border-white/5 flex items-center justify-between">
+               <h3 className="text-xl font-black text-gray-900 dark:text-white flex items-center gap-2 font-display">
+                  <Receipt className="w-5 h-5 text-indigo-500" />
+                  Detailed Transaction Logs
+               </h3>
+               <p className="text-[10px] font-bold text-gray-400 tracking-widest uppercase italic">Showing {detailedLogs.length} Records</p>
+            </div>
+            <div className="overflow-x-auto">
+               <table className="w-full text-left border-collapse min-w-[800px]">
+                  <thead>
+                     <tr className="bg-gray-50/50 dark:bg-white/[0.02] border-b border-gray-100 dark:border-white/5">
+                        <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase tracking-widest">Branch Name</th>
+                        <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase tracking-widest">Date</th>
+                        <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase tracking-widest">Category</th>
+                        <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase tracking-widest">Description</th>
+                        <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase tracking-widest text-right">Amount</th>
+                     </tr>
+                  </thead>
+                  <tbody>
+                     {detailedLogs.slice(0, 50).map((log, i) => (
+                        <tr key={i} className="border-b border-gray-50 dark:border-white/5 hover:bg-gray-50/50 dark:hover:bg-white/[0.02] transition-colors group">
+                           <td className="px-6 py-4">
+                              <div className="flex items-center gap-2">
+                                 <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/5 flex items-center justify-center text-[10px] font-black group-hover:bg-indigo-50 dark:group-hover:bg-indigo-500/10 transition-colors">
+                                    {log.branch_name.charAt(0)}
+                                 </div>
+                                 <span className="font-bold text-gray-900 dark:text-white text-sm">{log.branch_name}</span>
+                              </div>
+                           </td>
+                           <td className="px-6 py-4 text-xs font-medium text-gray-500 dark:text-gray-400">{log.date ? format(new Date(log.date), 'dd MMM yyyy') : 'N/A'}</td>
+                           <td className="px-6 py-4">
+                              <span className={cn(
+                                 "px-2 py-1 text-[10px] font-black rounded-lg uppercase tracking-wider",
+                                 log.type === 'revenue' ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400" : "bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400"
+                              )}>
+                                 {log.category}
+                              </span>
+                           </td>
+                           <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300 italic">{log.description}</td>
+                           <td className={cn(
+                              "px-6 py-4 font-black text-right transition-all group-hover:scale-105",
+                              log.amount >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
+                           )}>
+                              {log.amount >= 0 ? '+' : ''}₹{Math.abs(log.amount).toLocaleString()}
+                           </td>
+                        </tr>
+                     ))}
+                  </tbody>
+               </table>
+            </div>
+          </motion.div>
+
+          {/* Profit Sharing System */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="col-span-1 lg:col-span-3 bg-white dark:bg-[#0d0d0d] rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm p-8 space-y-8"
+          >
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                <h3 className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-3 tracking-tight font-display">
+                  <TrendingUp className="w-6 h-6 text-emerald-500" />
+                  Profit Sharing & Payouts
+                </h3>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Manage partner earnings for {currentBranch?.name || 'Active Branch'}</p>
+              </div>
+              {!shouldRenderCombined && (user?.role === 'super' || user?.role === 'partner') && (
+                <div className="flex items-center gap-3">
+                   <div className="text-right">
+                      <p className="text-[10px] font-black text-gray-400 uppercase">Available Profit</p>
+                      <p className="text-lg font-black text-gray-900 dark:text-white">₹{currentMonthData.profit.toLocaleString()}</p>
+                   </div>
+                   <button
+                     disabled={currentMonthData.profit <= 0}
+                     onClick={async () => {
+                        // Find latest shares where effectiveFrom <= currentMonthStr
+                        const branchShares = (rawData.partnerShares || [])
+                          .filter(s => s.branchId === currentBranch?.id && s.effectiveFrom <= currentMonthStr)
+                          .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom));
+                        
+                        const latestMonth = branchShares[0]?.effectiveFrom;
+                        const shares = latestMonth ? branchShares.filter(s => s.effectiveFrom === latestMonth) : [];
+
+                        if (shares.length === 0) {
+                           toast.error('Define partner ratios in Employees tab first!');
+                           return;
+                        }
+
+                        const dist = shares.map(s => {
+                           const p = rawData.branches.flatMap(b => b.partners || []).find(p => p.id === s.userId);
+                           return {
+                             userId: s.userId,
+                             partnerName: p?.name || 'Partner',
+                             sharePercentage: s.ratio,
+                             amount: Math.round((currentMonthData.profit * s.ratio) / 100)
+                           };
+                        });
+
+                        await addProfitDistribution({
+                           branchId: currentBranch?.id || '',
+                           month: currentMonthStr,
+                           totalRevenue: currentMonthData.revenue,
+                           totalExpenses: currentMonthData.expenses,
+                           netProfit: currentMonthData.profit,
+                           distributions: dist
+                        });
+                        toast.success('Payout record created successfully');
+                     }}
+                     className="px-6 py-3 bg-emerald-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all disabled:opacity-50"
+                   >
+                     Record Monthly Payout
+                   </button>
+                </div>
               )}
-           </div>
-         </motion.div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+               {/* Ratios Configuration */}
+               <div className="space-y-4">
+                  <div className="flex items-center justify-between border-b border-gray-100 dark:border-white/5 pb-2">
+                    <h4 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest">Applied Ratios</h4>
+                    <span className="text-[10px] font-bold text-gray-400 italic">Effective for {currentMonthStr}</span>
+                  </div>
+                  <div className="space-y-3">
+                     {(() => {
+                        const branchShares = (rawData.partnerShares || [])
+                          .filter(s => s.branchId === currentBranch?.id && s.effectiveFrom <= currentMonthStr)
+                          .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom));
+                        
+                        const latestMonth = branchShares[0]?.effectiveFrom;
+                        const activeShares = latestMonth ? branchShares.filter(s => s.effectiveFrom === latestMonth) : [];
+
+                        if (activeShares.length === 0) return <p className="text-xs text-gray-500 italic">No ratios defined for this month</p>;
+
+                        return activeShares.map(s => {
+                           const partner = rawData.branches.flatMap(b => b.partners || []).find(p => p.id === s.userId);
+                           return (
+                              <div key={s.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-white/3 rounded-2xl border border-gray-100 dark:border-white/5 group">
+                                 <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-black">
+                                       {partner?.name?.charAt(0) || '?'}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                       <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{partner?.name || 'Partner'}</p>
+                                       <p className="text-[10px] text-gray-400 font-medium truncate">{partner?.email}</p>
+                                    </div>
+                                 </div>
+                                 <div className="text-right">
+                                    <span className="text-lg font-black text-indigo-600 dark:text-indigo-400">{s.ratio}%</span>
+                                 </div>
+                              </div>
+                           );
+                        });
+                     })()}
+                     {!currentBranch && <p className="text-xs text-gray-500 italic">Select a branch to view ratios</p>}
+                  </div>
+               </div>
+
+               {/* Distribution History */}
+               <div className="space-y-4">
+                  <h4 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest border-b border-gray-100 dark:border-white/5 pb-2">Recent Payouts</h4>
+                  <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                     {(rawData.profitDistributions || [])
+                        .filter(d => d.branchId === currentBranch?.id)
+                        .sort((a, b) => b.month.localeCompare(a.month))
+                        .map(d => (
+                           <div key={d.id} className="p-4 bg-emerald-50/30 dark:bg-emerald-500/5 rounded-2xl border border-emerald-100 dark:border-emerald-500/10">
+                              <div className="flex justify-between items-center mb-3">
+                                 <span className="text-sm font-black text-gray-900 dark:text-white">{format(parseISO(d.month + '-01'), 'MMMM yyyy')}</span>
+                                 <span className="text-xs font-black text-emerald-600">₹{d.netProfit.toLocaleString()} Profit</span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                 {d.distributions.map((item: any, idx: number) => {
+                                    const partner = rawData.branches.flatMap(b => b.partners || []).find(p => p.id === item.userId);
+                                    return (
+                                       <div key={idx} className="flex justify-between items-center text-[10px] bg-white dark:bg-black/20 p-2 rounded-lg">
+                                          <span className="text-gray-500 font-bold truncate">{partner?.name || 'Partner'}</span>
+                                          <span className="font-bold text-gray-900 dark:text-white">₹{item.amount.toLocaleString()}</span>
+                                       </div>
+                                    );
+                                 })}
+                              </div>
+                           </div>
+                        ))}
+                     {(rawData.profitDistributions || []).filter(d => d.branchId === currentBranch?.id).length === 0 && (
+                        <div className="h-48 flex flex-col items-center justify-center p-8 border-2 border-dashed border-gray-100 dark:border-white/5 rounded-3xl opacity-50">
+                           <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">No payout history</p>
+                        </div>
+                     )}
+                  </div>
+               </div>
+            </div>
+          </motion.div>
+        </div>
       </div>
-    </div>
   );
 };

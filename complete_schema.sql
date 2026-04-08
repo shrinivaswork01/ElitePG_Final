@@ -84,6 +84,11 @@ CREATE TABLE IF NOT EXISTS tenants (
     kyc_status TEXT NOT NULL CHECK (kyc_status IN ('unsubmitted', 'pending', 'verified', 'rejected')),
     rent_agreement_url TEXT,
     invite_code TEXT,
+    token_amount NUMERIC DEFAULT 0,
+    token_status TEXT DEFAULT 'pending',
+    deposit_status TEXT DEFAULT 'pending',
+    deposit_balance NUMERIC DEFAULT 0,
+    move_in_date DATE,
     branch_id UUID REFERENCES pg_branches(id)
 );
 

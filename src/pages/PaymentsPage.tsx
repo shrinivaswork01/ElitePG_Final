@@ -48,7 +48,7 @@ import toast from 'react-hot-toast';
 
 export const PaymentsPage = () => {
   const { user, users } = useAuth();
-  const { payments, tenants, rooms, addPayment, updatePayment, deletePayment, currentBranch, pgConfig, updatePGConfig } = useApp();
+  const { payments, tenants, rooms, addPayment, updatePayment, deletePayment, updateTenant, currentBranch, pgConfig, updatePGConfig } = useApp();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
@@ -63,6 +63,9 @@ export const PaymentsPage = () => {
   const [viewerDoc, setViewerDoc] = useState<{ url: string, title: string } | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState<{ isOpen: boolean, paymentId?: string, bulkIds?: string[] } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Deposit adjustment state for Record Payment modal
+  const [adjustFromDeposit, setAdjustFromDeposit] = useState(false);
+  const [depositAdjustAmount, setDepositAdjustAmount] = useState(0);
 
   const [isPoliciesModalOpen, setIsPoliciesModalOpen] = useState(false);
   const [policiesForm, setPoliciesForm] = useState({
@@ -480,6 +483,32 @@ export const PaymentsPage = () => {
     paymentType: 'rent'
   });
 
+  // Detect if this is a move-in first rent (tenant has move_in_date, token > 0, no prior rent paid)
+  const isFirstRent = React.useMemo(() => {
+    if (!newPayment.tenantId || newPayment.paymentType !== 'rent') return false;
+    const tenant = tenants.find(t => t.id === newPayment.tenantId);
+    if (!tenant) return false;
+    const hasToken = (tenant.tokenAmount || 0) > 0 && tenant.tokenStatus === 'paid';
+    const hasMoveIn = !!(tenant as any).moveInDate;
+    const hasPriorRent = payments.some(p => p.tenantId === tenant.id && p.paymentType === 'rent' && p.status === 'paid');
+    return hasToken && hasMoveIn && !hasPriorRent;
+  }, [newPayment.tenantId, newPayment.paymentType, tenants, payments]);
+
+  // Move-in first rent amount (rent - token)
+  const firstRentAmount = React.useMemo(() => {
+    if (!isFirstRent || !newPayment.tenantId) return 0;
+    const tenant = tenants.find(t => t.id === newPayment.tenantId);
+    if (!tenant) return 0;
+    return Math.max(0, (tenant.rentAmount || 0) - (tenant.tokenAmount || 0));
+  }, [isFirstRent, newPayment.tenantId, tenants]);
+
+  // Selected tenant's deposit balance for adjustment validation
+  const selectedTenantDepositBalance = React.useMemo(() => {
+    if (!newPayment.tenantId) return 0;
+    const tenant = tenants.find(t => t.id === newPayment.tenantId);
+    return (tenant as any)?.depositBalance || 0;
+  }, [newPayment.tenantId, tenants]);
+
   const handleAddPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPayment.tenantId) {
@@ -510,20 +539,70 @@ export const PaymentsPage = () => {
           return;
         }
 
+        // Validate deposit adjustment
+        if (adjustFromDeposit && depositAdjustAmount > 0) {
+          if (depositAdjustAmount > selectedTenantDepositBalance) {
+            toast.error(`Adjustment ₹${depositAdjustAmount} exceeds deposit balance ₹${selectedTenantDepositBalance}.`);
+            return;
+          }
+        }
+
+        // Calculate effective rent amount
+        let effectiveAmount = newPayment.amount;
+        if (newPayment.paymentType === 'rent') {
+          if (isFirstRent) {
+            effectiveAmount = firstRentAmount;
+          }
+          if (adjustFromDeposit && depositAdjustAmount > 0) {
+            effectiveAmount = Math.max(0, effectiveAmount - depositAdjustAmount);
+          }
+        }
+
+        const effectiveTotal = effectiveAmount + (newPayment.lateFee || 0);
+
+        // Validate: rent cannot be negative
+        if (effectiveAmount < 0) {
+          toast.error('Rent amount after adjustment cannot be negative.');
+          return;
+        }
+
         await addPayment({
           ...newPayment,
+          amount: effectiveAmount,
+          totalAmount: effectiveTotal,
           branchId: tenant?.branchId || user?.branchId || '',
           electricityBillId: linkedBillId,
           electricityAmount: newPayment.paymentType === 'electricity' ? newPayment.amount : 0,
           electricity_amount: newPayment.paymentType === 'electricity' ? newPayment.amount : 0,
-          amount: newPayment.paymentType === 'rent' ? newPayment.amount : 0,
           base_share: 0,
           ac_share: 0,
           units_consumed: 0,
           cost_per_unit: 0,
         } as any);
+
+        // If deposit adjustment was used, record an ADJUST payment and update tenant deposit_balance
+        if (adjustFromDeposit && depositAdjustAmount > 0 && newPayment.paymentType === 'rent') {
+          // Record the adjustment payment
+          await addPayment({
+            tenantId: newPayment.tenantId,
+            amount: depositAdjustAmount,
+            lateFee: 0,
+            totalAmount: depositAdjustAmount,
+            paymentType: 'adjust' as any,
+            paymentDate: newPayment.paymentDate,
+            month: newPayment.month,
+            status: 'paid',
+            method: 'Offline',
+            branchId: tenant?.branchId || user?.branchId || '',
+          } as any);
+          // Update deposit balance on tenant
+          const newBalance = selectedTenantDepositBalance - depositAdjustAmount;
+          await updateTenant(newPayment.tenantId, { depositBalance: newBalance });
+        }
         
         setIsAddModalOpen(false);
+        setAdjustFromDeposit(false);
+        setDepositAdjustAmount(0);
         setNewPayment({
           tenantId: '',
           amount: 0,
@@ -1601,11 +1680,85 @@ export const PaymentsPage = () => {
                     </div>
                   </div>
 
+                  {/* Move-in First Rent Summary Card */}
+                  {isFirstRent && newPayment.paymentType === 'rent' && (
+                    <div className="p-4 bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-500/10 dark:to-indigo-500/10 rounded-2xl space-y-3 border border-purple-200 dark:border-purple-500/20">
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="w-8 h-8 bg-purple-500 text-white rounded-xl flex items-center justify-center">
+                          <Home className="w-4 h-4" />
+                        </div>
+                        <span className="text-sm font-black text-purple-700 dark:text-purple-300 uppercase tracking-tight">Move-in Rent</span>
+                      </div>
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-gray-500">Total Rent</span>
+                          <span className="font-bold text-gray-700 dark:text-gray-300">₹{(tenants.find(t => t.id === newPayment.tenantId)?.rentAmount || 0).toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-purple-500 font-medium">Token Paid</span>
+                          <span className="font-bold text-purple-600 dark:text-purple-400">− ₹{(tenants.find(t => t.id === newPayment.tenantId)?.tokenAmount || 0).toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between text-sm pt-2 border-t border-purple-200 dark:border-purple-500/20">
+                          <span className="font-black text-purple-800 dark:text-purple-200">Pay Now</span>
+                          <span className="font-black text-purple-600 dark:text-purple-300 text-lg">₹{firstRentAmount.toLocaleString()}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Deposit Adjustment Controls */}
+                  {newPayment.paymentType === 'rent' && selectedTenantDepositBalance > 0 && (
+                    <div className="space-y-3">
+                      <label className="flex items-center gap-3 p-4 bg-amber-50 dark:bg-amber-500/10 rounded-2xl cursor-pointer border border-amber-100 dark:border-amber-500/20 hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={adjustFromDeposit}
+                          onChange={(e) => {
+                            setAdjustFromDeposit(e.target.checked);
+                            if (!e.target.checked) setDepositAdjustAmount(0);
+                          }}
+                          className="w-5 h-5 rounded text-amber-500 focus:ring-amber-500/20 bg-white dark:bg-black border-amber-200 dark:border-amber-500/30"
+                        />
+                        <div className="flex flex-col flex-1">
+                          <span className="text-sm font-bold text-amber-700 dark:text-amber-400">Adjust from Deposit</span>
+                          <span className="text-xs text-amber-600/70 dark:text-amber-400/70">Deposit Balance: ₹{selectedTenantDepositBalance.toLocaleString()}</span>
+                        </div>
+                      </label>
+                      {adjustFromDeposit && (
+                        <div className="space-y-2 pl-4">
+                          <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Adjustment Amount (₹)</label>
+                          <input
+                            type="number"
+                            min={0}
+                            max={selectedTenantDepositBalance}
+                            value={depositAdjustAmount}
+                            onChange={(e) => {
+                              const val = Math.min(Number(e.target.value), selectedTenantDepositBalance);
+                              setDepositAdjustAmount(val);
+                            }}
+                            className="w-full px-4 py-2.5 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl focus:ring-2 focus:ring-amber-500/20 text-gray-900 dark:text-white font-bold"
+                            placeholder={`Max ₹${selectedTenantDepositBalance.toLocaleString()}`}
+                          />
+                          {depositAdjustAmount > selectedTenantDepositBalance && (
+                            <p className="text-[10px] text-rose-500 font-bold">Exceeds deposit balance!</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Total Amount Summary */}
                   <div className="p-4 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-500">{newPayment.paymentType === 'rent' ? 'Rent' : 'Electricity'}</span>
-                      <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">₹{(newPayment.amount || 0).toLocaleString()}</span>
+                      <span className="text-xs text-gray-500">{newPayment.paymentType === 'rent' ? (isFirstRent ? 'First Rent (Move-in)' : 'Rent') : 'Electricity'}</span>
+                      <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">₹{(isFirstRent ? firstRentAmount : newPayment.amount || 0).toLocaleString()}</span>
                     </div>
+                    {adjustFromDeposit && depositAdjustAmount > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-amber-600 font-medium">Deposit Adjustment</span>
+                        <span className="text-xs font-semibold text-amber-600">− ₹{depositAdjustAmount.toLocaleString()}</span>
+                      </div>
+                    )}
                     {(newPayment.lateFee || 0) > 0 && (
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-rose-500">Late Fee</span>
@@ -1613,8 +1766,10 @@ export const PaymentsPage = () => {
                       </div>
                     )}
                     <div className="flex items-center justify-between pt-2 border-t border-indigo-200 dark:border-indigo-500/20">
-                      <span className="text-sm font-bold text-indigo-900 dark:text-indigo-100">Total Amount</span>
-                      <span className="text-xl font-bold text-indigo-600 dark:text-indigo-400">₹{((newPayment.amount || 0) + (newPayment.lateFee || 0)).toLocaleString()}</span>
+                      <span className="text-sm font-bold text-indigo-900 dark:text-indigo-100">Total Payable</span>
+                      <span className="text-xl font-bold text-indigo-600 dark:text-indigo-400">
+                        ₹{(Math.max(0, (isFirstRent ? firstRentAmount : newPayment.amount || 0) - (adjustFromDeposit ? depositAdjustAmount : 0)) + (newPayment.lateFee || 0)).toLocaleString()}
+                      </span>
                     </div>
                   </div>
                 </div>

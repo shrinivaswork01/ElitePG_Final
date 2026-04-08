@@ -259,7 +259,8 @@ export const TenantsPage = () => {
     inviteCode: '',
     tokenAmount: 0,
     tokenStatus: 'pending',
-    depositStatus: 'pending'
+    depositStatus: 'pending',
+    moveInDate: ''
   });
 
   // Effect to set default invite code when modal opens
@@ -350,6 +351,10 @@ export const TenantsPage = () => {
       kycStatus: tenant.kycStatus || tenant.kyc_status || 'unsubmitted',
       userId: tenant.userId || tenant.user_id || undefined,
       rentAgreementUrl: tenant.rentAgreementUrl || tenant.rent_agreement_url || undefined,
+      tokenAmount: tenant.tokenAmount ?? tenant.token_amount ?? 0,
+      tokenStatus: tenant.tokenStatus || tenant.token_status || 'pending',
+      depositStatus: tenant.depositStatus || tenant.deposit_status || 'pending',
+      moveInDate: tenant.moveInDate || tenant.move_in_date || '',
     };
     // Auto-fill branch invite code
     const branchInvite = userInvites.find(i => i.branchId === user?.branchId && i.role === 'tenant' && i.status === 'pending');
@@ -374,7 +379,8 @@ export const TenantsPage = () => {
       status: 'active',
       vacatingStatus: 'active',
       kycStatus: 'unsubmitted',
-      isAcUser: false
+      isAcUser: false,
+      moveInDate: ''
     });
     setKycDoc({ type: 'Aadhar Card', fileName: '' });
     setRentAgreement({ fileName: '' });
@@ -862,6 +868,16 @@ export const TenantsPage = () => {
                       className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                     />
                   </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Move-in Date</label>
+                    <input
+                      type="date"
+                      value={(formData as any).moveInDate || ''}
+                      onChange={(e) => setFormData({ ...formData, moveInDate: e.target.value } as any)}
+                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                    />
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500 italic">Physical move-in date. First rent = Total Rent − Token Paid.</p>
+                  </div>
 
                   <div className="space-y-2 md:col-span-2">
                     <label className="flex items-center gap-3 p-4 bg-amber-50 dark:bg-amber-500/10 rounded-2xl cursor-pointer border border-amber-100 dark:border-amber-500/20 hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-colors">
@@ -891,19 +907,20 @@ export const TenantsPage = () => {
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Deposit Status</label>
                     <select
-                      value={(formData as any).depositStatus || 'pending'}
+                      value={formData.depositStatus || 'pending'}
                       onChange={(e) => setFormData({ ...formData, depositStatus: e.target.value as any })}
                       className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white capitalize"
                     >
                       <option value="pending">Pending</option>
                       <option value="paid">Paid</option>
+                      <option value="refunded">Refunded</option>
                     </select>
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Token Amount (₹)</label>
                     <input
                       type="number"
-                      value={(formData as any).tokenAmount || 0}
+                      value={formData.tokenAmount || 0}
                       onChange={(e) => setFormData({ ...formData, tokenAmount: Number(e.target.value) })}
                       className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                     />
@@ -911,7 +928,7 @@ export const TenantsPage = () => {
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Token Status</label>
                     <select
-                      value={(formData as any).tokenStatus || 'pending'}
+                      value={formData.tokenStatus || 'pending'}
                       onChange={(e) => setFormData({ ...formData, tokenStatus: e.target.value as any })}
                       className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white capitalize"
                     >

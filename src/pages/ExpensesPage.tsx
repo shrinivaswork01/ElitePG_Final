@@ -140,6 +140,18 @@ export const ExpensesPage = () => {
     );
   };
 
+  const handleApprove = async (id: string) => {
+    await updateExpense(id, { status: 'approved', approvedBy: [user?.id || ''] });
+    refetch();
+    toast.success('Expense Approved');
+  };
+
+  const handleReject = async (id: string) => {
+    await updateExpense(id, { status: 'rejected', rejectedBy: [user?.id || ''] });
+    refetch();
+    toast.success('Expense Rejected');
+  };
+
   const handleExport = () => {
     if (!expenses || !currentBranch) return;
     const filteredForExport = expenses.filter(e => {
@@ -189,14 +201,36 @@ export const ExpensesPage = () => {
     },
     {
       header: '',
-      cell: (e) => (
-        <div className="flex justify-end pr-2">
-           <DropdownMenu buttonContent={<MoreVertical className="w-4 h-4 text-gray-400" />}>
-            <DropdownItem onClick={() => handleEdit(e)} icon={<Edit2 className="w-4 h-4" />} label="Edit Expense" />
-            <DropdownItem onClick={() => deleteExpense(e.id)} icon={<Trash2 className="w-4 h-4 text-rose-500" />} label="Delete" danger />
-          </DropdownMenu>
-        </div>
-      )
+      cell: (e) => {
+        const isPartnerOrSuper = ['partner', 'super'].includes(user?.role || '');
+        const canEdit = e.status !== 'approved' || isPartnerOrSuper;
+        
+        return (
+          <div className="flex justify-end pr-2">
+             <DropdownMenu buttonContent={<MoreVertical className="w-4 h-4 text-gray-400" />}>
+              {canEdit && (
+                <DropdownItem onClick={() => handleEdit(e)} icon={<Edit2 className="w-4 h-4" />} label="Edit Expense" />
+              )}
+              {isPartnerOrSuper && e.status === 'pending' && (
+                <>
+                  <DropdownItem onClick={() => handleApprove(e.id)} icon={<CheckCircle2 className="w-4 h-4 text-emerald-500" />} label="Approve" />
+                  <DropdownItem onClick={() => handleReject(e.id)} icon={<XCircle className="w-4 h-4 text-rose-500" />} label="Reject" />
+                </>
+              )}
+              {!isPartnerOrSuper && e.status === 'saved' && (
+                <DropdownItem 
+                  onClick={() => updateExpense(e.id, { status: 'pending' }).then(refetch)} 
+                  icon={<Clock className="w-4 h-4 text-amber-500" />} 
+                  label="Submit for Approval" 
+                />
+              )}
+              {canEdit && (
+                <DropdownItem onClick={() => deleteExpense(e.id)} icon={<Trash2 className="w-4 h-4 text-rose-500" />} label="Delete" danger />
+              )}
+            </DropdownMenu>
+          </div>
+        );
+      }
     }
   ];
 
