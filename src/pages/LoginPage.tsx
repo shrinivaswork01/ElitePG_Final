@@ -405,7 +405,7 @@ export const LoginPage = ({ isSignUp = false }: LoginPageProps) => {
                 <div className="flex items-center justify-end">
                   <button
                     type="button"
-                    onClick={() => setShowForgotPassword(true)}
+                    onClick={handleForgotPassword}
                     className="text-indigo-400 hover:text-white text-xs underline underline-offset-4 transition-colors"
                   >
                     Forgot Password?

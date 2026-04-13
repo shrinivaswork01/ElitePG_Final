@@ -58,6 +58,7 @@ export const PaymentsPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'paid' | 'pending'>('all');
   const [filterType, setFilterType] = useState<'all' | 'rent' | 'electricity'>('all');
+  const [filterMonth, setFilterMonth] = useState<string>(format(new Date(), 'yyyy-MM'));
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [detailPayment, setDetailPayment] = useState<any | null>(null);
   const [viewerDoc, setViewerDoc] = useState<{ url: string, title: string } | null>(null);
@@ -94,14 +95,29 @@ export const PaymentsPage = () => {
   const isTenant = user?.role === 'tenant';
   const tenantData = isTenant ? tenants.find(t => t.userId === user.id) : null;
 
+  // Find tenant IDs matching the search term to allow searching payments by tenant name, phone, or room number
+  const searchTenantIds = React.useMemo(() => {
+    if (!searchTerm) return undefined;
+    const lowerTerm = searchTerm.toLowerCase();
+    const matchingRoomIds = rooms.filter(r => r.roomNumber.toLowerCase().includes(lowerTerm)).map(r => r.id);
+    const matching = tenants.filter(t => 
+      t.name?.toLowerCase().includes(lowerTerm) || 
+      t.phone?.includes(lowerTerm) ||
+      matchingRoomIds.includes(t.roomId || (t as any).room_id || '')
+    );
+    return matching.map(t => t.id);
+  }, [searchTerm, tenants, rooms]);
+
   // Server-side paginated hook — fetches ONLY 10 records at a time
   const { data: paginatedPayments, totalCount, isLoading: isPaymentsLoading, page, setPage, limit, refetch: refetchPayments } = usePaginatedData<any>({
     table: 'payments',
     select: '*, tenants!payments_tenant_id_fkey(name, phone, rooms!tenants_room_id_fkey(room_number))',
-    ilikeFilters: searchTerm ? { transaction_id: searchTerm } : undefined,
+    ilikeFilters: (searchTerm && !(searchTenantIds && searchTenantIds.length > 0)) ? { transaction_id: searchTerm, payment_type: searchTerm } : undefined,
+    inFilters: (searchTenantIds && searchTenantIds.length > 0) ? { tenant_id: searchTenantIds } : undefined,
     filters: {
       ...(filterStatus !== 'all' ? { status: filterStatus } : {}),
       ...(filterType !== 'all' ? { payment_type: filterType } : {}),
+      ...(filterMonth !== 'all' ? { month: filterMonth } : {}),
       ...(isTenant && tenantData ? { tenant_id: tenantData.id } : {})
     },
     orderBy: { column: 'payment_date', ascending: false }
@@ -547,22 +563,20 @@ export const PaymentsPage = () => {
           }
         }
 
-        // Calculate effective rent amount
+        // Calculate effective amount
         let effectiveAmount = newPayment.amount;
-        if (newPayment.paymentType === 'rent') {
-          if (isFirstRent) {
-            effectiveAmount = firstRentAmount;
-          }
-          if (adjustFromDeposit && depositAdjustAmount > 0) {
-            effectiveAmount = Math.max(0, effectiveAmount - depositAdjustAmount);
-          }
+        if (newPayment.paymentType === 'rent' && isFirstRent) {
+          effectiveAmount = firstRentAmount;
+        }
+        if (adjustFromDeposit && depositAdjustAmount > 0) {
+          effectiveAmount = Math.max(0, effectiveAmount - depositAdjustAmount);
         }
 
         const effectiveTotal = effectiveAmount + (newPayment.lateFee || 0);
 
-        // Validate: rent cannot be negative
+        // Validate: amount after adjustment cannot be negative
         if (effectiveAmount < 0) {
-          toast.error('Rent amount after adjustment cannot be negative.');
+          toast.error('Amount after adjustment cannot be negative.');
           return;
         }
 
@@ -581,7 +595,7 @@ export const PaymentsPage = () => {
         } as any);
 
         // If deposit adjustment was used, record an ADJUST payment and update tenant deposit_balance
-        if (adjustFromDeposit && depositAdjustAmount > 0 && newPayment.paymentType === 'rent') {
+        if (adjustFromDeposit && depositAdjustAmount > 0) {
           // Record the adjustment payment
           await addPayment({
             tenantId: newPayment.tenantId,
@@ -813,6 +827,38 @@ export const PaymentsPage = () => {
     return payments.filter(p => p.month === currentMonth).length;
   }, [payments, currentMonth]);
 
+  const pendingTenantsCount = React.useMemo(() => {
+    const activeTenants = tenants.filter(t => t.status === 'active' || t.status === 'vacating');
+    let count = 0;
+    activeTenants.forEach(t => {
+      // Condition 1: Have they paid their rent this month?
+      const hasPaidRent = payments.some(p => 
+        p.tenantId === t.id && 
+        p.month === currentMonth && 
+        p.status === 'paid' && 
+        (p.paymentType === 'rent' || !p.paymentType)
+      );
+      
+      // Condition 2: Do they have any explicit 'pending' record (like an electricity bill)?
+      const hasPendingRecords = payments.some(p => 
+        p.tenantId === t.id && 
+        p.status === 'pending'
+      );
+
+      // If they haven't paid rent OR they have an unpaid bill, they count as having Pending Dues
+      if (!hasPaidRent || hasPendingRecords) {
+        count++;
+      }
+    });
+
+    // Also include any non-active tenants who might still have pending records
+    const inactiveTenantsWithDues = tenants.filter(t => t.status !== 'active' && t.status !== 'vacating').filter(t => 
+      payments.some(p => p.tenantId === t.id && p.status === 'pending')
+    ).length;
+
+    return count + inactiveTenantsWithDues;
+  }, [tenants, payments, currentMonth]);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -988,7 +1034,7 @@ export const PaymentsPage = () => {
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{isTenant ? 'Pending Dues' : 'Pending Dues'}</p>
               <h3 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
-                {isTenant ? myPendingDuesCount : tenants.length - paidThisMonthCount} {isTenant ? 'Dues' : 'Tenants'}
+                {isTenant ? myPendingDuesCount : pendingTenantsCount} {isTenant ? 'Dues' : 'Tenants'}
               </h3>
             </div>
           </div>
@@ -1037,6 +1083,15 @@ export const PaymentsPage = () => {
               {tab.label}
             </button>
           ))}
+
+          <div className="h-6 w-px bg-gray-100 dark:bg-white/10 mx-2 hidden sm:block" />
+          <input
+            type="month"
+            value={filterMonth === 'all' ? '' : filterMonth}
+            onChange={(e) => setFilterMonth(e.target.value || 'all')}
+            className="px-4 py-2 bg-white dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-xl text-xs font-bold text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-amber-500/20 uppercase tracking-widest outline-none shadow-sm"
+            title="Filter by Month/Year"
+          />
         </div>
       )}
 
@@ -1680,6 +1735,14 @@ export const PaymentsPage = () => {
                     </div>
                   </div>
 
+                  {/* Readonly Deposit Balance */}
+                  {selectedTenantDepositBalance > 0 && (
+                    <div className="p-4 bg-gray-50 dark:bg-white/5 rounded-2xl flex items-center justify-between border border-gray-100 dark:border-white/10">
+                      <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">Available Deposit Balance</span>
+                      <span className="text-lg font-black text-amber-600 dark:text-amber-500">₹{selectedTenantDepositBalance.toLocaleString()}</span>
+                    </div>
+                  )}
+
                   {/* Move-in First Rent Summary Card */}
                   {isFirstRent && newPayment.paymentType === 'rent' && (
                     <div className="p-4 bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-500/10 dark:to-indigo-500/10 rounded-2xl space-y-3 border border-purple-200 dark:border-purple-500/20">
@@ -1707,7 +1770,7 @@ export const PaymentsPage = () => {
                   )}
 
                   {/* Deposit Adjustment Controls */}
-                  {newPayment.paymentType === 'rent' && selectedTenantDepositBalance > 0 && (
+                  {selectedTenantDepositBalance > 0 && (
                     <div className="space-y-3">
                       <label className="flex items-center gap-3 p-4 bg-amber-50 dark:bg-amber-500/10 rounded-2xl cursor-pointer border border-amber-100 dark:border-amber-500/20 hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-colors">
                         <input
@@ -1730,14 +1793,14 @@ export const PaymentsPage = () => {
                           <input
                             type="number"
                             min={0}
-                            max={selectedTenantDepositBalance}
+                            max={Math.min(selectedTenantDepositBalance, isFirstRent ? firstRentAmount : newPayment.amount || 0)}
                             value={depositAdjustAmount}
                             onChange={(e) => {
-                              const val = Math.min(Number(e.target.value), selectedTenantDepositBalance);
+                              const val = Math.min(Number(e.target.value), selectedTenantDepositBalance, isFirstRent ? firstRentAmount : newPayment.amount || 0);
                               setDepositAdjustAmount(val);
                             }}
                             className="w-full px-4 py-2.5 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl focus:ring-2 focus:ring-amber-500/20 text-gray-900 dark:text-white font-bold"
-                            placeholder={`Max ₹${selectedTenantDepositBalance.toLocaleString()}`}
+                            placeholder={`Max ₹${Math.min(selectedTenantDepositBalance, isFirstRent ? firstRentAmount : newPayment.amount || 0).toLocaleString()}`}
                           />
                           {depositAdjustAmount > selectedTenantDepositBalance && (
                             <p className="text-[10px] text-rose-500 font-bold">Exceeds deposit balance!</p>
@@ -1751,7 +1814,7 @@ export const PaymentsPage = () => {
                   <div className="p-4 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-gray-500">{newPayment.paymentType === 'rent' ? (isFirstRent ? 'First Rent (Move-in)' : 'Rent') : 'Electricity'}</span>
-                      <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">₹{(isFirstRent ? firstRentAmount : newPayment.amount || 0).toLocaleString()}</span>
+                      <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">₹{(isFirstRent && newPayment.paymentType === 'rent' ? firstRentAmount : newPayment.amount || 0).toLocaleString()}</span>
                     </div>
                     {adjustFromDeposit && depositAdjustAmount > 0 && (
                       <div className="flex items-center justify-between">
@@ -1768,7 +1831,7 @@ export const PaymentsPage = () => {
                     <div className="flex items-center justify-between pt-2 border-t border-indigo-200 dark:border-indigo-500/20">
                       <span className="text-sm font-bold text-indigo-900 dark:text-indigo-100">Total Payable</span>
                       <span className="text-xl font-bold text-indigo-600 dark:text-indigo-400">
-                        ₹{(Math.max(0, (isFirstRent ? firstRentAmount : newPayment.amount || 0) - (adjustFromDeposit ? depositAdjustAmount : 0)) + (newPayment.lateFee || 0)).toLocaleString()}
+                        ₹{(Math.max(0, (isFirstRent && newPayment.paymentType === 'rent' ? firstRentAmount : newPayment.amount || 0) - (adjustFromDeposit ? depositAdjustAmount : 0)) + (newPayment.lateFee || 0)).toLocaleString()}
                       </span>
                     </div>
                   </div>

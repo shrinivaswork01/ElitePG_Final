@@ -253,7 +253,7 @@ export const TenantsPage = () => {
     depositAmount: 0,
     joiningDate: new Date().toISOString().split('T')[0],
     paymentDueDate: 5,
-    status: 'active',
+    status: 'onboarding',
     vacatingStatus: 'active',
     kycStatus: 'unsubmitted',
     inviteCode: '',
@@ -346,7 +346,7 @@ export const TenantsPage = () => {
       depositAmount: tenant.depositAmount ?? tenant.deposit_amount ?? 0,
       joiningDate: tenant.joiningDate || tenant.joining_date || new Date().toISOString().split('T')[0],
       paymentDueDate: tenant.paymentDueDate ?? tenant.payment_due_date ?? 5,
-      status: tenant.status || 'active',
+      status: tenant.status || 'onboarding',
       vacatingStatus: tenant.vacatingStatus || tenant.vacating_status || 'active',
       kycStatus: tenant.kycStatus || tenant.kyc_status || 'unsubmitted',
       userId: tenant.userId || tenant.user_id || undefined,
@@ -376,7 +376,7 @@ export const TenantsPage = () => {
       depositAmount: 0,
       joiningDate: new Date().toISOString().split('T')[0],
       paymentDueDate: 5,
-      status: 'active',
+      status: 'onboarding',
       vacatingStatus: 'active',
       kycStatus: 'unsubmitted',
       isAcUser: false,
@@ -455,25 +455,38 @@ export const TenantsPage = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.roomId) {
-      toast.error('Please select a room for the tenant.');
+    if (formData.tokenStatus === 'paid' && !formData.roomId) {
+      toast.error('Please select a room for the tenant since token is paid.');
       return;
     }
 
     const room = rooms.find(r => r.id === formData.roomId);
-    if (room) {
-      const activeOccupants = tenants.filter(t => t.roomId === formData.roomId && t.status === 'active' && t.id !== editingTenant?.id).length;
+    if (room && formData.tokenStatus === 'paid') {
+      const activeOccupants = tenants.filter(t => t.roomId === formData.roomId && ['active', 'onboarding'].includes(t.status) && t.id !== editingTenant?.id).length;
       if (activeOccupants >= room.totalBeds) {
         toast.error(`Cannot assign tenant. Room ${room.roomNumber} is currently at maximum capacity (${room.totalBeds} beds).`);
         return;
       }
     }
 
-    if (formData.name && formData.roomId) {
+    let finalStatus = formData.status;
+    if (formData.tokenStatus === 'pending') {
+      finalStatus = 'onboarding';
+    } else if (formData.tokenStatus === 'paid' && formData.moveInDate) {
+      const moveIn = new Date(formData.moveInDate);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (moveIn <= today && finalStatus === 'onboarding') {
+        finalStatus = 'active';
+      }
+    }
+    const finalFormData = { ...formData, status: finalStatus };
+
+    if (finalFormData.name && (finalFormData.roomId || finalFormData.tokenStatus === 'pending')) {
       if (editingTenant) {
         await updateTenant(
           editingTenant.id,
-          formData,
+          finalFormData,
           kycDoc.file || kycDoc.url ? { type: kycDoc.type, file: kycDoc.file, url: kycDoc.url } : undefined,
           rentAgreement.file || rentAgreement.url ? { file: rentAgreement.file, url: rentAgreement.url } : undefined
         );
@@ -482,7 +495,7 @@ export const TenantsPage = () => {
         }
       } else {
         await addTenant(
-          formData as Omit<Tenant, 'id'>,
+          finalFormData as Omit<Tenant, 'id'>,
           kycDoc.file || kycDoc.url ? { type: kycDoc.type, file: kycDoc.file, url: kycDoc.url } : undefined,
           rentAgreement.file || rentAgreement.url ? { file: rentAgreement.file, url: rentAgreement.url } : undefined
         );
@@ -802,7 +815,8 @@ export const TenantsPage = () => {
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Select Room</label>
                     <select
-                      required
+                      required={formData.tokenStatus === 'paid'}
+                      disabled={formData.tokenStatus !== 'paid'}
                       value={formData.roomId}
                       onChange={(e) => {
                         const room = rooms.find(r => r.id === e.target.value);
@@ -832,8 +846,8 @@ export const TenantsPage = () => {
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Bed Number</label>
                     <select
-                      required
-                      disabled={!formData.roomId}
+                      required={formData.tokenStatus === 'paid'}
+                      disabled={!formData.roomId || formData.tokenStatus !== 'paid'}
                       value={formData.bedNumber}
                       onChange={(e) => setFormData({ ...formData, bedNumber: Number(e.target.value) })}
                       className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white disabled:opacity-50"
@@ -872,11 +886,13 @@ export const TenantsPage = () => {
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Move-in Date</label>
                     <input
                       type="date"
+                      required={formData.tokenStatus === 'paid'}
+                      disabled={formData.tokenStatus !== 'paid'}
                       value={(formData as any).moveInDate || ''}
                       onChange={(e) => setFormData({ ...formData, moveInDate: e.target.value } as any)}
-                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white disabled:opacity-50"
                     />
-                    <p className="text-[10px] text-gray-400 dark:text-gray-500 italic">Physical move-in date. First rent = Total Rent − Token Paid.</p>
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500 italic">Physical move-in date. Mandatory if token is paid.</p>
                   </div>
 
                   <div className="space-y-2 md:col-span-2">
@@ -1009,7 +1025,7 @@ export const TenantsPage = () => {
                     <div className="space-y-2 md:col-span-2">
                       <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Status</label>
                       <div className="flex flex-wrap gap-2">
-                        {['active', 'vacating', 'vacated', 'blacklisted'].map((s) => (
+                        {['onboarding', 'active', 'vacating', 'vacated', 'blacklisted'].map((s) => (
                           <button
                             key={s}
                             type="button"

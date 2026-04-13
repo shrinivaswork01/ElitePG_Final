@@ -86,7 +86,7 @@ export interface KYCData {
   branchId: string;
 }
 
-export type TenantStatus = 'active' | 'vacating' | 'vacated' | 'blacklisted';
+export type TenantStatus = 'active' | 'vacating' | 'vacated' | 'blacklisted' | 'onboarding';
 
 export interface Tenant {
   id: string;
@@ -155,7 +155,7 @@ export interface Payment {
   amount: number;
   lateFee: number;
   totalAmount: number;
-  paymentType: 'rent' | 'electricity';
+  paymentType: 'rent' | 'electricity' | 'token' | 'deposit' | 'adjust';
   paymentDate: string;
   month: string; // e.g., "2024-03"
   status: 'paid' | 'pending';

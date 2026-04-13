@@ -214,7 +214,7 @@ export const Dashboard = () => {
   const handleDownloadReport = async () => {
     try {
       const branch = (branches || []).find(b => b.id === user?.branchId);
-      await exportToExcel(tenants, rooms, payments, complaints, meterGroups, branch, stats);
+      await exportToExcel(tenants, rooms, payments, complaints, meterGroups, branch, branches, stats);
     } catch (error) {
       console.error('Export failed:', error);
     }

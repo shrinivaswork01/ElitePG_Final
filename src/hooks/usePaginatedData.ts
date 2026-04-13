@@ -10,6 +10,7 @@ export interface UsePaginatedDataOptions {
   orderBy?: { column: string; ascending?: boolean };
   filters?: Record<string, any>;
   ilikeFilters?: Record<string, string>; // for quick search mapping column -> query
+  inFilters?: Record<string, any[]>; // maps column -> array of valid values
   orFilters?: string; // example: "name.ilike.%search%,email.ilike.%search%"
 }
 
@@ -40,6 +41,7 @@ export function usePaginatedData<T>(options: UsePaginatedDataOptions) {
     orderBy: options.orderBy,
     filters: options.filters,
     ilikeFilters: options.ilikeFilters,
+    inFilters: options.inFilters,
     orFilters: options.orFilters
   });
 
@@ -66,6 +68,20 @@ export function usePaginatedData<T>(options: UsePaginatedDataOptions) {
         Object.entries(options.filters).forEach(([key, val]) => {
           if (val !== undefined && val !== null && val !== 'all') {
             query = query.eq(key, val);
+          }
+        });
+      }
+
+      // Apply IN filters (array matching)
+      if (options.inFilters) {
+        Object.entries(options.inFilters).forEach(([key, val]) => {
+          if (val && Array.isArray(val)) {
+            if (val.length > 0) {
+              query = query.in(key, val);
+            } else {
+              // If the array is empty, it means "match nothing". We provide a dummy impossible UUID/string
+              query = query.in(key, ['NOT_POSSIBLE_MATCH_EMPTY_ARRAY']);
+            }
           }
         });
       }

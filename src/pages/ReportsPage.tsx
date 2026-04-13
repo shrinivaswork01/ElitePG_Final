@@ -116,8 +116,8 @@ export const ReportsPage = () => {
     }, {} as Record<string, number>);
     
     return Object.entries(grouped)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
+      .map(([name, value]) => ({ name, value: value as number }))
+      .sort((a, b) => (b.value as number) - (a.value as number));
   }, [currentExpenses, currentMonthStr]);
 
   const COLORS = ['#4f46e5', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b', '#10b981', '#64748b'];
