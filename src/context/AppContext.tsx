@@ -1,7 +1,7 @@
-import { createContext, useContext, useState, useEffect, ReactNode, useMemo, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useMemo, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { format } from 'date-fns';
-import { Tenant, Room, Payment, Complaint, Employee, KYCData, Announcement, SalaryPayment, Task, PGConfig, PGBranch, RolePermissions, SubscriptionPlan, AppFeature, KYCStatus, UserInvite, MeterGroup, Expense, ExpenseStatus, PartnerShare, ProfitDistribution } from '../types';
+import { Tenant, Room, Payment, Complaint, Employee, KYCData, Announcement, SalaryPayment, Task, PGConfig, PGBranch, RolePermissions, SubscriptionPlan, AppFeature, KYCStatus, UserInvite, MeterGroup, Expense, ExpenseStatus, PartnerShare, ProfitDistribution, PartnerPayout } from '../types';
 import { uploadToSupabase, deleteFromSupabase } from '../utils/storage';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
@@ -28,6 +28,7 @@ interface AppContextType {
   tenantDepositLogs: any[];
   partnerShares: PartnerShare[];
   profitDistributions: ProfitDistribution[];
+  partnerPayouts: PartnerPayout[];
 
   // Actions
   addTenant: (tenant: Omit<Tenant, 'id' | 'branchId'> & { branchId?: string }, kycDoc?: { type: string, file?: File, url?: string }, rentAgreementDoc?: { file?: File, url?: string }) => Promise<void>;
@@ -102,6 +103,7 @@ interface AppContextType {
     occupancyByFlat: { name: string, occupied: number, total: number }[];
   };
   updatePartnerShareBatch: (branchId: string, shares: { userId: string; ratio: number }[], effectiveFrom: string) => Promise<void>;
+  processPartnerPayoutBatch: (payouts: Omit<PartnerPayout, 'id' | 'createdAt'>[]) => Promise<boolean>;
   addProfitDistribution: (distribution: any) => Promise<void>;
   currentBranch: PGBranch | undefined;
   currentPlan: SubscriptionPlan | undefined;
@@ -135,7 +137,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       expenses: [],
       tenantDepositLogs: [],
       partnerShares: [],
-      profitDistributions: []
+      profitDistributions: [],
+      partnerPayouts: []
     };
 
     if (cached) {
@@ -156,11 +159,62 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const userId = user?.id;
   const userRole = user?.role;
   const activeBranchId = urlBranchId || user?.branchId;
+  const syncInProgress = useRef(false);
+
+  const syncTenantStatuses = useCallback(async (tenants: Tenant[]) => {
+    if (!user || user.role === 'tenant' || syncInProgress.current) return;
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayStr = today.toISOString().split('T')[0];
+
+    // 1. Find onboarding tenants whose moveInDate has arrived
+    const tenantsToActivate = tenants.filter(t => 
+      t.status === 'onboarding' && 
+      t.moveInDate && 
+      t.moveInDate <= todayStr &&
+      t.tokenStatus === 'paid'
+    );
+
+    // 2. Find vacating tenants who should be vacated (because their date passed OR someone else is now active in their bed)
+    const vacatingToVacated = tenants.filter(t => t.status === 'vacating').filter(t => {
+      // Condition A: Their vacating date is in the past
+      if (t.vacatingDate && t.vacatingDate < todayStr) return true;
+      
+      // Condition B: Someone else is now ACTIVE in their bed
+      const newActiveTenant = tenants.find(other => 
+        other.id !== t.id &&
+        other.roomId === t.roomId &&
+        other.bedNumber === t.bedNumber &&
+        other.status === 'active'
+      );
+      return !!newActiveTenant;
+    });
+
+    if (tenantsToActivate.length === 0 && vacatingToVacated.length === 0) return;
+
+    syncInProgress.current = true;
+    try {
+      // Activate Onboarding Tenants
+      for (const t of tenantsToActivate) {
+        await supabase.from('tenants').update({ status: 'active' }).eq('id', t.id);
+      }
+
+      // Vacate Expired/Replaced Tenants
+      for (const t of vacatingToVacated) {
+        // Only set exit_date to today if it's not already set or the date passed
+        const exitDate = t.vacatingDate && t.vacatingDate <= todayStr ? t.vacatingDate : todayStr;
+        await supabase.from('tenants').update({ status: 'vacated', exit_date: exitDate }).eq('id', t.id);
+      }
+    } finally {
+      syncInProgress.current = false;
+    }
+  }, [user]);
 
   const fetchData = useCallback(async () => {
     // We only fetch data if user is logged in
     if (!userId) {
-      setData({ tenants: [], rooms: [], payments: [], complaints: [], employees: [], kycs: [], announcements: [], salaryPayments: [], tasks: [], pgConfigs: [], branches: [], subscriptionPlans: [], userInvites: [], superSignatureUrl: null, expenses: [], tenantDepositLogs: [], partnerShares: [], profitDistributions: [] });
+      setData({ tenants: [], rooms: [], payments: [], complaints: [], employees: [], kycs: [], announcements: [], salaryPayments: [], tasks: [], pgConfigs: [], branches: [], subscriptionPlans: [], userInvites: [], superSignatureUrl: null, expenses: [], tenantDepositLogs: [], partnerShares: [], profitDistributions: [], partnerPayouts: [] });
       setIsAppLoading(false);
       localStorage.removeItem('elite_pg_cached_data');
       return;
@@ -216,7 +270,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         { data: expenses },
         { data: depositLogs },
         { data: shares },
-        { data: distributions }
+        { data: distributions },
+        { data: payouts }
       ] = await Promise.all([
         // Branches: super gets all, admin gets their owned branches, others get their single branch
         isSuper 
@@ -245,7 +300,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         branchQuery(supabase.from('expenses').select('*')),
         branchQuery(supabase.from('tenant_deposit_logs').select('*')),
         branchQuery(supabase.from('partner_shares').select('*')),
-        branchQuery(supabase.from('profit_distributions').select('*'))
+        branchQuery(supabase.from('profit_distributions').select('*')),
+        branchQuery(supabase.from('partner_payouts').select('*'))
       ]);
 
       const newData = {
@@ -342,11 +398,18 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           id: d.id, branchId: d.branch_id, month: d.month, totalRevenue: d.total_revenue,
           totalExpenses: d.total_expenses, netProfit: d.net_profit, distributions: d.distributions
         })),
+        partnerPayouts: (payouts || []).map(p => ({
+          id: p.id, partnerId: p.partner_id, month: p.month, branchId: p.branch_id, amount: p.amount,
+          status: p.status as 'PAID' | 'PENDING', createdAt: p.created_at
+        })),
         superSignatureUrl: superUserSignature?.signature_url || null
       };
       
     setData(newData);
     localStorage.setItem('elite_pg_cached_data', JSON.stringify(newData));
+    
+    // Auto-sync statuses after a short delay to ensure DB is ready and avoid race conditions
+    setTimeout(() => syncTenantStatuses(newData.tenants), 1000);
   } catch (e) {
     console.error(e);
   } finally {
@@ -384,7 +447,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       pgConfig: (data.pgConfigs || [])[0] || null,
       subscriptionPlans: data.subscriptionPlans || [],
       branches: data.branches || [],
-      expenses: data.expenses || []
+      expenses: data.expenses || [],
+      partnerPayouts: data.partnerPayouts || []
     };
 
     const branchId = activeBranchId;
@@ -416,8 +480,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       tasks: (data.tasks || []).filter((t: Task) => t.branchId === branchId),
       expenses: (data.expenses || []).filter((e: Expense) => e.branchId === branchId),
       tenantDepositLogs: (data.tenantDepositLogs || []).filter((l: any) => l.branchId === branchId),
-      partnerShares: (data.partnerShares || []).filter((s: any) => s.branchId === branchId),
       profitDistributions: (data.profitDistributions || []).filter((d: any) => d.branchId === branchId),
+      partnerPayouts: (data.partnerPayouts || []).filter((p: any) => p.branchId === branchId || p.branchId === null),
       pgConfig: (data.pgConfigs || []).find((c: PGConfig) => c.branchId === branchId) || null,
       subscriptionPlans: data.subscriptionPlans || [],
       branches: data.branches || [],
@@ -512,7 +576,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       token_status: tenant.tokenStatus,
       deposit_status: tenant.depositStatus,
       deposit_balance: tenant.depositStatus === 'paid' ? (tenant.depositAmount || 0) : 0,
-      move_in_date: (tenant as any).moveInDate || null
+      move_in_date: (tenant as any).moveInDate || null,
+      vacating_date: (tenant as any).vacatingDate || null
     }).select().single();
     if (error) { toast.error(error.message); return; }
 
@@ -1626,7 +1691,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const complaints = filteredData.complaints || [];
 
     const monthlyRevenue = (payments || [])
-      .filter((p: Payment) => p && p.month === currentMonth && p.status === 'paid')
+      .filter((p: Payment) => p && p.month === currentMonth && p.status === 'paid' && p.paymentType === 'rent')
       .reduce((sum: number, p: Payment) => sum + (p.totalAmount || 0), 0);
 
     const totalActiveTenants = (tenants || []).filter((t: Tenant) => t && t.status === 'active').length;
@@ -1646,7 +1711,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const monthStr = format(d, 'yyyy-MM');
 
       const monthRev = (payments || [])
-        .filter((p: Payment) => p && p.month === monthStr && p.status === 'paid')
+        .filter((p: Payment) => p && p.month === monthStr && p.status === 'paid' && p.paymentType === 'rent')
         .reduce((sum: number, p: Payment) => sum + (p.totalAmount || 0), 0);
 
       revenueHistory.push({ name: monthStr, revenue: monthRev });
@@ -1730,6 +1795,46 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     fetchData();
   };
 
+  const processPartnerPayoutBatch = async (payouts: Omit<PartnerPayout, 'id' | 'createdAt'>[]) => {
+    if (payouts.length === 0) return true;
+
+    // We can do a quick check to see if duplicate exists in the batch's target context
+    // This assumes the batch is for the same month & branch.
+    const sample = payouts[0];
+    const { data: existing, error: checkError } = await supabase.from('partner_payouts').select('id')
+      .eq('month', sample.month)
+      .eq('partner_id', sample.partnerId)
+      // handling branch_id null vs value
+      .eq('branch_id', sample.branchId || null)
+      .limit(1);
+
+    // Using UPSERT directly or relying on unique constraints handles this. 
+    // The DB constraint (month, coalesce(branch_id), partner_id) will prevent actual duplicates from being inserted.
+    const { error } = await supabase.from('partner_payouts').insert(
+      payouts.map(p => ({
+        partner_id: p.partnerId,
+        month: p.month,
+        branch_id: p.branchId || null,
+        amount: p.amount,
+        status: p.status
+      }))
+    );
+    
+    if (error) { 
+      // If error is related to unique constraint it's code 23505
+      if (error.code === '23505') {
+        toast.error('Payouts for this month and branch have already been processed.');
+      } else {
+        toast.error(error.message); 
+      }
+      return false; 
+    }
+    
+    toast.success('Payout completed successfully');
+    fetchData();
+    return true;
+  };
+
   const getStats = useCallback(() => computedStats, [computedStats]);
 
   return (
@@ -1756,7 +1861,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       checkFeatureAccess,
       fetchData,
       getStats,
-      updatePartnerShareBatch, addProfitDistribution,
+      updatePartnerShareBatch, addProfitDistribution, processPartnerPayoutBatch,
       rawData: data,
       isAppLoading
     }}>

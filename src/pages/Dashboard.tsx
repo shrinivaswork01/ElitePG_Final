@@ -145,7 +145,7 @@ export const Dashboard = () => {
     statCards = [
       { label: 'Total Branches', value: branches.length, icon: Building2, color: 'bg-indigo-600', trend: `+${branchesThisMonth} this month`, trendIcon: TrendingUp, trendColor: 'emerald', link: '/branches' },
       { label: 'Total Tenants', value: (tenants || []).length, icon: Users, color: 'bg-blue-500', trend: `${tenantTrend} growth`, trendIcon: TrendingUp, trendColor: 'emerald', link: '/tenants' },
-      { label: 'Total Revenue', value: `₹${(payments || []).filter(p => p.status === 'paid').reduce((sum, p) => sum + p.totalAmount, 0).toLocaleString()}`, icon: TrendingUp, color: 'bg-emerald-500', trend: 'Lifetime', trendIcon: Star, trendColor: 'emerald', link: '/branches' },
+      { label: 'Total Revenue', value: `₹${(payments || []).filter(p => p.status === 'paid' && p.paymentType === 'rent').reduce((sum, p) => sum + p.totalAmount, 0).toLocaleString()}`, icon: TrendingUp, color: 'bg-emerald-500', trend: 'Lifetime', trendIcon: Star, trendColor: 'emerald', link: '/branches' },
       { label: 'Active Subscriptions', value: activeSubscriptions, icon: CreditCard, color: 'bg-violet-600', trend: 'Paying', trendIcon: CheckCircle, trendColor: 'emerald', link: '/branches' },
       { label: 'Pending Renewals', value: pendingRenewals, icon: Clock, color: 'bg-amber-500', trend: 'Next 15 Days', trendIcon: CalendarDays, trendColor: 'amber', link: '/branches' },
       { label: 'System Health', value: '100%', icon: ShieldCheck, color: 'bg-emerald-600', trend: 'Operational', trendIcon: CheckCircle, trendColor: 'emerald', link: '/branches' },

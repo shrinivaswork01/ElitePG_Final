@@ -58,20 +58,20 @@ export const Layout = ({ children }: LayoutProps) => {
 
   const navigation = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant', 'super'] },
-    { name: 'Tenants', href: '/tenants', icon: Users, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker', 'security'] },
-    { name: 'Rooms', href: '/rooms', icon: DoorOpen, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker'] },
-    { name: ['admin', 'manager', 'partner'].includes(user?.role || '') ? 'Payments' : 'My Payments', href: '/payments', icon: CreditCard, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker', 'tenant'] },
-    { name: 'Complaints', href: '/complaints', icon: MessageSquare, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant'] },
-    { name: 'KYC Verification', href: '/kyc', icon: ShieldCheck, roles: ['admin', 'partner', 'manager', 'receptionist'] },
-    { name: 'Employees', href: '/employees', icon: UserCog, roles: ['admin', 'partner', 'manager'] },
-    { name: 'Reports', href: '/reports', icon: BarChart3, roles: ['admin', 'partner', 'manager'] },
-    { name: 'Expenses', href: '/expenses', icon: Receipt, roles: ['admin', 'partner', 'manager'] },
-    { name: 'Broadcast', href: '/broadcast', icon: Megaphone, roles: ['admin', 'partner'] },
+    { name: 'Rooms', href: '/rooms', icon: DoorOpen, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker', 'super'] },
+    { name: 'Tenants', href: '/tenants', icon: Users, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker', 'security', 'super'] },
+    { name: ['admin', 'manager', 'partner'].includes(user?.role || '') ? 'Payments' : 'My Payments', href: '/payments', icon: CreditCard, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker', 'tenant', 'super'] },
+    { name: 'Complaints', href: '/complaints', icon: MessageSquare, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant', 'super'] },
+    { name: 'KYC Verification', href: '/kyc', icon: ShieldCheck, roles: ['admin', 'partner', 'manager', 'receptionist', 'super'] },
+    { name: 'Employees', href: '/employees', icon: UserCog, roles: ['admin', 'partner', 'manager', 'super'] },
+    { name: 'Reports', href: '/reports', icon: BarChart3, roles: ['admin', 'partner', 'manager', 'super'] },
+    { name: 'Expenses', href: '/expenses', icon: Receipt, roles: ['admin', 'partner', 'manager', 'super'] },
+    { name: 'Broadcast', href: '/broadcast', icon: Megaphone, roles: ['admin', 'partner', 'super'] },
     { name: user?.role === 'super' ? 'Platform Management' : 'My Branches', href: '/branches', icon: Building2, roles: ['super', 'admin', 'partner'] },
-    { name: 'Tasks', href: '/tasks', icon: ClipboardList, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner'] },
+    { name: 'Tasks', href: '/tasks', icon: ClipboardList, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'super'] },
     { name: 'Profile', href: '/profile', icon: User, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant', 'super'] },
-    { name: 'Subscription', href: '/subscription', icon: Zap, roles: ['admin', 'partner'] },
-    { name: 'Settings', href: '/settings', icon: UserCog, roles: ['admin', 'partner'] },
+    { name: 'Subscription', href: '/subscription', icon: Zap, roles: ['admin', 'partner', 'super'] },
+    { name: 'Settings', href: '/settings', icon: UserCog, roles: ['admin', 'partner', 'super'] },
     { name: 'Help & Support', href: '/help', icon: LifeBuoy, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant', 'super'] },
   ];
 
@@ -107,12 +107,12 @@ export const Layout = ({ children }: LayoutProps) => {
     };
 
     const feature = featureMap[item.href];
-    if (feature && !checkFeatureAccess(feature)) {
+    if (feature && !checkFeatureAccess(feature) && user.role !== 'admin' && user.role !== 'partner') {
       return false;
     }
 
-    // Dynamic tab visibility from pgConfig (Bypass Admin level routing suppression)
-    if (pgConfig?.rolePermissions && user.role !== 'admin' && user.role !== 'partner') {
+    // Dynamic tab visibility from pgConfig
+    if (pgConfig?.rolePermissions) {
       const rolePerms = pgConfig.rolePermissions.find(p => p.role === user.role);
       if (rolePerms) {
         return rolePerms.visibleTabs.includes(item.href);

@@ -369,3 +369,13 @@ export interface ProfitDistribution {
   }[];
   createdAt: string;
 }
+
+export interface PartnerPayout {
+  id: string;
+  partnerId: string;
+  month: string;
+  branchId?: string | null;
+  amount: number;
+  status: 'PAID' | 'PENDING';
+  createdAt: string;
+}

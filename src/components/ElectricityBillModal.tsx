@@ -245,18 +245,27 @@ export const ElectricityBillModal: React.FC<ElectricityBillModalProps> = ({
 
       // Auto-create/update separate electricity payment records per tenant
       if (previewShares.length > 0) {
-        for (const share of previewShares) {
-          // Check if an electricity payment already exists for this tenant+month+bill
-          const { data: existingPmt } = await supabase
-            .from('payments')
-            .select('id')
-            .eq('tenant_id', share.tenantId)
-            .eq('month', month)
-            .eq('payment_type', 'electricity')
-            .eq('electricity_bill_id', savedBill.id)
-            .maybeSingle();
+        // Fetch ALL existing electricity payments for this month and bill to know which ones to update vs insert
+        const { data: existingPmts } = await supabase
+          .from('payments')
+          .select('id, tenant_id')
+          .eq('month', month)
+          .eq('payment_type', 'electricity')
+          .eq('electricity_bill_id', savedBill.id);
 
-          const elecPayload: any = {
+        const upsertData = previewShares.map(share => {
+          const existing = (existingPmts || []).find(p => p.tenant_id === share.tenantId);
+          
+          return {
+            id: existing?.id, // If ID exists, Supabase performs an UPDATE
+            tenant_id: share.tenantId,
+            month,
+            payment_type: 'electricity',
+            status: existing ? undefined : 'pending', // Don't overwrite status on update, default to pending on insert
+            method: existing ? undefined : 'Offline',
+            electricity_bill_id: savedBill.id,
+            branch_id: branchId,
+            payment_date: existing ? undefined : new Date().toISOString().split('T')[0],
             electricity_amount: share.total,
             total_amount: share.total,
             amount: 0,
@@ -268,26 +277,16 @@ export const ElectricityBillModal: React.FC<ElectricityBillModalProps> = ({
             actual_bill_file_url: savedBill.actualBillUrl || null,
             ac_bill_file_url: savedBill.acBillUrl || null,
           };
+        });
 
-          if (existingPmt) {
-            // Update existing pending electricity payment
-            await supabase.from('payments').update(elecPayload).eq('id', existingPmt.id);
-          } else {
-            // Insert new pending electricity payment
-            await supabase.from('payments').insert({
-              tenant_id: share.tenantId,
-              month,
-              payment_type: 'electricity',
-              status: 'pending',
-              method: 'Offline',
-              electricity_bill_id: savedBill.id,
-              branch_id: branchId,
-              payment_date: new Date().toISOString().split('T')[0],
-              ...elecPayload
-            });
-          }
-        }
-        toast.success(`${previewShares.length} electricity payment records created for tenants`);
+        // Batch Upsert
+        const { error: upsertError } = await supabase
+          .from('payments')
+          .upsert(upsertData, { onConflict: 'id' });
+
+        if (upsertError) throw upsertError;
+        
+        toast.success(`${previewShares.length} electricity records synchronized`);
       }
 
       onSaved?.();

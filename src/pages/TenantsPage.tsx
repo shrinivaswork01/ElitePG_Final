@@ -260,7 +260,8 @@ export const TenantsPage = () => {
     tokenAmount: 0,
     tokenStatus: 'pending',
     depositStatus: 'pending',
-    moveInDate: ''
+    moveInDate: '',
+    vacatingDate: ''
   });
 
   // Effect to set default invite code when modal opens
@@ -355,6 +356,7 @@ export const TenantsPage = () => {
       tokenStatus: tenant.tokenStatus || tenant.token_status || 'pending',
       depositStatus: tenant.depositStatus || tenant.deposit_status || 'pending',
       moveInDate: tenant.moveInDate || tenant.move_in_date || '',
+      vacatingDate: tenant.vacatingDate || tenant.vacating_date || '',
     };
     // Auto-fill branch invite code
     const branchInvite = userInvites.find(i => i.branchId === user?.branchId && i.role === 'tenant' && i.status === 'pending');
@@ -461,26 +463,74 @@ export const TenantsPage = () => {
     }
 
     const room = rooms.find(r => r.id === formData.roomId);
-    if (room && formData.tokenStatus === 'paid') {
-      const activeOccupants = tenants.filter(t => t.roomId === formData.roomId && ['active', 'onboarding'].includes(t.status) && t.id !== editingTenant?.id).length;
-      if (activeOccupants >= room.totalBeds) {
-        toast.error(`Cannot assign tenant. Room ${room.roomNumber} is currently at maximum capacity (${room.totalBeds} beds).`);
+    if (room) {
+      // For ACTIVE, we count everyone [active, onboarding, vacating]
+      // For ONBOARDING, we only count [active, onboarding] as vacating tenants will be gone by then
+      const statusesToCount = formData.status === 'active' 
+        ? ['active', 'onboarding', 'vacating']
+        : ['active', 'onboarding'];
+        
+      const occupants = tenants.filter(t => 
+        t.roomId === formData.roomId && 
+        statusesToCount.includes(t.status) && 
+        t.id !== editingTenant?.id
+      ).length;
+
+      if (occupants >= room.totalBeds) {
+        toast.error(`Cannot assign tenant. Room ${room.roomNumber} is at capacity for ${formData.status.toUpperCase()} tenants.`);
         return;
       }
     }
 
-    let finalStatus = formData.status;
-    if (formData.tokenStatus === 'pending') {
-      finalStatus = 'onboarding';
-    } else if (formData.tokenStatus === 'paid' && formData.moveInDate) {
-      const moveIn = new Date(formData.moveInDate);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      if (moveIn <= today && finalStatus === 'onboarding') {
-        finalStatus = 'active';
+    if (formData.roomId && formData.bedNumber) {
+      const existingAssignment = tenants.find(t => 
+        t.roomId === formData.roomId && 
+        t.bedNumber === formData.bedNumber && 
+        ['active', 'onboarding'].includes(t.status) &&
+        t.id !== editingTenant?.id
+      );
+
+      if (existingAssignment) {
+        toast.error(`This bed is already allocated to ${existingAssignment.name} (${existingAssignment.status})`);
+        return;
+      }
+      
+      // Check for overlap with vacating tenants
+      const vacatingTenant = tenants.find(t => 
+        t.roomId === formData.roomId && 
+        t.bedNumber === formData.bedNumber && 
+        t.status === 'vacating' &&
+        t.id !== editingTenant?.id
+      );
+
+      if (vacatingTenant && vacatingTenant.vacatingDate && formData.moveInDate) {
+        if (formData.moveInDate < vacatingTenant.vacatingDate) {
+          toast.error(`Move-in date cannot be before bed vacating date (${vacatingTenant.vacatingDate}).`);
+          return;
+        }
       }
     }
-    const finalFormData = { ...formData, status: finalStatus };
+    
+    const finalFormData = { 
+      ...formData,
+      moveInDate: formData.moveInDate || null,
+      vacatingDate: formData.vacatingDate || null
+    };
+
+    // Date Validations (Internal consistency for the same tenant)
+    if (finalFormData.status === 'vacating' && finalFormData.moveInDate && finalFormData.vacatingDate) {
+      if (finalFormData.moveInDate >= finalFormData.vacatingDate) {
+        toast.error('Move-in date must be before the vacating date.');
+        return;
+      }
+    }
+    
+    if (finalFormData.joiningDate && finalFormData.moveInDate) {
+      if (finalFormData.joiningDate > finalFormData.moveInDate) {
+        // Automaticaly align joining date with move-in date for past entries
+        finalFormData.joiningDate = finalFormData.moveInDate;
+      }
+    }
 
     if (finalFormData.name && (finalFormData.roomId || finalFormData.tokenStatus === 'pending')) {
       if (editingTenant) {
@@ -765,6 +815,38 @@ export const TenantsPage = () => {
               </div>
               <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Tenant Status</label>
+                    <div className="flex flex-wrap gap-2">
+                      {(editingTenant 
+                        ? ['onboarding', 'active', 'vacating', 'vacated', 'blacklisted'] 
+                        : ['onboarding', 'active']
+                      ).map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => {
+                            const today = new Date().toISOString().split('T')[0];
+                            setFormData({ 
+                              ...formData, 
+                              status: s as any,
+                              // If switched to Active, default move-in date to today
+                              moveInDate: s === 'active' ? today : formData.moveInDate 
+                            });
+                          }}
+                          className={cn(
+                            "flex-1 py-2.5 rounded-xl text-[10px] font-bold transition-all",
+                            formData.status === s
+                              ? "text-white shadow-lg"
+                              : "bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10"
+                          )}
+                          style={formData.status === s ? { background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` } : {}}
+                        >
+                          {s?.toUpperCase()}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Full Name</label>
                     <input
@@ -813,104 +895,6 @@ export const TenantsPage = () => {
                     <p className="text-[10px] text-gray-400 dark:text-gray-500 italic">This code is autofilled based on your branch settings.</p>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Select Room</label>
-                    <select
-                      required={formData.tokenStatus === 'paid'}
-                      disabled={formData.tokenStatus !== 'paid'}
-                      value={formData.roomId}
-                      onChange={(e) => {
-                        const room = rooms.find(r => r.id === e.target.value);
-                        setFormData({ ...formData, roomId: e.target.value, rentAmount: room?.price || 0 });
-                      }}
-                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                    >
-                      <option value="">Choose a room</option>
-                      {rooms.length === 0 ? (
-                        <option value="" disabled>No rooms available. Please add rooms first.</option>
-                      ) : (
-                        rooms.filter(room => {
-                          if (editingTenant && editingTenant.roomId === room.id) return true;
-                          const activeOccupancy = tenants.filter(t => t.roomId === room.id && t.status === 'active').length;
-                          return activeOccupancy < room.totalBeds;
-                        }).map(room => {
-                          const activeOccupancy = tenants.filter(t => t.roomId === room.id && t.status === 'active').length;
-                          return (
-                            <option key={room.id} value={room.id}>
-                              Room {room.roomNumber} ({room.type}) - {room.totalBeds - activeOccupancy} beds left
-                            </option>
-                          );
-                        })
-                      )}
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Bed Number</label>
-                    <select
-                      required={formData.tokenStatus === 'paid'}
-                      disabled={!formData.roomId || formData.tokenStatus !== 'paid'}
-                      value={formData.bedNumber}
-                      onChange={(e) => setFormData({ ...formData, bedNumber: Number(e.target.value) })}
-                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white disabled:opacity-50"
-                    >
-                      {(() => {
-                        const room = rooms.find(r => r.id === formData.roomId);
-                        if (!room) return <option value="">Select room first</option>;
-                        const beds = Array.from({ length: room.totalBeds }, (_, i) => i + 1);
-                        return beds.map(bed => {
-                          const isOccupied = tenants.some(t => 
-                            t.roomId === room.id && 
-                            t.bedNumber === bed && 
-                            t.status === 'active' &&
-                            t.id !== editingTenant?.id
-                          );
-                          return (
-                            <option key={bed} value={bed} disabled={isOccupied}>
-                              Bed {bed} {isOccupied ? '(Occupied)' : ''}
-                            </option>
-                          );
-                        });
-                      })()}
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Rent Amount (₹)</label>
-                    <input
-                      required
-                      type="number"
-                      value={formData.rentAmount}
-                      onChange={(e) => setFormData({ ...formData, rentAmount: Number(e.target.value) })}
-                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Move-in Date</label>
-                    <input
-                      type="date"
-                      required={formData.tokenStatus === 'paid'}
-                      disabled={formData.tokenStatus !== 'paid'}
-                      value={(formData as any).moveInDate || ''}
-                      onChange={(e) => setFormData({ ...formData, moveInDate: e.target.value } as any)}
-                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white disabled:opacity-50"
-                    />
-                    <p className="text-[10px] text-gray-400 dark:text-gray-500 italic">Physical move-in date. Mandatory if token is paid.</p>
-                  </div>
-
-                  <div className="space-y-2 md:col-span-2">
-                    <label className="flex items-center gap-3 p-4 bg-amber-50 dark:bg-amber-500/10 rounded-2xl cursor-pointer border border-amber-100 dark:border-amber-500/20 hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-colors">
-                      <input
-                        type="checkbox"
-                        checked={(formData as any).isAcUser || false}
-                        onChange={(e) => setFormData({ ...formData, isAcUser: e.target.checked } as any)}
-                        className="w-5 h-5 rounded text-amber-500 focus:ring-amber-500/20 bg-white dark:bg-black border-amber-200 dark:border-amber-500/30"
-                      />
-                      <div className="flex flex-col">
-                        <span className="text-sm font-bold text-amber-700 dark:text-amber-400">Uses AC (Air Conditioning)</span>
-                        <span className="text-xs text-amber-600/70 dark:text-amber-400/70">Check this if the tenant shares the room's AC electricity bill.</span>
-                      </div>
-                    </label>
-                  </div>
-
-                  <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Deposit Amount (₹)</label>
                     <input
                       required
@@ -932,27 +916,186 @@ export const TenantsPage = () => {
                       <option value="refunded">Refunded</option>
                     </select>
                   </div>
+                  {formData.status === 'onboarding' && (
+                    <>
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Token Amount (₹)</label>
+                        <input
+                          type="number"
+                          value={formData.tokenAmount || 0}
+                          onChange={(e) => setFormData({ ...formData, tokenAmount: Number(e.target.value) })}
+                          className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Token Status</label>
+                        <select
+                          value={formData.tokenStatus || 'pending'}
+                          onChange={(e) => setFormData({ ...formData, tokenStatus: e.target.value as any })}
+                          className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white capitalize"
+                        >
+                          <option value="pending">Pending</option>
+                          <option value="paid">Paid</option>
+                          <option value="refunded">Refunded</option>
+                        </select>
+                        {(() => {
+                           const todayStr = new Date().toISOString().split('T')[0];
+                           if (formData.status === 'onboarding' && formData.tokenStatus === 'paid' && formData.moveInDate && formData.moveInDate <= todayStr) {
+                             setTimeout(() => setFormData(prev => ({ ...prev, status: 'active' })), 0);
+                           }
+                           return null;
+                        })()}
+                      </div>
+                    </>
+                  )}
+
                   <div className="space-y-2">
-                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Token Amount (₹)</label>
+                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Select Room</label>
+                    <select
+                      required={formData.status === 'active' || formData.tokenStatus === 'paid'}
+                      disabled={formData.status === 'onboarding' && formData.tokenStatus !== 'paid'}
+                      value={formData.roomId}
+                      onChange={(e) => {
+                        const room = rooms.find(r => r.id === e.target.value);
+                        setFormData({ ...formData, roomId: e.target.value, rentAmount: room?.price || 0 });
+                      }}
+                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                    >
+                      <option value="">Choose a room</option>
+                      {rooms.length === 0 ? (
+                        <option value="" disabled>No rooms available. Please add rooms first.</option>
+                      ) : (
+                        rooms.filter(room => {
+                          if (editingTenant && editingTenant.roomId === room.id) return true;
+                          const occupiedCount = tenants.filter(t => 
+                            t.roomId === room.id && 
+                            ['active', 'onboarding'].includes(t.status) &&
+                            t.id !== editingTenant?.id
+                          ).length;
+                          
+                          // If status is active, room must have space excluding vacating tenants
+                          // If status is onboarding, room must have space counting only active/onboarding
+                          return occupiedCount < room.totalBeds;
+                        }).map(room => {
+                          const occupants = tenants.filter(t => 
+                            t.roomId === room.id && 
+                            ['active', 'onboarding', 'vacating'].includes(t.status) &&
+                            t.id !== editingTenant?.id
+                          );
+                          const occupiedCount = occupants.filter(t => ['active', 'onboarding'].includes(t.status)).length;
+                          const vacatingCount = occupants.filter(t => t.status === 'vacating').length;
+                          const availableBeds = room.totalBeds - occupiedCount;
+
+                          return (
+                            <option key={room.id} value={room.id}>
+                              Room {room.roomNumber} ({room.type}) - {availableBeds} beds avail {vacatingCount > 0 ? `(${vacatingCount} vacating)` : ''}
+                            </option>
+                          );
+                        })
+                      )}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Bed Number</label>
+                    <select
+                      required={formData.status === 'active' || formData.tokenStatus === 'paid'}
+                      disabled={!formData.roomId || (formData.status === 'onboarding' && formData.tokenStatus !== 'paid')}
+                      value={formData.bedNumber}
+                      onChange={(e) => {
+                        const bed = Number(e.target.value);
+                        let moveInDate = formData.moveInDate;
+
+                        // If onboarding and selecting a vacating bed, suggest the vacating date as move-in date
+                        if (formData.status === 'onboarding') {
+                          const existingTenantInBed = tenants.find(t => 
+                            t.roomId === formData.roomId && 
+                            t.bedNumber === bed && 
+                            t.status === 'vacating'
+                          );
+                          if (existingTenantInBed?.vacatingDate) {
+                            moveInDate = existingTenantInBed.vacatingDate;
+                          }
+                        }
+
+                        setFormData({ ...formData, bedNumber: bed, moveInDate });
+                      }}
+                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white disabled:opacity-50"
+                    >
+                      {(() => {
+                        const room = rooms.find(r => r.id === formData.roomId);
+                        if (!room) return <option value="">Select room first</option>;
+                        const beds = Array.from({ length: room.totalBeds }, (_, i) => i + 1);
+                        return beds.map(bed => {
+                          const existingTenantInBed = tenants.find(t => 
+                            t.roomId === room.id && 
+                            t.bedNumber === bed && 
+                            ['active', 'onboarding', 'vacating'].includes(t.status) &&
+                            t.id !== editingTenant?.id
+                          );
+
+                          const isOccupied = existingTenantInBed && ['active', 'onboarding'].includes(existingTenantInBed.status);
+                          const isVacating = existingTenantInBed && existingTenantInBed.status === 'vacating';
+                          
+                              // All statuses can now select vacating beds in the dropdown. 
+                              // Date checks will be enforced on submission.
+                              const isAllowed = true; 
+
+                              if (!isAllowed) return null;
+
+                          return (
+                            <option key={bed} value={bed}>
+                              Bed {bed} {isVacating ? '(Vacating)' : '(Vacant)'}
+                            </option>
+                          );
+                        });
+                      })()}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Rent Amount (₹)</label>
                     <input
+                      required
                       type="number"
-                      value={formData.tokenAmount || 0}
-                      onChange={(e) => setFormData({ ...formData, tokenAmount: Number(e.target.value) })}
+                      value={formData.rentAmount}
+                      onChange={(e) => setFormData({ ...formData, rentAmount: Number(e.target.value) })}
                       className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Token Status</label>
-                    <select
-                      value={formData.tokenStatus || 'pending'}
-                      onChange={(e) => setFormData({ ...formData, tokenStatus: e.target.value as any })}
-                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white capitalize"
-                    >
-                      <option value="pending">Pending</option>
-                      <option value="paid">Paid</option>
-                      <option value="refunded">Refunded</option>
-                    </select>
+                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Move-in Date</label>
+                    <input
+                      required
+                      type="date"
+                      value={(formData as any).moveInDate || ''}
+                      onChange={(e) => {
+                        const newDate = e.target.value;
+                        const todayStr = new Date().toISOString().split('T')[0];
+                        let newStatus = formData.status;
+                        
+                        // Auto-activate if date is today/past and token is paid
+                        if (formData.status === 'onboarding' && formData.tokenStatus === 'paid' && newDate && newDate <= todayStr) {
+                          newStatus = 'active';
+                        }
+                        
+                        setFormData({ ...formData, moveInDate: newDate, status: newStatus } as any);
+                      }}
+                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white disabled:opacity-50"
+                    />
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500 italic">Expected move-in date. Mandatory for both Onboarding and Active.</p>
                   </div>
+                  {formData.status === 'vacating' && (
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Vacating Date</label>
+                      <input
+                        required
+                        type="date"
+                        value={(formData as any).vacatingDate || ''}
+                        onChange={(e) => setFormData({ ...formData, vacatingDate: e.target.value } as any)}
+                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                      />
+                      <p className="text-[10px] text-gray-400 dark:text-gray-500 italic">Expected date of vacating. Mandatory for Vacating status.</p>
+                    </div>
+                  )}
                   {checkFeatureAccess('kyc') && (
                     <div className="space-y-2">
                       <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Identity Verification</label>
@@ -1021,29 +1164,6 @@ export const TenantsPage = () => {
                       )}
                     </div>
                   </div>
-                  {editingTenant && (
-                    <div className="space-y-2 md:col-span-2">
-                      <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Status</label>
-                      <div className="flex flex-wrap gap-2">
-                        {['onboarding', 'active', 'vacating', 'vacated', 'blacklisted'].map((s) => (
-                          <button
-                            key={s}
-                            type="button"
-                            onClick={() => setFormData({ ...formData, status: s as any })}
-                            className={cn(
-                              "flex-1 py-2.5 rounded-xl text-[10px] font-bold transition-all",
-                              formData.status === s
-                                ? "text-white shadow-lg"
-                                : "bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10"
-                            )}
-                            style={formData.status === s ? { background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` } : {}}
-                          >
-                            {s?.toUpperCase()}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
                 <div className="flex justify-end gap-3 pt-4">
                   <button

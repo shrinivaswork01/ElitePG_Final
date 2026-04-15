@@ -405,7 +405,7 @@ export const EmployeesPage = () => {
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Employees</h2>
           <p className="text-gray-500 dark:text-gray-400">Manage your staff and payroll.</p>
         </div>
-        {(user?.role === 'admin' || user?.role === 'partner') && (
+        {(user?.role === 'admin' || user?.role === 'partner' || user?.role === 'super') && (
           <>
             <div className="hidden md:flex gap-2">
               <button
@@ -450,7 +450,7 @@ export const EmployeesPage = () => {
                 <ClipboardList className="w-5 h-5 text-indigo-500" />
                 Add Task
               </button>
-              {activeTab === 'partners' && user?.role === 'admin' && (
+              {activeTab === 'partners' && (user?.role === 'admin' || user?.role === 'super') && (
                 <button
                   onClick={handleOpenRatioModal}
                   className="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 dark:bg-emerald-500/5 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-500/10 rounded-xl font-bold hover:bg-emerald-100 dark:hover:bg-emerald-500/10 transition-all"
@@ -1660,6 +1660,7 @@ export const EmployeesPage = () => {
                     <tr>
                       <th className="p-4 text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 dark:border-white/5">Tab Name</th>
                       {[
+                        'admin',
                         'manager',
                         'caretaker',
                         'cleaner',
@@ -1691,6 +1692,7 @@ export const EmployeesPage = () => {
                           <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">{tab.name}</span>
                         </td>
                         {[
+                          'admin',
                           'manager',
                           'caretaker',
                           'cleaner',
