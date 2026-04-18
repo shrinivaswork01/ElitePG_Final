@@ -103,7 +103,8 @@ interface AppContextType {
     occupancyByFlat: { name: string, occupied: number, total: number }[];
   };
   updatePartnerShareBatch: (branchId: string, shares: { userId: string; ratio: number }[], effectiveFrom: string) => Promise<void>;
-  processPartnerPayoutBatch: (payouts: Omit<PartnerPayout, 'id' | 'createdAt'>[]) => Promise<boolean>;
+  processPartnerPayoutBatch: (payouts: Partial<PartnerPayout>[]) => Promise<boolean>;
+  updatePartnerPayoutStatus: (id: string, status: 'REQUESTED' | 'PARTNER_APPROVED' | 'PAID', fieldName: 'requested_by' | 'partner_approved_by' | 'admin_approved_by', actorId: string) => Promise<boolean>;
   addProfitDistribution: (distribution: any) => Promise<void>;
   currentBranch: PGBranch | undefined;
   currentPlan: SubscriptionPlan | undefined;
@@ -452,37 +453,47 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     };
 
     const branchId = activeBranchId;
-    const branch = (data.branches || []).find((b: PGBranch) => b.id === branchId);
+    const isAllBranches = branchId === 'all';
+    const userBranchIds = user.branchIds || (user.branchId ? [user.branchId] : []);
+    
+    // Determine active branch or use first if 'all' to ensure UI has a context
+    const branch = isAllBranches 
+      ? (data.branches || []).find((b: PGBranch) => userBranchIds.includes(b.id))
+      : (data.branches || []).find((b: PGBranch) => b.id === branchId);
+      
     const plan = (data.subscriptionPlans || []).find((p: SubscriptionPlan) => p.id === branch?.planId);
 
+    const matchesBranch = (itemBranchId: string) => 
+      isAllBranches ? userBranchIds.includes(itemBranchId) : itemBranchId === branchId;
+
     return {
-      tenants: (data.tenants || []).filter((t: Tenant) => t.branchId === branchId),
-      rooms: (data.rooms || []).filter((r: Room) => r.branchId === branchId),
-      meterGroups: (data.meterGroups || []).filter((m: MeterGroup) => m.branchId === branchId),
-      payments: (data.payments || []).filter((p: Payment) => p.branchId === branchId),
-      complaints: (data.complaints || []).filter((c: Complaint) => c.branchId === branchId),
-      employees: (data.employees || []).filter((e: Employee) => e.branchId === branchId),
+      tenants: (data.tenants || []).filter((t: Tenant) => matchesBranch(t.branchId || '')),
+      rooms: (data.rooms || []).filter((r: Room) => matchesBranch(r.branchId || '')),
+      meterGroups: (data.meterGroups || []).filter((m: MeterGroup) => matchesBranch(m.branchId || '')),
+      payments: (data.payments || []).filter((p: Payment) => matchesBranch(p.branchId || '')),
+      complaints: (data.complaints || []).filter((c: Complaint) => matchesBranch(c.branchId || '')),
+      employees: (data.employees || []).filter((e: Employee) => matchesBranch(e.branchId || '')),
       kycs: (data.kycs || []).filter((k: KYCData) => {
-        if (k.branchId === branchId) return true;
+        if (matchesBranch(k.branchId || '')) return true;
         // Resilient check: If branchId matches on the tenant/employee associated with the KYC
         if (k.tenantId) {
           const t = (data.tenants || []).find((t: any) => t.id === k.tenantId);
-          if (t && t.branchId === branchId) return true;
+          if (t && matchesBranch(t.branchId)) return true;
         }
         if (k.employeeId) {
           const e = (data.employees || []).find((e: any) => e.id === k.employeeId);
-          if (e && e.branchId === branchId) return true;
+          if (e && matchesBranch(e.branchId)) return true;
         }
         return false;
       }),
-      announcements: (data.announcements || []).filter((a: Announcement) => a.branchId === branchId),
-      salaryPayments: (data.salaryPayments || []).filter((p: SalaryPayment) => p.branchId === branchId),
-      tasks: (data.tasks || []).filter((t: Task) => t.branchId === branchId),
-      expenses: (data.expenses || []).filter((e: Expense) => e.branchId === branchId),
-      tenantDepositLogs: (data.tenantDepositLogs || []).filter((l: any) => l.branchId === branchId),
-      profitDistributions: (data.profitDistributions || []).filter((d: any) => d.branchId === branchId),
-      partnerPayouts: (data.partnerPayouts || []).filter((p: any) => p.branchId === branchId || p.branchId === null),
-      pgConfig: (data.pgConfigs || []).find((c: PGConfig) => c.branchId === branchId) || null,
+      announcements: (data.announcements || []).filter((a: Announcement) => matchesBranch(a.branchId || '')),
+      salaryPayments: (data.salaryPayments || []).filter((p: SalaryPayment) => matchesBranch(p.branchId || '')),
+      tasks: (data.tasks || []).filter((t: Task) => matchesBranch(t.branchId || '')),
+      expenses: (data.expenses || []).filter((e: Expense) => matchesBranch(e.branchId || '')),
+      tenantDepositLogs: (data.tenantDepositLogs || []).filter((l: any) => matchesBranch(l.branchId || '')),
+      profitDistributions: (data.profitDistributions || []).filter((d: any) => matchesBranch(d.branchId || '')),
+      partnerPayouts: (data.partnerPayouts || []).filter((p: any) => matchesBranch(p.branchId || '') || p.branchId === null),
+      pgConfig: (data.pgConfigs || []).find((c: PGConfig) => matchesBranch(c.branchId || '')) || (data.pgConfigs || [])[0] || null,
       subscriptionPlans: data.subscriptionPlans || [],
       branches: data.branches || [],
       userInvites: data.userInvites || [],
@@ -650,7 +661,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             branch_id: branchId,
             amount: log.amount,
             total_amount: log.amount,
-            payment_type: log.type === 'token' ? 'token' : 'deposit',
+            payment_type: log.type === 'token' ? 'rent' : 'deposit',
             payment_date: log.date,
             month: log.date.substring(0, 7),
             status: 'paid',
@@ -804,7 +815,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             branch_id: branchId,
             amount: log.amount,
             total_amount: log.amount,
-            payment_type: log.type === 'token' ? 'token' : 'deposit',
+            payment_type: log.type === 'token' ? 'rent' : 'deposit',
             payment_date: log.date,
             month: log.date.substring(0, 7),
             status: 'paid',
@@ -1691,7 +1702,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const complaints = filteredData.complaints || [];
 
     const monthlyRevenue = (payments || [])
-      .filter((p: Payment) => p && p.month === currentMonth && p.status === 'paid' && p.paymentType === 'rent')
+      .filter((p: Payment) => p && p.month === currentMonth && p.status === 'paid' && ['rent', 'token'].includes(p.paymentType || 'rent'))
       .reduce((sum: number, p: Payment) => sum + (p.totalAmount || 0), 0);
 
     const totalActiveTenants = (tenants || []).filter((t: Tenant) => t && t.status === 'active').length;
@@ -1711,7 +1722,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const monthStr = format(d, 'yyyy-MM');
 
       const monthRev = (payments || [])
-        .filter((p: Payment) => p && p.month === monthStr && p.status === 'paid' && p.paymentType === 'rent')
+        .filter((p: Payment) => p && p.month === monthStr && p.status === 'paid' && ['rent', 'token'].includes(p.paymentType || 'rent'))
         .reduce((sum: number, p: Payment) => sum + (p.totalAmount || 0), 0);
 
       revenueHistory.push({ name: monthStr, revenue: monthRev });
@@ -1795,42 +1806,51 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     fetchData();
   };
 
-  const processPartnerPayoutBatch = async (payouts: Omit<PartnerPayout, 'id' | 'createdAt'>[]) => {
+  const processPartnerPayoutBatch = async (payouts: Partial<PartnerPayout>[]) => {
     if (payouts.length === 0) return true;
 
-    // We can do a quick check to see if duplicate exists in the batch's target context
-    // This assumes the batch is for the same month & branch.
-    const sample = payouts[0];
-    const { data: existing, error: checkError } = await supabase.from('partner_payouts').select('id')
-      .eq('month', sample.month)
-      .eq('partner_id', sample.partnerId)
-      // handling branch_id null vs value
-      .eq('branch_id', sample.branchId || null)
-      .limit(1);
+    // Build the payload mapping TS camelCase to Postgres snake_case
+    const payload = payouts.map(p => ({
+      ...(p.id ? { id: p.id } : {}), // only include if editing
+      partner_id: p.partnerId,
+      month: p.month,
+      branch_id: p.branchId || null,
+      amount: p.amount,
+      status: p.status || 'REQUESTED',
+      requested_by: p.requestedBy,
+      partner_approved_by: p.partnerApprovedBy,
+      admin_approved_by: p.adminApprovedBy
+    }));
 
-    // Using UPSERT directly or relying on unique constraints handles this. 
-    // The DB constraint (month, coalesce(branch_id), partner_id) will prevent actual duplicates from being inserted.
-    const { error } = await supabase.from('partner_payouts').insert(
-      payouts.map(p => ({
-        partner_id: p.partnerId,
-        month: p.month,
-        branch_id: p.branchId || null,
-        amount: p.amount,
-        status: p.status
-      }))
-    );
+    const { error } = await supabase.from('partner_payouts').upsert(payload, { onConflict: 'month,branch_id,partner_id' });
     
     if (error) { 
-      // If error is related to unique constraint it's code 23505
-      if (error.code === '23505') {
-        toast.error('Payouts for this month and branch have already been processed.');
-      } else {
-        toast.error(error.message); 
-      }
+      toast.error(error.message); 
       return false; 
     }
     
-    toast.success('Payout completed successfully');
+    toast.success('Payout request processed.');
+    fetchData();
+    return true;
+  };
+
+  const updatePartnerPayoutStatus = async (
+    id: string, 
+    status: 'REQUESTED' | 'PARTNER_APPROVED' | 'PAID', 
+    fieldName: 'requested_by' | 'partner_approved_by' | 'admin_approved_by', 
+    actorId: string
+  ) => {
+    const { error } = await supabase.from('partner_payouts').update({
+      status,
+      [fieldName]: actorId
+    }).eq('id', id);
+
+    if (error) {
+      toast.error(error.message);
+      return false;
+    }
+    
+    toast.success(`Payout marked as ${status.replace('_', ' ')}`);
     fetchData();
     return true;
   };
@@ -1861,7 +1881,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       checkFeatureAccess,
       fetchData,
       getStats,
-      updatePartnerShareBatch, addProfitDistribution, processPartnerPayoutBatch,
+      updatePartnerShareBatch, addProfitDistribution, processPartnerPayoutBatch, updatePartnerPayoutStatus,
       rawData: data,
       isAppLoading
     }}>

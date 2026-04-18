@@ -40,7 +40,7 @@ export const TenantsPage = () => {
   const navigate = useNavigate();
   const { user, users, register, updateUser, authorizeUser } = useAuth();
   const location = useLocation();
-  const { tenants, rooms, branches, addTenant, updateTenant, deleteTenant, checkFeatureAccess, currentPlan, uploadVerifiedKYC, kycs, userInvites, pgConfig, requestVacating, completeCheckout } = useApp();
+  const { tenants, rooms, branches, addTenant, updateTenant, deleteTenant, checkFeatureAccess, currentPlan, uploadVerifiedKYC, kycs, userInvites, pgConfig, requestVacating, completeCheckout, currentBranch } = useApp();
   const canSendWhatsApp = checkFeatureAccess('whatsapp');
 
   const currentTenantsCount = tenants.length;
@@ -243,7 +243,7 @@ export const TenantsPage = () => {
     document.body.removeChild(link);
   };
 
-  const [formData, setFormData] = useState<Omit<Tenant, 'id' | 'branchId'>>({
+  const defaultTenantData: Omit<Tenant, 'id' | 'branchId'> = {
     name: '',
     email: '',
     phone: '',
@@ -262,7 +262,9 @@ export const TenantsPage = () => {
     depositStatus: 'pending',
     moveInDate: '',
     vacatingDate: ''
-  });
+  };
+
+  const [formData, setFormData] = useState<Omit<Tenant, 'id' | 'branchId'>>(defaultTenantData);
 
   // Effect to set default invite code when modal opens
   useEffect(() => {
@@ -485,20 +487,20 @@ export const TenantsPage = () => {
     if (formData.roomId && formData.bedNumber) {
       const existingAssignment = tenants.find(t => 
         t.roomId === formData.roomId && 
-        t.bedNumber === formData.bedNumber && 
+        Number(t.bedNumber) === Number(formData.bedNumber) && 
         ['active', 'onboarding'].includes(t.status) &&
         t.id !== editingTenant?.id
       );
 
       if (existingAssignment) {
-        toast.error(`This bed is already allocated to ${existingAssignment.name} (${existingAssignment.status})`);
+        toast.error(`This bed is already occupied by ${existingAssignment.name} (${existingAssignment.status})`);
         return;
       }
       
       // Check for overlap with vacating tenants
       const vacatingTenant = tenants.find(t => 
         t.roomId === formData.roomId && 
-        t.bedNumber === formData.bedNumber && 
+        Number(t.bedNumber) === Number(formData.bedNumber) && 
         t.status === 'vacating' &&
         t.id !== editingTenant?.id
       );
@@ -594,13 +596,15 @@ export const TenantsPage = () => {
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Tenants</h2>
           <p className="text-gray-500 dark:text-gray-400">Manage your residents and their details.</p>
         </div>
-        {['admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '') && (
+        {['super', 'admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '') && (
           <button
             onClick={() => {
               if (isAtLimit) {
                 toast.error(`Limit reached! Your current plan (${currentPlan?.name}) allows only ${currentPlan?.maxTenants} tenants. Please upgrade your plan.`);
                 return;
               }
+              setEditingTenant(null);
+              setFormData(defaultTenantData);
               setIsAddModalOpen(true);
             }}
             className={cn(
@@ -956,43 +960,63 @@ export const TenantsPage = () => {
                       disabled={formData.status === 'onboarding' && formData.tokenStatus !== 'paid'}
                       value={formData.roomId}
                       onChange={(e) => {
-                        const room = rooms.find(r => r.id === e.target.value);
-                        setFormData({ ...formData, roomId: e.target.value, rentAmount: room?.price || 0 });
+                        const roomId = e.target.value;
+                        const room = rooms.find(r => r.id === roomId);
+                        
+                        // Smart Bed Selection: find first bed not occupied by active/onboarding tenant
+                        const firstAvailableBed = (() => {
+                          if (!room) return 1;
+                          const occupiedBeds = tenants
+                            .filter(t => t.roomId === roomId && ['active', 'onboarding'].includes(t.status) && t.id !== editingTenant?.id)
+                            .map(t => Number(t.bedNumber));
+                          for (let i = 1; i <= room.totalBeds; i++) {
+                            if (!occupiedBeds.includes(i)) return i;
+                          }
+                          return 1;
+                        })();
+
+                        setFormData({ 
+                          ...formData, 
+                          roomId,
+                          rentAmount: room?.price || 0,
+                          bedNumber: firstAvailableBed
+                        });
                       }}
                       className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                     >
-                      <option value="">Choose a room</option>
-                      {rooms.length === 0 ? (
-                        <option value="" disabled>No rooms available. Please add rooms first.</option>
-                      ) : (
-                        rooms.filter(room => {
+                      <option value="">Select Room</option>
+                      {rooms
+                        .filter(r => r.branchId === currentBranch?.id)
+                        .filter(room => {
                           if (editingTenant && editingTenant.roomId === room.id) return true;
-                          const occupiedCount = tenants.filter(t => 
-                            t.roomId === room.id && 
-                            ['active', 'onboarding'].includes(t.status) &&
-                            t.id !== editingTenant?.id
-                          ).length;
                           
-                          // If status is active, room must have space excluding vacating tenants
-                          // If status is onboarding, room must have space counting only active/onboarding
-                          return occupiedCount < room.totalBeds;
-                        }).map(room => {
-                          const occupants = tenants.filter(t => 
+                          const roomTenants = tenants.filter(t => 
                             t.roomId === room.id && 
-                            ['active', 'onboarding', 'vacating'].includes(t.status) &&
                             t.id !== editingTenant?.id
                           );
-                          const occupiedCount = occupants.filter(t => ['active', 'onboarding'].includes(t.status)).length;
-                          const vacatingCount = occupants.filter(t => t.status === 'vacating').length;
-                          const availableBeds = room.totalBeds - occupiedCount;
 
+                          const occupiedCount = roomTenants.filter(t => 
+                            ['active', 'onboarding'].includes(t.status)
+                          ).length;
+
+                          const vacatingCount = roomTenants.filter(t => 
+                            t.status === 'vacating'
+                          ).length;
+                          
+                          // Show room if it has free beds OR if someone is leaving (vacanting)
+                          return occupiedCount < room.totalBeds || vacatingCount > 0;
+                        })
+                        .sort((a, b) => a.roomNumber.localeCompare(b.roomNumber, undefined, { numeric: true }))
+                        .map((room) => {
+                          const occupiedCount = tenants.filter(t => t.roomId === room.id && ['active', 'onboarding'].includes(t.status)).length;
+                          const isFull = occupiedCount >= room.totalBeds;
                           return (
-                            <option key={room.id} value={room.id}>
-                              Room {room.roomNumber} ({room.type}) - {availableBeds} beds avail {vacatingCount > 0 ? `(${vacatingCount} vacating)` : ''}
+                            <option key={room.id} value={room.id} disabled={isFull}>
+                              {room.roomNumber} ({room.type}) - {room.totalBeds - occupiedCount} left
                             </option>
                           );
                         })
-                      )}
+                      }
                     </select>
                   </div>
                   <div className="space-y-2">
@@ -1026,25 +1050,25 @@ export const TenantsPage = () => {
                         if (!room) return <option value="">Select room first</option>;
                         const beds = Array.from({ length: room.totalBeds }, (_, i) => i + 1);
                         return beds.map(bed => {
-                          const existingTenantInBed = tenants.find(t => 
+                          const existingOccupant = tenants.find(t => 
                             t.roomId === room.id && 
-                            t.bedNumber === bed && 
-                            ['active', 'onboarding', 'vacating'].includes(t.status) &&
+                            Number(t.bedNumber) === Number(bed) && 
+                            ['active', 'onboarding'].includes(t.status) &&
                             t.id !== editingTenant?.id
                           );
 
-                          const isOccupied = existingTenantInBed && ['active', 'onboarding'].includes(existingTenantInBed.status);
-                          const isVacating = existingTenantInBed && existingTenantInBed.status === 'vacating';
-                          
-                              // All statuses can now select vacating beds in the dropdown. 
-                              // Date checks will be enforced on submission.
-                              const isAllowed = true; 
+                          const vacatingTenant = tenants.find(t => 
+                            t.roomId === room.id && 
+                            Number(t.bedNumber) === Number(bed) && 
+                            t.status === 'vacating' &&
+                            t.id !== editingTenant?.id
+                          );
 
-                              if (!isAllowed) return null;
+                          if (existingOccupant) return null;
 
                           return (
                             <option key={bed} value={bed}>
-                              Bed {bed} {isVacating ? '(Vacating)' : '(Vacant)'}
+                              Bed {bed} {vacatingTenant ? '(Vacating Soon)' : '(Vacant)'}
                             </option>
                           );
                         });

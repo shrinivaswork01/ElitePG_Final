@@ -34,7 +34,7 @@ import toast from 'react-hot-toast';
 const CATEGORIES: ExpenseCategory[] = ['apex', 'capital', 'operational', 'maintenance', 'salary', 'utility', 'other'];
 
 export const ExpensesPage = () => {
-  const { user } = useAuth();
+  const { user, users } = useAuth();
   const { expenses, addExpense, updateExpense, deleteExpense, currentBranch, pgConfig } = useApp();
   
   if (user?.role === 'tenant') {
@@ -198,6 +198,36 @@ export const ExpensesPage = () => {
       header: 'Status',
       accessorKey: 'status',
       cell: (e) => getStatusBadge(e.status)
+    },
+    {
+      header: 'Created By',
+      cell: (e) => {
+        const creator = users?.find((u: any) => u.id === (e.createdBy || e.created_by));
+        return (
+          <div className="flex flex-col">
+            <span className="text-sm font-bold text-gray-900 dark:text-white">{creator?.name || 'System'}</span>
+            <span className="text-[10px] text-gray-500 font-medium uppercase tracking-wider">{creator?.role || 'Admin'}</span>
+          </div>
+        );
+      }
+    },
+    {
+      header: 'Notes',
+      accessorKey: 'description',
+      cell: (e) => (
+        <div className="max-w-[150px] text-xs text-gray-500 truncate" title={e.description || ''}>
+          {e.description || '—'}
+        </div>
+      )
+    },
+    {
+      header: 'Created At',
+      accessorKey: 'created_at',
+      cell: (e) => (
+        <div className="text-xs text-gray-500 font-medium">
+          {e.created_at ? format(parseISO(e.created_at), 'dd MMM yy') : '—'}
+        </div>
+      )
     },
     {
       header: '',

@@ -42,7 +42,7 @@ export const ReportsPage = () => {
   const { user, users } = useAuth();
   const { tenants, rooms, payments, complaints, expenses, salaryPayments, getStats, pgConfig, currentBranch, rawData, branches, updatePartnerShareBatch, addProfitDistribution, processPartnerPayoutBatch } = useApp();
   const [viewMode, setViewMode] = useState<'active' | 'combined'>('active');
-  const [transactionFilter, setTransactionFilter] = useState<'all' | 'rent' | 'electricity' | 'token' | 'deposit' | 'adjustment'>('all');
+  const [transactionFilter, setTransactionFilter] = useState<'all' | 'rent' | 'electricity' | 'token' | 'deposit' | 'adjustment' | 'payout'>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const RECORDS_PER_PAGE = 10;
   const [payoutMonth, setPayoutMonth] = useState(format(new Date(), 'yyyy-MM'));
@@ -194,7 +194,7 @@ export const ReportsPage = () => {
      });
 
      // Only include expenses when filter is 'all' (specific payment type filters should exclude expenses)
-     const exps = transactionFilter === 'all' ? currentExpenses.map(e => ({
+     const exps = transactionFilter === 'all' || transactionFilter === 'adjustment' ? currentExpenses.map(e => ({
         type: 'expense',
         branch_name: (branches.find(b => b.id === (e.branchId || e.branch_id))?.name || 'Unknown'),
         date: e.date,
@@ -203,8 +203,21 @@ export const ReportsPage = () => {
         amount: -e.amount
      })) : [];
 
-     return [...revenue, ...exps].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [currentPayments, currentExpenses, branches, transactionFilter, rooms, tenants, rawData, shouldRenderCombined]);
+     const currentPayouts = rawData?.partnerPayouts?.filter((p: any) => shouldRenderCombined || p.branchId === currentBranch?.id) || [];
+     const payoutsArr = transactionFilter === 'all' || transactionFilter === 'payout' ? currentPayouts.filter((p: any) => p.status === 'PAID').map((p: any) => {
+        const partnerName = rawData.users?.find((u: any) => u.id === p.partnerId)?.name || 'Partner';
+        return {
+          type: 'expense',
+          branch_name: (branches.find(b => b.id === (p.branchId || p.branch_id))?.name || 'Unknown'),
+          date: p.createdAt || p.month,
+          category: 'Partner Payout',
+          description: `Profit Distribution — ${partnerName}`,
+          amount: -p.amount
+        };
+     }) : [];
+
+     return [...revenue, ...exps, ...payoutsArr].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [currentPayments, currentExpenses, branches, transactionFilter, rooms, tenants, rawData, shouldRenderCombined, currentBranch]);
 
   // Pagination calculations
   const totalPages = Math.max(1, Math.ceil(detailedLogs.length / RECORDS_PER_PAGE));
@@ -483,7 +496,7 @@ export const ReportsPage = () => {
                    <p className="text-[10px] font-bold text-gray-400 tracking-widest uppercase italic mt-1">Showing {paginatedLogs.length} of {detailedLogs.length} Records (Page {currentPage}/{totalPages})</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                   {(['all', 'rent', 'electricity', 'token', 'deposit', 'adjustment'] as const).map(filter => (
+                   {(['all', 'rent', 'electricity', 'token', 'deposit', 'adjustment', 'payout'] as const).map(filter => (
                       <button
                          key={filter}
                          onClick={() => setTransactionFilter(filter)}
@@ -617,366 +630,6 @@ export const ReportsPage = () => {
             )}
           </motion.div>
 
-          {/* Profit Sharing System — Complete Rework */}
-          {!shouldRenderCombined && (user?.role === 'super' || user?.role === 'admin' || user?.role === 'partner') && (() => {
-            // === Month options (last 12 months) ===
-            const monthOptions = Array.from({ length: 12 }, (_, i) => {
-              const d = subMonths(new Date(), i);
-              return { value: format(d, 'yyyy-MM'), label: format(d, 'MMMM yyyy') };
-            });
-
-            // === Rent-only revenue for the selected payoutMonth ===
-            const monthRentPayments = currentPayments.filter(p =>
-              p.month === payoutMonth &&
-              p.status === 'paid' &&
-              (p.paymentType || (p as any).payment_type || 'rent').toLowerCase() === 'rent'
-            );
-            const monthRentRevenue = monthRentPayments.reduce((sum, p) => sum + (p.totalAmount || (p as any).total_amount || 0), 0);
-
-            // === Expenses for the selected payoutMonth ===
-            const monthExpenseItems = currentExpenses.filter(e => e.month === payoutMonth && e.status !== 'rejected');
-            const monthExpenseTotal = monthExpenseItems.reduce((sum, e) => sum + (e.amount || 0), 0);
-
-            const monthSalaryItems = (shouldRenderCombined ? currentSalaries : salaryPayments).filter(s => s.month === payoutMonth && s.status === 'paid');
-            const monthSalaryTotal = monthSalaryItems.reduce((sum, s) => sum + (s.amount || 0), 0);
-
-            const totalExpenses = monthExpenseTotal + monthSalaryTotal;
-            const netProfit = monthRentRevenue - totalExpenses;
-
-            // === Partner shares ===
-            const branchShares = (rawData.partnerShares || [])
-              .filter((s: any) => s.branchId === currentBranch?.id && s.effectiveFrom <= payoutMonth)
-              .sort((a: any, b: any) => b.effectiveFrom.localeCompare(a.effectiveFrom));
-            const latestShareMonth = branchShares[0]?.effectiveFrom;
-            const activeShares = latestShareMonth ? branchShares.filter((s: any) => s.effectiveFrom === latestShareMonth) : [];
-            const totalRatio = activeShares.reduce((sum: number, s: any) => sum + s.ratio, 0);
-
-            // === Payout status ===
-            const rawPayouts = rawData.partnerPayouts || [];
-            const monthPayouts = rawPayouts.filter((p: any) => p.month === payoutMonth && p.branchId === (currentBranch?.id || null));
-            const isMonthLocked = monthPayouts.length > 0;
-
-            const isAdmin = user?.role === 'super' || user?.role === 'admin';
-            const isPartner = user?.role === 'partner';
-
-            // Resolve partner names from users array
-            const resolvePartnerName = (userId: string) => {
-              const u = users.find((u: any) => u.id === userId);
-              return u?.name || 'Partner';
-            };
-            const resolvePartnerEmail = (userId: string) => {
-              const u = users.find((u: any) => u.id === userId);
-              return u?.email || '';
-            };
-
-            // All rooms for description lookup
-            const allRooms = shouldRenderCombined ? (rawData.rooms || rooms) : rooms;
-            const allTenants = shouldRenderCombined ? (rawData.tenants || tenants) : tenants;
-            const allEmployees = rawData.employees || [];
-
-            return (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="col-span-1 lg:col-span-3 bg-white dark:bg-[#0d0d0d] rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm p-8 space-y-8"
-              >
-                {/* Header + Month Selector */}
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                  <div>
-                    <h3 className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-3 tracking-tight font-display">
-                      <TrendingUp className="w-6 h-6 text-emerald-500" />
-                      Profit Sharing & Payouts
-                    </h3>
-                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">
-                      {currentBranch?.name || 'Active Branch'} • {isMonthLocked && <span className="text-amber-500">🔒 LOCKED</span>}
-                    </p>
-                  </div>
-                  <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                    <select
-                      value={payoutMonth}
-                      onChange={(e) => setPayoutMonth(e.target.value)}
-                      className="pl-9 pr-10 py-2.5 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl text-sm font-bold text-gray-900 dark:text-white appearance-none cursor-pointer focus:ring-2 focus:ring-indigo-500/20 min-w-[200px]"
-                    >
-                      {monthOptions.map(m => (
-                        <option key={m.value} value={m.value}>{m.label}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                  </div>
-                </div>
-
-                {/* Summary Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="p-5 bg-emerald-50/50 dark:bg-emerald-500/5 rounded-2xl border border-emerald-100 dark:border-emerald-500/10">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Wallet className="w-4 h-4 text-emerald-500" />
-                      <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">Total Rent (Revenue)</span>
-                    </div>
-                    <p className="text-2xl font-black text-emerald-700 dark:text-emerald-300">₹{monthRentRevenue.toLocaleString()}</p>
-                    <p className="text-[10px] text-emerald-600/60 font-bold mt-1">{monthRentPayments.length} payment{monthRentPayments.length !== 1 ? 's' : ''}</p>
-                  </div>
-                  <div className="p-5 bg-rose-50/50 dark:bg-rose-500/5 rounded-2xl border border-rose-100 dark:border-rose-500/10">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Receipt className="w-4 h-4 text-rose-500" />
-                      <span className="text-[10px] font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest">Total Expenses</span>
-                    </div>
-                    <p className="text-2xl font-black text-rose-700 dark:text-rose-300">₹{totalExpenses.toLocaleString()}</p>
-                    <p className="text-[10px] text-rose-600/60 font-bold mt-1">Ops: ₹{monthExpenseTotal.toLocaleString()} + Salaries: ₹{monthSalaryTotal.toLocaleString()}</p>
-                  </div>
-                  <div className={cn(
-                    "p-5 rounded-2xl border",
-                    netProfit >= 0
-                      ? "bg-indigo-50/50 dark:bg-indigo-500/5 border-indigo-100 dark:border-indigo-500/10"
-                      : "bg-amber-50/50 dark:bg-amber-500/5 border-amber-100 dark:border-amber-500/10"
-                  )}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <DollarSign className={cn("w-4 h-4", netProfit >= 0 ? "text-indigo-500" : "text-amber-500")} />
-                      <span className={cn("text-[10px] font-black uppercase tracking-widest", netProfit >= 0 ? "text-indigo-600 dark:text-indigo-400" : "text-amber-600 dark:text-amber-400")}>Net Profit</span>
-                    </div>
-                    <p className={cn("text-2xl font-black", netProfit >= 0 ? "text-indigo-700 dark:text-indigo-300" : "text-amber-700 dark:text-amber-300")}>₹{netProfit.toLocaleString()}</p>
-                    <p className={cn("text-[10px] font-bold mt-1", netProfit >= 0 ? "text-indigo-600/60" : "text-amber-600/60")}>{netProfit >= 0 ? 'Distributable' : 'Loss — No payout'}</p>
-                  </div>
-                </div>
-
-                {/* Admin Detailed Breakdown */}
-                {isAdmin && (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Rent Collected */}
-                    <div className="space-y-3">
-                      <h4 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest border-b border-gray-100 dark:border-white/5 pb-2 flex items-center gap-2">
-                        <CreditCard className="w-4 h-4 text-emerald-500" />
-                        Rent Collected ({monthRentPayments.length})
-                      </h4>
-                      <div className="space-y-2 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
-                        {monthRentPayments.length === 0 ? (
-                          <p className="text-xs text-gray-400 italic p-4 text-center">No rent payments for this month</p>
-                        ) : monthRentPayments.map(p => {
-                          const room = allRooms.find((r: any) => r.id === p.roomId || r.id === (p as any).room_id);
-                          const tenant = allTenants.find((t: any) => t.id === p.tenantId || t.id === (p as any).tenant_id);
-                          return (
-                            <div key={p.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-white/[0.02] rounded-xl text-sm">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <div className="w-7 h-7 rounded-lg bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 flex items-center justify-center text-[10px] font-black shrink-0">
-                                  {(room?.roomNumber || room?.room_number || '?').toString().charAt(0)}
-                                </div>
-                                <span className="text-gray-700 dark:text-gray-300 font-medium truncate">
-                                  Room {room?.roomNumber || room?.room_number || '—'} — {tenant?.name || 'Tenant'}
-                                </span>
-                              </div>
-                              <span className="font-bold text-emerald-600 dark:text-emerald-400 shrink-0 ml-2">+₹{(p.totalAmount || 0).toLocaleString()}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Expenses */}
-                    <div className="space-y-3">
-                      <h4 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest border-b border-gray-100 dark:border-white/5 pb-2 flex items-center gap-2">
-                        <Receipt className="w-4 h-4 text-rose-500" />
-                        Expenses ({monthExpenseItems.length + monthSalaryItems.length})
-                      </h4>
-                      <div className="space-y-2 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
-                        {monthExpenseItems.length === 0 && monthSalaryItems.length === 0 ? (
-                          <p className="text-xs text-gray-400 italic p-4 text-center">No expenses for this month</p>
-                        ) : (
-                          <>
-                            {monthExpenseItems.map(e => (
-                              <div key={e.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-white/[0.02] rounded-xl text-sm">
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <span className="px-1.5 py-0.5 bg-rose-100 dark:bg-rose-500/10 text-rose-600 rounded text-[9px] font-black uppercase shrink-0">{e.category}</span>
-                                  <span className="text-gray-700 dark:text-gray-300 font-medium truncate">{e.title || e.description || 'Expense'}</span>
-                                </div>
-                                <span className="font-bold text-rose-600 dark:text-rose-400 shrink-0 ml-2">-₹{e.amount.toLocaleString()}</span>
-                              </div>
-                            ))}
-                            {monthSalaryItems.map(s => {
-                              const emp = allEmployees.find((e: any) => e.id === s.employeeId);
-                              return (
-                                <div key={s.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-white/[0.02] rounded-xl text-sm">
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <span className="px-1.5 py-0.5 bg-amber-100 dark:bg-amber-500/10 text-amber-600 rounded text-[9px] font-black uppercase shrink-0">Salary</span>
-                                    <span className="text-gray-700 dark:text-gray-300 font-medium truncate">{emp?.name || 'Staff'}</span>
-                                  </div>
-                                  <span className="font-bold text-rose-600 dark:text-rose-400 shrink-0 ml-2">-₹{s.amount.toLocaleString()}</span>
-                                </div>
-                              );
-                            })}
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Partner Share Table */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between border-b border-gray-100 dark:border-white/5 pb-2">
-                    <h4 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest flex items-center gap-2">
-                      <Users className="w-4 h-4 text-indigo-500" />
-                      Partner Shares
-                    </h4>
-                    {isMonthLocked && (
-                      <span className="flex items-center gap-1 px-2.5 py-1 bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-lg text-[10px] font-black uppercase">
-                        <Lock className="w-3 h-3" /> Locked
-                      </span>
-                    )}
-                  </div>
-
-                  {activeShares.length === 0 ? (
-                    <div className="p-6 text-center border-2 border-dashed border-gray-100 dark:border-white/5 rounded-2xl">
-                      <p className="text-xs text-gray-400 font-bold">No partner ratios defined for this month.</p>
-                      <p className="text-[10px] text-gray-400 mt-1">Configure ratios in the Employees → Partners tab.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {totalRatio !== 100 && isAdmin && (
-                        <p className="text-xs text-amber-500 font-bold bg-amber-50 dark:bg-amber-500/10 px-4 py-2 rounded-xl">⚠ Total ratio is {totalRatio}% — must equal 100% before processing payouts.</p>
-                      )}
-                      {activeShares
-                        // Only show partner-role users — admins/super cannot receive payouts
-                        .filter((s: any) => {
-                          const u = users.find((usr: any) => usr.id === s.userId);
-                          return u?.role === 'partner';
-                        })
-                        .map((s: any) => {
-                          const shareAmount = netProfit > 0 ? Math.round((netProfit * s.ratio) / 100) : 0;
-                          const payout = monthPayouts.find((p: any) => p.partnerId === s.userId);
-                          const isPaid = !!payout;
-                          const paidAmount = payout?.amount || shareAmount;
-
-                          // Partner can only see their own share
-                          if (isPartner && s.userId !== user?.id) return null;
-
-                          return (
-                            <div key={s.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-white/[0.02] rounded-2xl border border-gray-100 dark:border-white/5 hover:border-indigo-200 dark:hover:border-indigo-500/20 transition-all gap-4">
-                              {/* Partner Info */}
-                              <div className="flex items-center gap-3 min-w-0 flex-1">
-                                <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-black shrink-0">
-                                  {resolvePartnerName(s.userId).charAt(0)}
-                                </div>
-                                <div className="min-w-0">
-                                  <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{resolvePartnerName(s.userId)}</p>
-                                  <p className="text-[10px] text-gray-400 font-medium truncate">{resolvePartnerEmail(s.userId)} • {s.ratio}% share</p>
-                                </div>
-                              </div>
-
-                              {/* Amount + Action */}
-                              <div className="flex items-center gap-3 shrink-0">
-                                <div className="text-right">
-                                  <p className="text-lg font-black text-gray-900 dark:text-white">₹{paidAmount.toLocaleString()}</p>
-                                  <span className={cn(
-                                    "px-2 py-0.5 text-[9px] font-black rounded-md uppercase tracking-wider",
-                                    isPaid ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600" :
-                                    netProfit > 0 ? "bg-amber-50 dark:bg-amber-500/10 text-amber-600" :
-                                    "bg-gray-100 dark:bg-white/5 text-gray-400"
-                                  )}>
-                                    {isPaid ? 'PAID' : netProfit > 0 ? 'PENDING' : '—'}
-                                  </span>
-                                </div>
-
-                                {/* Per-Partner Pay Button — Admin/Super only */}
-                                {isAdmin && (
-                                  isPaid ? (
-                                    <div className="flex items-center gap-1 px-3 py-2 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 rounded-xl text-[10px] font-black">
-                                      <Lock className="w-3 h-3" /> Paid
-                                    </div>
-                                  ) : (
-                                    <button
-                                      disabled={netProfit <= 0 || totalRatio !== 100}
-                                      onClick={async () => {
-                                        const ok = await processPartnerPayoutBatch([{
-                                          partnerId: s.userId,
-                                          month: payoutMonth,
-                                          branchId: currentBranch?.id || null,
-                                          amount: shareAmount,
-                                          status: 'PAID' as 'PAID' | 'PENDING'
-                                        }]);
-                                        if (ok) toast.success(`Paid ₹${shareAmount.toLocaleString()} to ${resolvePartnerName(s.userId)}`);
-                                      }}
-                                      className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-[11px] font-black uppercase tracking-wider shadow-md shadow-emerald-600/20 hover:bg-emerald-700 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-                                    >
-                                      Pay ₹{shareAmount.toLocaleString()}
-                                    </button>
-                                  )
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                    </div>
-                  )}
-                </div>
-
-                {/* Partial lock notice if some paid, some pending */}
-                {isAdmin && activeShares.length > 0 && monthPayouts.length > 0 && monthPayouts.length < activeShares.filter((s: any) => {
-                  const u = users.find((usr: any) => usr.id === s.userId);
-                  return u?.role === 'partner';
-                }).length && (
-                  <div className="flex items-center gap-2 px-4 py-3 bg-amber-50 dark:bg-amber-500/10 rounded-xl border border-amber-100 dark:border-amber-500/20">
-                    <span className="text-xs text-amber-600 font-bold">⏳ Partial payout — {monthPayouts.length} of {activeShares.filter((s: any) => users.find((u: any) => u.id === s.userId)?.role === 'partner').length} partners paid for {format(parseISO(payoutMonth + '-01'), 'MMMM yyyy')}</span>
-                  </div>
-                )}
-
-                {/* Payout History */}
-                <div className="space-y-4">
-                  <h4 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest border-b border-gray-100 dark:border-white/5 pb-2">Payout History</h4>
-                  <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                    {(() => {
-                      const branchContextId = currentBranch?.id || null;
-                      const allPayouts = rawData.partnerPayouts || [];
-                      const relevantPayouts = allPayouts.filter((p: any) => p.branchId === branchContextId);
-
-                      // For partner role, filter to only their payouts
-                      const filteredPayouts = isPartner
-                        ? relevantPayouts.filter((p: any) => p.partnerId === user?.id)
-                        : relevantPayouts;
-
-                      const grouped = filteredPayouts.reduce((acc: any, p: any) => {
-                        if (!acc[p.month]) acc[p.month] = { month: p.month, total: 0, payouts: [] };
-                        acc[p.month].total += p.amount;
-                        acc[p.month].payouts.push(p);
-                        return acc;
-                      }, {});
-
-                      const groupedArr = Object.values(grouped).sort((a: any, b: any) => b.month.localeCompare(a.month));
-
-                      if (groupedArr.length === 0) {
-                        return (
-                          <div className="h-32 flex flex-col items-center justify-center p-8 border-2 border-dashed border-gray-100 dark:border-white/5 rounded-3xl opacity-50">
-                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">No payout history yet</p>
-                          </div>
-                        );
-                      }
-
-                      return groupedArr.map((g: any) => (
-                        <div key={g.month} className="p-4 bg-emerald-50/30 dark:bg-emerald-500/5 rounded-2xl border border-emerald-100 dark:border-emerald-500/10">
-                          <div className="flex justify-between items-center mb-3">
-                            <span className="text-sm font-black text-gray-900 dark:text-white flex items-center gap-2">
-                              <Lock className="w-3 h-3 text-amber-500" />
-                              {format(parseISO(g.month + '-01'), 'MMMM yyyy')}
-                            </span>
-                            <span className="text-xs font-black text-emerald-600">₹{g.total.toLocaleString()} {isPartner ? 'Your Share' : 'Total Paid'}</span>
-                          </div>
-                          {!isPartner && (
-                            <div className="grid grid-cols-2 gap-2">
-                              {g.payouts.map((item: any) => (
-                                <div key={item.id} className="flex justify-between items-center text-[10px] bg-white dark:bg-black/20 p-2 rounded-lg">
-                                  <span className="text-gray-500 font-bold truncate">{resolvePartnerName(item.partnerId)}</span>
-                                  <span className="font-bold text-gray-900 dark:text-white">₹{item.amount.toLocaleString()}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ));
-                    })()}
-                  </div>
-                </div>
-              </motion.div>
-            );
-          })()}
         </div>
       </div>
   );

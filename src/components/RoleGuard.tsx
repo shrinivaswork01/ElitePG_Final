@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { UserRole } from '../types';
 
@@ -10,6 +10,7 @@ interface RoleGuardProps {
 
 export const RoleGuard = ({ children, requiredLevel }: RoleGuardProps) => {
   const { user, isInitializing } = useAuth();
+  const { branchId } = useParams<{ branchId: string }>();
 
   if (isInitializing) return null;
   
@@ -42,9 +43,9 @@ export const RoleGuard = ({ children, requiredLevel }: RoleGuardProps) => {
 
   if (userLevel < requiredLevel) {
     console.warn(`[RoleGuard] Access Denied: User role "${user.role}" (Level ${userLevel}) < Required Level ${requiredLevel}. Redirecting to dashboard.`);
-    // Safely fallback to user's assigned dashboard path
-    const fallbackRoute = user.role === 'super' ? '/branches' : '/';
-    return <Navigate to={fallbackRoute} replace />;
+    // Safely fallback to user's branch dashboard
+    const fallback = branchId ? `/branch/${branchId}/dashboard` : '/';
+    return <Navigate to={fallback} replace />;
   }
 
   return <>{children}</>;

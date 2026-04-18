@@ -13,7 +13,7 @@ interface BranchSwitcherProps {
 }
 
 export const BranchSwitcher: React.FC<BranchSwitcherProps> = ({ collapsed, onAddBranch }) => {
-  const { branches, pgConfig } = useApp();
+  const { branches } = useApp();
   const { user, switchBranch } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -34,18 +34,23 @@ export const BranchSwitcher: React.FC<BranchSwitcherProps> = ({ collapsed, onAdd
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  // ❌ HIDE for Super Admin — they use Platform Management instead
+  if (user?.role === 'super') return null;
+
+  // Only show for admin/partner (and multi-branch employees)
   const userBranchIds = user?.branchIds || (user?.branchId ? [user.branchId] : []);
   const ownedBranches = branches.filter(b => userBranchIds.includes(b.id));
   const activeBranch = branches.find(b => b.id === activeBranchId);
 
-  // Don't render if user only has one branch (no switching needed)
-  if (ownedBranches.length <= 1 && !onAddBranch) return null;
+  // Admin/partner: ALWAYS show (even with 1 branch — shows clearly which branch is active)
+  // Employees/tenants: only show if they have multiple branches
+  const showSwitcher = ['admin', 'partner'].includes(user?.role || '') || ownedBranches.length > 1 || !!onAddBranch;
+  if (!showSwitcher) return null;
 
   const handleSwitch = async (branchId: string) => {
     if (branchId === activeBranchId) return;
     const toastId = toast.loading('Switching branch...');
     try {
-      // Sync AuthContext (optional but good for persistence)
       switchBranch(branchId);
       
       // Extract current sub-path to maintain context (e.g., /branch/123/reports -> /reports)
@@ -108,7 +113,7 @@ export const BranchSwitcher: React.FC<BranchSwitcherProps> = ({ collapsed, onAdd
             {activeBranch?.branchName || activeBranch?.name || 'Select Branch'}
           </p>
           <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
-            {activeBranch?.name || 'No branch selected'}
+            {activeBranch?.address?.split(',')[0] || activeBranch?.name || 'No branch selected'}
           </p>
         </div>
         <ChevronDown className={cn(
@@ -128,7 +133,7 @@ export const BranchSwitcher: React.FC<BranchSwitcherProps> = ({ collapsed, onAdd
           >
             <BranchList
               branches={ownedBranches}
-              activeBranchId={user?.branchId}
+              activeBranchId={activeBranchId}
               onSelect={handleSwitch}
               onAddBranch={onAddBranch}
             />
@@ -139,7 +144,7 @@ export const BranchSwitcher: React.FC<BranchSwitcherProps> = ({ collapsed, onAdd
   );
 };
 
-// Shared branch list used in both expanded and collapsed modes
+// Shared branch list — single branch selection only, no "Combined View"
 const BranchList: React.FC<{
   branches: any[];
   activeBranchId?: string;
@@ -152,6 +157,7 @@ const BranchList: React.FC<{
         Your Branches ({branches.length})
       </p>
     </div>
+
     {branches.map(branch => (
       <button
         key={branch.id}
@@ -174,7 +180,7 @@ const BranchList: React.FC<{
             {branch.branchName || branch.name}
           </p>
           <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
-            {branch.name} • {branch.address?.split(',')[0] || ''}
+            {branch.address?.split(',')[0] || branch.name || ''}
           </p>
         </div>
         {branch.id === activeBranchId && (

@@ -356,18 +356,12 @@ export const Dashboard = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.1 }}
-              onClick={(e) => {
-                if (stat.onClick) {
-                  e.preventDefault();
-                  stat.onClick();
-                }
-              }}
-              className="bg-white dark:bg-[#111111] p-6 rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm hover:shadow-xl hover:shadow-indigo-500/5 hover:-translate-y-1 transition-all group h-full cursor-pointer relative overflow-hidden"
+              className="bg-white dark:bg-[#111111] p-6 rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm transition-all group h-full relative overflow-hidden"
             >
               <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-indigo-500/5 to-transparent rounded-bl-[100px] -mr-8 -mt-8 transition-transform group-hover:scale-110" />
               
               <div className="flex items-start justify-between relative z-10">
-                <div className={cn("p-4 rounded-2xl text-white shadow-lg transition-all group-hover:scale-110 group-hover:rotate-3", stat.color)}>
+                <div className={cn("p-4 rounded-2xl text-white shadow-lg transition-all", stat.color)}>
                   <stat.icon className="w-6 h-6" />
                 </div>
                 <div className={cn(
@@ -394,7 +388,7 @@ export const Dashboard = () => {
               </div>
               <div className="mt-8 relative z-10">
                 <p className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] mb-1">{stat.label}</p>
-                <h3 className="text-3xl font-black text-gray-900 dark:text-white tracking-tighter transition-all group-hover:translate-x-1">{stat.value}</h3>
+                <h3 className="text-3xl font-black text-gray-900 dark:text-white tracking-tighter">{stat.value}</h3>
               </div>
             </motion.div>
           );
@@ -410,11 +404,7 @@ export const Dashboard = () => {
             );
           }
 
-          return stat.link ? (
-            <Link key={stat.label} to={stat.link} className="block">
-              {CardContent}
-            </Link>
-          ) : (
+          return (
             <div key={stat.label} className="block">
               {CardContent}
             </div>

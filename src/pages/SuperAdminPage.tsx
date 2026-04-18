@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import toast from 'react-hot-toast';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
 import { 
   Building2, 
   Plus, 
@@ -48,10 +49,11 @@ export const SuperAdminPage = () => {
   const primaryBranch = branches.find(b => b.id === user?.branchId) || branches.find(b => user?.branchIds?.includes(b.id));
   const currentPlan = subscriptionPlans.find(plan => plan.id === primaryBranch?.planId);
   
-  const [activeTab, setActiveTab] = useState<'branches' | 'subscriptions'>('branches');
+  const [activeTab, setActiveTab] = useState<'branches' | 'subscriptions' | 'admins'>('branches');
   const [isAddingBranch, setIsAddingBranch] = useState(false);
   const [isAddingPlan, setIsAddingPlan] = useState(false);
   const [isAssigningPlan, setIsAssigningPlan] = useState(false);
+  const [isHandlingAdmin, setIsHandlingAdmin] = useState(false);
   
   const [editingBranch, setEditingBranch] = useState<PGBranch | null>(null);
   const [editingPlan, setEditingPlan] = useState<SubscriptionPlan | null>(null);
@@ -61,6 +63,15 @@ export const SuperAdminPage = () => {
   const [billingInterval, setBillingInterval] = useState<'monthly' | 'yearly'>('monthly');
 
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Admin Form State
+  const [adminForm, setAdminForm] = useState({
+    name: '', username: '', email: '', phone: '', password: '', role: 'admin' as UserRole, branchId: ''
+  });
+  const [editingAdmin, setEditingAdmin] = useState<User | null>(null);
+  const [adminPermissions, setAdminPermissions] = useState<Record<string, boolean>>({});
+  const [isPermissionsModalOpen, setIsPermissionsModalOpen] = useState(false);
+  const [selectedAdminForPerms, setSelectedAdminForPerms] = useState<User | null>(null);
 
   // Branch Form State
   const [branchForm, setBranchForm] = useState({ name: '', branchName: '', address: '', phone: '', razorpayKeyId: '' });
@@ -166,15 +177,114 @@ export const SuperAdminPage = () => {
       .reduce((sum, p) => sum + p.totalAmount, 0);
   };
 
+  const handleSaveAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // For partner creation: auto-assign all admin's branches
+    const isPartnerRole = adminForm.role === 'partner';
+    const adminBranchIds = user?.branchIds || (user?.branchId ? [user.branchId] : []);
+    const assignedBranchId = isPartnerRole 
+      ? (adminBranchIds[0] || adminForm.branchId)
+      : adminForm.branchId;
+
+    if (editingAdmin) {
+      const updates: any = { 
+        name: adminForm.name, 
+        email: adminForm.email, 
+        phone: adminForm.phone,
+        role: adminForm.role,
+        branchId: assignedBranchId
+      };
+      // If partner, sync branchIds with admin's branches
+      if (isPartnerRole) {
+        updates.branchIds = adminBranchIds;
+      }
+      await updateUser(editingAdmin.id, updates);
+      toast.success('Updated successfully');
+    } else {
+      // Duplicate check
+      const isDuplicate = users.some(u => 
+        u.email.toLowerCase() === adminForm.email.toLowerCase() ||
+        (adminForm.phone && u.phone === adminForm.phone)
+      );
+      if (isDuplicate) {
+        toast.error('A user with this email or phone already exists.');
+        return;
+      }
+
+      const { success, message, user: newUser } = await register({
+        username: adminForm.username,
+        name: adminForm.name,
+        email: adminForm.email,
+        phone: adminForm.phone,
+        role: adminForm.role,
+        branchId: assignedBranchId,
+        isAuthorized: true
+      }, adminForm.password || '123456');
+      
+      if (success) {
+        // For partner: update branchIds to inherit all admin/super's branches
+        if (isPartnerRole && newUser?.id) {
+          await updateUser(newUser.id, { branchIds: adminBranchIds });
+        }
+        toast.success(`${isPartnerRole ? 'Partner' : 'Admin'} created successfully`);
+      } else if (message) {
+        toast.error(message);
+      }
+    }
+    setIsHandlingAdmin(false);
+  };
+
+  const loadAdminPermissions = async (adminId: string) => {
+    try {
+      const { data } = await supabase.from('admin_permissions').select('module_name, is_enabled').eq('admin_id', adminId);
+      const permMap: Record<string, boolean> = {};
+      
+      const allModules: AppFeature[] = ['tenants', 'rooms', 'payments', 'complaints', 'reports', 'partner-payouts', 'expenses', 'tasks', 'employees', 'broadcast', 'kyc'];
+      allModules.forEach(mod => permMap[mod] = false);
+
+      if (data) {
+        data.forEach((p: any) => {
+          permMap[p.module_name.replace(/^\//,'')] = p.is_enabled;
+        });
+      }
+      setAdminPermissions(permMap);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleSavePermissions = async () => {
+    if (!selectedAdminForPerms) return;
+    try {
+      const inserts = Object.entries(adminPermissions).map(([mod, isEnabled]) => ({
+        admin_id: selectedAdminForPerms.id,
+        module_name: `/${mod}`,
+        is_enabled: isEnabled
+      }));
+
+      // In a real app we'd upsert, deleting existing is easiest here since we use unique constraints
+      await supabase.from('admin_permissions').delete().eq('admin_id', selectedAdminForPerms.id);
+      if (inserts.length > 0) {
+        await supabase.from('admin_permissions').insert(inserts);
+      }
+      toast.success('Permissions updated');
+      setIsPermissionsModalOpen(false);
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to update permissions');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
-            {user?.role === 'super' ? 'Super Admin Panel' : 'Manage My Branches'}
+            {user?.role === 'super' ? 'Platform Management' : 'Manage My Branches'}
           </h2>
           <p className="text-gray-500 dark:text-gray-400">
-            {user?.role === 'super' ? 'Manage PG branches and system administrators' : 'Add and manage your PG properties'}
+            {user?.role === 'super' ? 'Manage PG branches, admins, and subscriptions' : 'Add and manage your PG properties'}
           </p>
         </div>
         <div className="flex gap-2">
@@ -188,6 +298,15 @@ export const SuperAdminPage = () => {
                 )}
               >
                 PG Branches
+              </button>
+              <button
+                onClick={() => setActiveTab('admins')}
+                className={cn(
+                  "px-4 py-2 rounded-xl text-sm font-bold transition-all",
+                  activeTab === 'admins' ? "bg-indigo-600 text-white shadow-sm" : "bg-white dark:bg-[#111111] text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5"
+                )}
+              >
+                Admins
               </button>
               <button
                 onClick={() => setActiveTab('subscriptions')}
@@ -227,6 +346,19 @@ export const SuperAdminPage = () => {
             >
               <Building2 className="w-4 h-4" />
               New Branch
+            </button>
+          )}
+          {activeTab === 'admins' && user?.role === 'super' && (
+            <button
+              onClick={() => {
+                setEditingAdmin(null);
+                setAdminForm({ name: '', username: '', email: '', phone: '', password: '', role: 'admin', branchId: '' });
+                setIsHandlingAdmin(true);
+              }}
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl transition-all shadow-sm"
+            >
+              <UserPlus className="w-4 h-4" />
+              New Admin
             </button>
           )}
           {activeTab === 'subscriptions' && (
@@ -341,6 +473,63 @@ export const SuperAdminPage = () => {
                       </span>
                     </div>
                   )}
+                </div>
+              </div>
+            ))}
+          </motion.div>
+        )}
+
+        {activeTab === 'admins' && (
+          <motion.div
+            key="admins"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+          >
+            {users.filter(u => u.role === 'admin' || u.role === 'partner').map((admin) => (
+              <div key={admin.id} className="bg-white dark:bg-[#111111] rounded-[24px] border border-gray-200 dark:border-white/5 overflow-hidden shadow-sm hover:shadow-xl transition-all group relative">
+                <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                  <button 
+                    onClick={() => {
+                      setEditingAdmin(admin);
+                      setAdminForm({
+                         name: admin.name, username: admin.username, email: admin.email, phone: admin.phone || '', role: admin.role, password: '', branchId: admin.branchId || ''
+                      });
+                      setIsHandlingAdmin(true);
+                    }} 
+                    className="p-2 bg-white/90 dark:bg-black/50 backdrop-blur rounded-xl text-indigo-600 dark:text-indigo-400 shadow-sm"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setSelectedAdminForPerms(admin);
+                      loadAdminPermissions(admin.id);
+                      setIsPermissionsModalOpen(true);
+                    }} 
+                    className="p-2 bg-white/90 dark:bg-black/50 backdrop-blur rounded-xl text-emerald-600 dark:text-emerald-400 shadow-sm whitespace-nowrap px-3 font-bold text-xs"
+                  >
+                    <ShieldCheck className="w-3 h-3 inline mr-1" /> Perms
+                  </button>
+                  <button onClick={() => deleteUser(admin.id)} className="p-2 bg-white/90 dark:bg-black/50 backdrop-blur rounded-xl text-red-600 shadow-sm">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+                
+                <div className="p-6">
+                  <div className="flex items-center gap-4 mb-4">
+                    <img src={admin.avatar || `https://ui-avatars.com/api/?name=${admin.name}&background=6366f1&color=fff`} className="w-12 h-12 rounded-2xl" alt={admin.name} />
+                    <div>
+                      <h3 className="text-lg font-black text-gray-900 dark:text-white truncate">{admin.name}</h3>
+                      <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">{admin.role}</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2 mt-4 text-xs font-medium text-gray-500">
+                     <p>{admin.email}</p>
+                     <p>{admin.phone || 'No phone'}</p>
+                     <p>Branch: {branches.find(b => b.id === admin.branchId)?.name || 'Global / Unassigned'}</p>
+                  </div>
                 </div>
               </div>
             ))}
@@ -782,6 +971,134 @@ export const SuperAdminPage = () => {
                   </button>
                 </div>
               </form>
+            </motion.div>
+    </div>
+        )}
+      </AnimatePresence>
+
+      {/* Add/Edit Admin Modal */}
+      <AnimatePresence>
+        {isHandlingAdmin && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white dark:bg-[#111111] rounded-2xl p-6 w-full max-w-lg border border-gray-200 dark:border-white/5 shadow-2xl"
+            >
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6">
+                {editingAdmin ? 'Edit Administrator' : 'Create New Administrator'}
+              </h3>
+              <form onSubmit={handleSaveAdmin} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Name</label>
+                    <input required type="text" value={adminForm.name} onChange={(e) => setAdminForm({ ...adminForm, name: e.target.value })} className="w-full px-4 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Username</label>
+                    <input required disabled={!!editingAdmin} type="text" value={adminForm.username} onChange={(e) => setAdminForm({ ...adminForm, username: e.target.value })} className="w-full px-4 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-xl outline-none" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Email</label>
+                    <input required type="email" value={adminForm.email} onChange={(e) => setAdminForm({ ...adminForm, email: e.target.value })} className="w-full px-4 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Phone <span className="lowercase font-normal text-gray-500">(Optional)</span></label>
+                    <input type="text" value={adminForm.phone} onChange={(e) => setAdminForm({ ...adminForm, phone: e.target.value })} className="w-full px-4 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-xl outline-none" />
+                  </div>
+                </div>
+
+                {!editingAdmin && (
+                  <div>
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Password</label>
+                    <input required type="password" value={adminForm.password} onChange={(e) => setAdminForm({ ...adminForm, password: e.target.value })} className="w-full px-4 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-xl outline-none" placeholder="Default: 123456" />
+                  </div>
+                )}
+                
+                <div className="grid grid-cols-2 gap-4">
+                   <div>
+                      <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Role</label>
+                      <select required value={adminForm.role} onChange={(e) => setAdminForm({ ...adminForm, role: e.target.value as UserRole })} className="w-full px-4 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-xl outline-none text-black">
+                        <option value="admin">Platform Admin</option>
+                        <option value="partner">Branch Partner</option>
+                      </select>
+                   </div>
+                   <div>
+                      {adminForm.role === 'partner' ? (
+                        <>
+                          <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Assigned Branches</label>
+                          <div className="mt-1 space-y-1 max-h-32 overflow-y-auto px-1">
+                            {(user?.role === 'super' ? branches : branches.filter(b => (user?.branchIds || []).includes(b.id))).map(b => (
+                              <div key={b.id} className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                                <span className="truncate">{b.branchName || b.name}</span>
+                              </div>
+                            ))}
+                            {(user?.role !== 'super' && (!user?.branchIds || user.branchIds.length === 0)) && (
+                              <p className="text-xs text-red-500 font-medium">No branches available. Create a branch first.</p>
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Assign Branch</label>
+                          <select required value={adminForm.branchId} onChange={(e) => setAdminForm({ ...adminForm, branchId: e.target.value })} className="w-full px-4 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-xl outline-none text-black">
+                            <option value="">Select branch...</option>
+                            {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                          </select>
+                        </>
+                      )}
+                   </div>
+                </div>
+
+                <div className="flex gap-3 mt-6">
+                  <button type="button" onClick={() => setIsHandlingAdmin(false)} className="flex-1 px-4 py-2 border text-gray-600 dark:text-gray-400 rounded-xl hover:bg-gray-50">Cancel</button>
+                  <button type="submit" className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700">Save</button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Permissions Modal */}
+      <AnimatePresence>
+        {isPermissionsModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white dark:bg-[#111111] rounded-[32px] p-8 w-full max-w-2xl border border-gray-200 dark:border-white/5 shadow-2xl"
+            >
+              <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Configure Base Access Tab Overrides</h3>
+              <p className="text-sm text-gray-500 mb-8">Override standard permission arrays for <strong className="text-indigo-500">{selectedAdminForPerms?.name}</strong>. Enabled items overwrite system defaults.</p>
+              
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-8">
+                {(Object.keys(adminPermissions)).map(feature => (
+                  <button
+                    key={feature}
+                    onClick={() => setAdminPermissions(prev => ({ ...prev, [feature]: !prev[feature] }))}
+                    className={cn(
+                      "px-4 py-3 rounded-xl text-xs font-black uppercase tracking-[0.05em] transition-all border text-left flex items-center justify-between",
+                      adminPermissions[feature]
+                        ? "bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-600/20"
+                        : "bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/5 text-gray-400 hover:border-indigo-500/30"
+                    )}
+                  >
+                    <span>{feature.replace('-', ' ')}</span>
+                    {adminPermissions[feature] && <CheckCircle2 className="w-4 h-4 ml-2 shrink-0" />}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex gap-4">
+                <button type="button" onClick={() => setIsPermissionsModalOpen(false)} className="flex-1 px-6 py-3 bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-400 rounded-2xl font-bold hover:bg-gray-200 dark:hover:bg-white/10 transition-colors">Cancel</button>
+                <button onClick={handleSavePermissions} className="flex-1 px-6 py-3 bg-emerald-600 text-white rounded-2xl font-bold shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-colors">Apply Configuration</button>
+              </div>
             </motion.div>
           </div>
         )}

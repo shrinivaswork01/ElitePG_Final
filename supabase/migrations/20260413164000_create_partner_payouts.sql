@@ -1,17 +1,19 @@
 -- Create partner_payouts table
 CREATE TABLE IF NOT EXISTS partner_payouts (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   partner_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
   month TEXT NOT NULL,
   branch_id UUID REFERENCES pg_branches(id) ON DELETE CASCADE,
   amount NUMERIC NOT NULL,
-  status TEXT DEFAULT 'PAID',
+  status TEXT DEFAULT 'REQUESTED', -- REQUESTED, PARTNER_APPROVED, PAID
+  requested_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  partner_approved_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  admin_approved_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
 -- Note: In combined mode, branch_id could potentially be NULL if we calculate combined, 
--- but normally people payout per-branch. The user specified "NULL for combined view".
--- I'll remove the NOT NULL constraint from branch_id to support this.
+-- but normally people payout per-branch.
 ALTER TABLE partner_payouts ALTER COLUMN branch_id DROP NOT NULL;
 
 -- Enable RLS
@@ -38,11 +40,11 @@ CREATE POLICY "Partners and admins can view their branch payouts"
     )
   );
 
--- Only super_admins can insert per requirements (and partners if strictly allowed depending on current branch context, let's allow inserts if user is an admin or partner for the specific branch_id)
-CREATE POLICY "Admins and partners can insert payouts"
+-- Allow admins/partners to insert and update based on workflow
+CREATE POLICY "Admins and partners can insert and update payouts"
   ON partner_payouts
-  FOR INSERT
-  WITH CHECK (
+  FOR ALL
+  USING (
     EXISTS (
       SELECT 1 FROM employees 
       WHERE user_id::uuid = auth.uid() 

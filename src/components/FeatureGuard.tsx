@@ -1,5 +1,4 @@
 import React from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { AppFeature } from '../types';
@@ -34,8 +33,6 @@ export const FeatureGuard: React.FC<FeatureGuardProps> = ({ feature, children, f
         <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto leading-relaxed mb-8">
           The <span className="font-bold text-indigo-600 dark:text-indigo-400 capitalize">{feature}</span> module is not included in your current subscription plan. Contact support or your Super Admin to upgrade.
         </p>
-        
-        <Navigate to="/branch/active/dashboard" replace />
       </div>
     );
   }

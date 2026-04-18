@@ -508,20 +508,20 @@ export const PaymentsPage = () => {
     paymentDate: new Date().toISOString().split('T')[0],
     month: format(new Date(), 'yyyy-MM'),
     status: 'paid',
-    method: 'Offline',
+    method: 'Cash',
     paymentType: 'rent'
   });
 
-  // Detect if this is a move-in first rent (tenant has move_in_date, token > 0, no prior rent paid)
+  // Detect if this is a move-in first rent (existing partial rent record that matches token)
   const isFirstRent = React.useMemo(() => {
     if (!newPayment.tenantId || newPayment.paymentType !== 'rent') return false;
     const tenant = tenants.find(t => t.id === newPayment.tenantId);
     if (!tenant) return false;
-    const hasToken = (tenant.tokenAmount || 0) > 0 && tenant.tokenStatus === 'paid';
-    const hasMoveIn = !!(tenant as any).moveInDate;
-    const hasPriorRent = payments.some(p => p.tenantId === tenant.id && p.paymentType === 'rent' && p.status === 'paid');
-    return hasToken && hasMoveIn && !hasPriorRent;
-  }, [newPayment.tenantId, newPayment.paymentType, tenants, payments]);
+    
+    // Check if there is an existing rent payment for this month that matches the token amount
+    const existingRent = payments.find(p => p.tenantId === tenant.id && p.month === newPayment.month && p.status === 'paid' && p.paymentType === 'rent');
+    return !!existingRent && existingRent.amount === tenant.tokenAmount && existingRent.amount < tenant.rentAmount;
+  }, [newPayment.tenantId, newPayment.paymentType, newPayment.month, tenants, payments]);
 
   // Move-in first rent amount (rent - token)
   const firstRentAmount = React.useMemo(() => {
@@ -562,9 +562,23 @@ export const PaymentsPage = () => {
           linkedBillId = bill.id;
         }
 
-        const existingPayment = payments.find(p => p.tenantId === newPayment.tenantId && p.month === newPayment.month && p.paymentType === newPayment.paymentType);
-        if (existingPayment) {
-          toast.error(`A ${newPayment.paymentType} payment record already exists for this tenant for ${newPayment.month}.`);
+        const existingPaymentForMonth = payments.find(p => p.tenantId === newPayment.tenantId && p.month === newPayment.month && p.paymentType === newPayment.paymentType);
+        
+        if (newPayment.paymentType === 'rent') {
+          if (existingPaymentForMonth && !isFirstRent) {
+            toast.error('Payment already recorded for this tenant for selected month');
+            return;
+          }
+        } else {
+          if (existingPaymentForMonth) {
+            toast.error(`A ${newPayment.paymentType} payment record already exists for this tenant for ${newPayment.month}.`);
+            return;
+          }
+        }
+
+        // Amount > 0 validation
+        if (newPayment.amount <= 0 && (!adjustFromDeposit || depositAdjustAmount <= 0)) {
+          toast.error('Amount must be greater than zero.');
           return;
         }
 
@@ -593,19 +607,33 @@ export const PaymentsPage = () => {
           return;
         }
 
-        await addPayment({
-          ...newPayment,
-          amount: effectiveAmount,
-          totalAmount: effectiveTotal,
-          branchId: tenant?.branchId || user?.branchId || '',
-          electricityBillId: linkedBillId,
-          electricityAmount: newPayment.paymentType === 'electricity' ? newPayment.amount : 0,
-          electricity_amount: newPayment.paymentType === 'electricity' ? newPayment.amount : 0,
-          base_share: 0,
-          ac_share: 0,
-          units_consumed: 0,
-          cost_per_unit: 0,
-        } as any);
+        if (newPayment.paymentType === 'rent' && isFirstRent) {
+          const existingRent = payments.find(p => p.tenantId === newPayment.tenantId && p.month === newPayment.month && p.paymentType === 'rent');
+          if (existingRent) {
+            await updatePayment(existingRent.id, {
+              ...existingRent,
+              amount: tenant.rentAmount,
+              totalAmount: tenant.rentAmount + (newPayment.lateFee || 0),
+              paymentDate: newPayment.paymentDate,
+              method: newPayment.method,
+              status: 'paid'
+            });
+          }
+        } else {
+          await addPayment({
+            ...newPayment,
+            amount: effectiveAmount,
+            totalAmount: effectiveTotal,
+            branchId: tenant?.branchId || user?.branchId || '',
+            electricityBillId: linkedBillId,
+            electricityAmount: newPayment.paymentType === 'electricity' ? newPayment.amount : 0,
+            electricity_amount: newPayment.paymentType === 'electricity' ? newPayment.amount : 0,
+            base_share: 0,
+            ac_share: 0,
+            units_consumed: 0,
+            cost_per_unit: 0,
+          } as any);
+        }
 
         // If deposit adjustment was used, record an ADJUST payment and update tenant deposit_balance
         if (adjustFromDeposit && depositAdjustAmount > 0) {
@@ -638,7 +666,7 @@ export const PaymentsPage = () => {
           paymentDate: new Date().toISOString().split('T')[0],
           month: format(new Date(), 'yyyy-MM'),
           status: 'paid',
-          method: 'Offline',
+          method: 'Cash',
           paymentType: 'rent'
         });
         refetchPayments();
@@ -1792,7 +1820,7 @@ export const PaymentsPage = () => {
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Payment Method</label>
                     <div className="flex gap-2">
-                      {['Online', 'Cash', 'Offline'].map((method) => (
+                      {['Online', 'Cash'].map((method) => (
                         <button
                           key={method}
                           type="button"
