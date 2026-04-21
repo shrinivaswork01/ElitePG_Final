@@ -20,6 +20,13 @@ export interface SubscriptionPlan {
   razorpayAnnualPlanId?: string;  // Razorpay plan ID for annual billing
 }
 
+export interface BranchTabPermission {
+  id: string;
+  branchId: string;
+  moduleName: AppFeature;
+  isEnabled: boolean;
+}
+
 export interface PGBranch {
   id: string;
   name: string; // PG Name

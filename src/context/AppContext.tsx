@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useMemo, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { format } from 'date-fns';
-import { Tenant, Room, Payment, Complaint, Employee, KYCData, Announcement, SalaryPayment, Task, PGConfig, PGBranch, RolePermissions, SubscriptionPlan, AppFeature, KYCStatus, UserInvite, MeterGroup, Expense, ExpenseStatus, PartnerShare, ProfitDistribution } from '../types';
+import { Tenant, Room, Payment, Complaint, Employee, KYCData, Announcement, SalaryPayment, Task, PGConfig, PGBranch, RolePermissions, SubscriptionPlan, AppFeature, KYCStatus, UserInvite, MeterGroup, Expense, ExpenseStatus, PartnerShare, ProfitDistribution, BranchTabPermission } from '../types';
 import { uploadToSupabase, deleteFromSupabase } from '../utils/storage';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
@@ -28,6 +28,7 @@ interface AppContextType {
   tenantDepositLogs: any[];
   partnerShares: PartnerShare[];
   profitDistributions: ProfitDistribution[];
+  branchTabPermissions: BranchTabPermission[];
 
   // Actions
   addTenant: (tenant: Omit<Tenant, 'id' | 'branchId'> & { branchId?: string }, kycDoc?: { type: string, file?: File, url?: string }, rentAgreementDoc?: { file?: File, url?: string }) => Promise<void>;
@@ -85,6 +86,7 @@ interface AppContextType {
   updateSubscriptionPlan: (id: string, updates: Partial<SubscriptionPlan>) => Promise<boolean>;
   deleteSubscriptionPlan: (id: string) => Promise<void>;
   updateBranchSubscription: (branchId: string, planId: string, status: 'active' | 'expired' | 'trial', endDate: string, razorpayCustomerId?: string, razorpaySubscriptionId?: string) => Promise<void>;
+  toggleBranchTabPermission: (branchId: string, moduleName: AppFeature, isEnabled: boolean) => Promise<void>;
   checkFeatureAccess: (feature: AppFeature) => boolean;
   fetchData: () => Promise<void>;
 
@@ -135,7 +137,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       expenses: [],
       tenantDepositLogs: [],
       partnerShares: [],
-      profitDistributions: []
+      profitDistributions: [],
+      branchTabPermissions: []
     };
 
     if (cached) {
@@ -160,7 +163,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const fetchData = useCallback(async () => {
     // We only fetch data if user is logged in
     if (!userId) {
-      setData({ tenants: [], rooms: [], payments: [], complaints: [], employees: [], kycs: [], announcements: [], salaryPayments: [], tasks: [], pgConfigs: [], branches: [], subscriptionPlans: [], userInvites: [], superSignatureUrl: null, expenses: [], tenantDepositLogs: [], partnerShares: [], profitDistributions: [] });
+      setData({ tenants: [], rooms: [], payments: [], complaints: [], employees: [], kycs: [], announcements: [], salaryPayments: [], tasks: [], pgConfigs: [], branches: [], subscriptionPlans: [], userInvites: [], superSignatureUrl: null, expenses: [], tenantDepositLogs: [], partnerShares: [], profitDistributions: [], branchTabPermissions: [] });
       setIsAppLoading(false);
       localStorage.removeItem('elite_pg_cached_data');
       return;
@@ -247,6 +250,24 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         branchQuery(supabase.from('partner_shares').select('*')),
         branchQuery(supabase.from('profit_distributions').select('*'))
       ]);
+
+      // Fetch tab permissions separately for better error handling
+      let tabPermissions: any[] = [];
+      try {
+        const tabPermsResult = await supabase.from('branch_tab_permissions').select('*');
+        if (tabPermsResult.error) {
+          console.warn('[TabPermissions] Query error:', tabPermsResult.error.message);
+          // Preserve existing permissions if query fails
+          tabPermissions = data.branchTabPermissions?.map((tp: any) => ({
+            id: tp.id, branch_id: tp.branchId, module_name: tp.moduleName, is_enabled: tp.isEnabled
+          })) || [];
+        } else {
+          tabPermissions = tabPermsResult.data || [];
+        }
+      } catch (e) {
+        console.warn('[TabPermissions] Exception:', e);
+        tabPermissions = [];
+      }
 
       const newData = {
         branches: (branches || []).map(b => ({
@@ -342,6 +363,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           id: d.id, branchId: d.branch_id, month: d.month, totalRevenue: d.total_revenue,
           totalExpenses: d.total_expenses, netProfit: d.net_profit, distributions: d.distributions
         })),
+        branchTabPermissions: (tabPermissions || []).map(tp => ({
+          id: tp.id, branchId: tp.branch_id, moduleName: tp.module_name as AppFeature, isEnabled: tp.is_enabled
+        })),
         superSignatureUrl: superUserSignature?.signature_url || null
       };
       
@@ -418,6 +442,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       tenantDepositLogs: (data.tenantDepositLogs || []).filter((l: any) => l.branchId === branchId),
       partnerShares: (data.partnerShares || []).filter((s: any) => s.branchId === branchId),
       profitDistributions: (data.profitDistributions || []).filter((d: any) => d.branchId === branchId),
+      branchTabPermissions: (data.branchTabPermissions || []).filter((tp: any) => tp.branchId === branchId),
       pgConfig: (data.pgConfigs || []).find((c: PGConfig) => c.branchId === branchId) || null,
       subscriptionPlans: data.subscriptionPlans || [],
       branches: data.branches || [],
@@ -430,19 +455,66 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const checkFeatureAccess = (feature: AppFeature) => {
     if (user?.role === 'super') return true;
 
-    // Implicit core modules strictly required for any PG to function
-    if (['tenants', 'rooms', 'payments', 'complaints'].includes(feature)) return true;
-
     // Use active branch from context/url to check features
     const branch = filteredData.currentBranch || data.branches.find((b: PGBranch) => b.id === user?.branchId);
     
-    if (!branch || (branch.subscriptionStatus !== 'active' && branch.subscriptionStatus !== 'trial')) {
-      // If no subscription or inactive, only core modules are visible
+    if (!branch) {
+      // No branch context — allow core modules only
+      return ['tenants', 'rooms', 'payments', 'complaints'].includes(feature);
+    }
+
+    // Check for branch-level overrides FIRST (super admin restrictions)
+    const permission = (data.branchTabPermissions || []).find((tp: any) => tp.branchId === branch.id && tp.moduleName === feature);
+    if (permission && permission.isEnabled === false) {
+      return false;
+    }
+
+    // Core modules are allowed by default (if not explicitly disabled above)
+    if (['tenants', 'rooms', 'payments', 'complaints'].includes(feature)) return true;
+
+    if (branch.subscriptionStatus !== 'active' && branch.subscriptionStatus !== 'trial') {
       return false;
     }
     
     const plan = data.subscriptionPlans.find((p: SubscriptionPlan) => p.id === branch.planId);
     return plan?.features?.includes(feature) || false;
+  };
+
+  const toggleBranchTabPermission = async (branchId: string, moduleName: AppFeature, isEnabled: boolean) => {
+    console.log('[TabPermission] Toggle:', { branchId, moduleName, isEnabled });
+    
+    // Optimistic update: apply immediately to local state
+    setData(prev => {
+      const perms = [...(prev.branchTabPermissions || [])];
+      const idx = perms.findIndex((p: any) => p.branchId === branchId && p.moduleName === moduleName);
+      if (idx !== -1) {
+        perms[idx] = { ...perms[idx], isEnabled };
+      } else {
+        perms.push({ id: 'temp-' + Date.now(), branchId, moduleName, isEnabled });
+      }
+      return { ...prev, branchTabPermissions: perms };
+    });
+
+    try {
+      // Use upsert with the unique constraint (branch_id, module_name) to avoid temp ID issues
+      const { error } = await supabase.from('branch_tab_permissions').upsert(
+        { branch_id: branchId, module_name: moduleName, is_enabled: isEnabled },
+        { onConflict: 'branch_id,module_name' }
+      );
+
+      if (error) {
+        console.error('Tab permission error:', error);
+        toast.error('Failed to update tab visibility: ' + error.message);
+        return;
+      }
+
+      toast.success(`Module ${isEnabled ? 'enabled' : 'disabled'} successfully`);
+      // Do NOT call fetchData() here - the optimistic state is already correct
+      // Calling fetchData would wipe the state if the SELECT query has issues
+    } catch (err: any) {
+      console.error('Tab permission exception:', err);
+      toast.error('Failed to update tab visibility');
+    }
   };
 
   // Optimistic state updater - applies changes to local state immediately,
@@ -1753,6 +1825,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       addBranch, updateBranch, deleteBranch,
       addSubscriptionPlan, updateSubscriptionPlan, deleteSubscriptionPlan,
       updateBranchSubscription,
+      toggleBranchTabPermission,
       checkFeatureAccess,
       fetchData,
       getStats,

@@ -19,7 +19,11 @@ import {
   Zap,
   Calendar,
   Check,
-  Clock
+  Clock,
+  Eye,
+  EyeOff,
+  Settings2,
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../utils';
@@ -41,21 +45,27 @@ export const SuperAdminPage = () => {
     rooms,
     pgConfigs,
     updatePGConfig,
-    payments
+    payments,
+    branchTabPermissions,
+    toggleBranchTabPermission
   } = useApp();
   const { users, register, deleteUser, updateUser, user } = useAuth();
   
   const primaryBranch = branches.find(b => b.id === user?.branchId) || branches.find(b => user?.branchIds?.includes(b.id));
   const currentPlan = subscriptionPlans.find(plan => plan.id === primaryBranch?.planId);
   
-  const [activeTab, setActiveTab] = useState<'branches' | 'subscriptions'>('branches');
+  const [activeTab, setActiveTab] = useState<'branches' | 'subscriptions' | 'admins'>('branches');
   const [isAddingBranch, setIsAddingBranch] = useState(false);
+  const [isAddingAdmin, setIsAddingAdmin] = useState(false);
   const [isAddingPlan, setIsAddingPlan] = useState(false);
   const [isAssigningPlan, setIsAssigningPlan] = useState(false);
+  const [isManagingVisibility, setIsManagingVisibility] = useState(false);
   
   const [editingBranch, setEditingBranch] = useState<PGBranch | null>(null);
+  const [editingAdmin, setEditingAdmin] = useState<User | null>(null);
   const [editingPlan, setEditingPlan] = useState<SubscriptionPlan | null>(null);
   const [selectedBranch, setSelectedBranch] = useState<PGBranch | null>(null);
+  const [selectedBranchIdForVisibility, setSelectedBranchIdForVisibility] = useState<string | null>(null);
   
   const [adminBranchFilter, setAdminBranchFilter] = useState('all');
   const [billingInterval, setBillingInterval] = useState<'monthly' | 'yearly'>('monthly');
@@ -64,6 +74,15 @@ export const SuperAdminPage = () => {
 
   // Branch Form State
   const [branchForm, setBranchForm] = useState({ name: '', branchName: '', address: '', phone: '', razorpayKeyId: '' });
+
+  // Admin Form State
+  const [adminForm, setAdminForm] = useState({
+    name: '',
+    username: '',
+    email: '',
+    phone: '',
+    branchIds: [] as string[]
+  });
 
   // Plan Form State
   const [planForm, setPlanForm] = useState<Omit<SubscriptionPlan, 'id'>>({
@@ -146,6 +165,44 @@ export const SuperAdminPage = () => {
     setSelectedBranch(null);
   };
 
+  const handleAddAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (editingAdmin) {
+      await updateUser(editingAdmin.id, {
+        name: adminForm.name,
+        username: adminForm.username,
+        email: adminForm.email,
+        phone: adminForm.phone,
+        branchIds: adminForm.branchIds,
+        // Ensure role stays admin
+        role: 'admin'
+      });
+      toast.success('Admin updated successfully');
+    } else {
+      const result = await register({
+        name: adminForm.name,
+        username: adminForm.username,
+        email: adminForm.email,
+        role: 'admin',
+        phone: adminForm.phone,
+        branchIds: adminForm.branchIds,
+        requiresPasswordChange: true
+      });
+      
+      if (result.success) {
+        toast.success('Admin created successfully');
+      } else {
+        toast.error(result.message || 'Failed to create admin');
+        return;
+      }
+    }
+    
+    setIsAddingAdmin(false);
+    setEditingAdmin(null);
+    setAdminForm({ name: '', username: '', email: '', phone: '', branchIds: [] });
+  };
+
   const handleEditBranch = (branch: PGBranch) => {
     setEditingBranch(branch);
     const existingConfig = pgConfigs?.find(c => c.branchId === branch.id);
@@ -197,6 +254,15 @@ export const SuperAdminPage = () => {
                 )}
               >
                 Subscriptions
+              </button>
+              <button
+                onClick={() => setActiveTab('admins')}
+                className={cn(
+                  "px-4 py-2 rounded-xl text-sm font-bold transition-all",
+                  activeTab === 'admins' ? "bg-indigo-600 text-white shadow-sm" : "bg-white dark:bg-[#111111] text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5"
+                )}
+              >
+                System Admins
               </button>
             </>
           )}
@@ -250,6 +316,19 @@ export const SuperAdminPage = () => {
             >
               <Plus className="w-4 h-4" />
               New Plan
+            </button>
+          )}
+          {activeTab === 'admins' && (
+            <button
+              onClick={() => {
+                setEditingAdmin(null);
+                setAdminForm({ name: '', username: '', email: '', phone: '', branchIds: [] });
+                setIsAddingAdmin(true);
+              }}
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl transition-all shadow-sm"
+            >
+              <UserPlus className="w-4 h-4" />
+              New Admin
             </button>
           )}
         </div>
@@ -327,12 +406,24 @@ export const SuperAdminPage = () => {
                     <span className={cn(
                       "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider",
                       branch.subscriptionStatus === 'active' ? "bg-green-100 text-green-700 dark:bg-green-500/10 dark:text-green-400" :
-                      branch.subscriptionStatus === 'trial' ? "bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400" :
-                      "bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400"
+                      branch.subscriptionStatus === 'trial' ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400" :
+                      "bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400"
                     )}>
                       {branch.subscriptionStatus || 'Inactive'}
                     </span>
                   </div>
+                  {user?.role === 'super' && (
+                    <button
+                      onClick={() => {
+                        setSelectedBranchIdForVisibility(branch.id);
+                        setIsManagingVisibility(true);
+                      }}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/10 transition-all group"
+                    >
+                      <Settings2 className="w-3.5 h-3.5 group-hover:rotate-45 transition-transform" />
+                      Tab Visibility
+                    </button>
+                  )}
                   {user?.role === 'super' && (
                     <div className="flex justify-between items-center">
                       <span className="text-xs text-gray-400">ID: {branch.id}</span>
@@ -457,6 +548,214 @@ export const SuperAdminPage = () => {
             ))}
             </div>
           </motion.div>
+        )}
+
+        {activeTab === 'admins' && (
+          <motion.div
+            key="admins"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+          >
+            {users
+              .filter(u => u.role === 'admin' && (
+                u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                u.username.toLowerCase().includes(searchTerm.toLowerCase())
+              ))
+              .map((admin) => (
+                <div key={admin.id} className="bg-white dark:bg-[#111111] rounded-[24px] border border-gray-200 dark:border-white/5 overflow-hidden shadow-sm hover:shadow-xl transition-all group relative">
+                  <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                    <button 
+                      onClick={() => {
+                        setEditingAdmin(admin);
+                        setAdminForm({
+                          name: admin.name,
+                          username: admin.username,
+                          email: admin.email,
+                          phone: admin.phone || '',
+                          branchIds: admin.branchIds || []
+                        });
+                        setIsAddingAdmin(true);
+                      }} 
+                      className="p-2 bg-white/90 dark:bg-black/50 backdrop-blur rounded-xl text-indigo-600 dark:text-indigo-400 shadow-sm hover:scale-110 transition-transform"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={() => {
+                        if (window.confirm(`Are you sure you want to delete admin ${admin.name}?`)) {
+                          deleteUser(admin.id);
+                          toast.success('Admin deleted successfully');
+                        }
+                      }} 
+                      className="p-2 bg-white/90 dark:bg-black/50 backdrop-blur rounded-xl text-red-600 shadow-sm hover:scale-110 transition-transform"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="p-6">
+                    <div className="flex items-center gap-4 mb-4">
+                      <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-black text-xl shadow-inner border border-indigo-100 dark:border-indigo-500/20 uppercase">
+                        {admin.name.charAt(0)}
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-black text-gray-900 dark:text-white uppercase tracking-tight">{admin.name}</h3>
+                        <p className="text-xs font-medium text-gray-500">@{admin.username}</p>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                       <p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                         <Search className="w-3 h-3" /> {admin.email}
+                       </p>
+                       {admin.phone && (
+                         <p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                           <Phone className="w-3 h-3" /> {admin.phone}
+                         </p>
+                       )}
+                    </div>
+                  </div>
+
+                  <div className="px-6 pb-6 pt-2 bg-gray-50 dark:bg-[#0a0a0a]">
+                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Branch Assignments</p>
+                     <div className="flex flex-wrap gap-1.5">
+                        {admin.branchIds && admin.branchIds.length > 0 ? (
+                          admin.branchIds.map(bid => {
+                            const b = branches.find(branch => branch.id === bid);
+                            return (
+                              <span key={bid} className="px-2 py-0.5 bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                                {b?.branchName || b?.name || bid}
+                              </span>
+                            );
+                          })
+                        ) : (
+                          <span className="text-[10px] text-gray-400 italic">No branches assigned</span>
+                        )}
+                     </div>
+                  </div>
+                </div>
+              ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Add/Edit Admin Modal */}
+      <AnimatePresence>
+        {isAddingAdmin && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+             <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white dark:bg-[#111111] rounded-[32px] p-8 w-full max-w-xl border border-gray-200 dark:border-white/5 shadow-2xl overflow-y-auto max-h-[90vh]"
+            >
+              <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-8">
+                {editingAdmin ? 'Edit System Admin' : 'Create System Admin'}
+              </h3>
+              <form onSubmit={handleAddAdmin} className="space-y-6">
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Full Name</label>
+                      <input
+                        required
+                        type="text"
+                        value={adminForm.name}
+                        onChange={(e) => setAdminForm({ ...adminForm, name: e.target.value })}
+                        className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                        placeholder="e.g. John Doe"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Username</label>
+                      <input
+                        required
+                        type="text"
+                        value={adminForm.username}
+                        onChange={(e) => setAdminForm({ ...adminForm, username: e.target.value.toLowerCase().replace(/\s/g, '') })}
+                        className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                        placeholder="e.g. johndoe"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Email Address</label>
+                      <input
+                        required
+                        type="email"
+                        value={adminForm.email}
+                        onChange={(e) => setAdminForm({ ...adminForm, email: e.target.value })}
+                        className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                        placeholder="email@example.com"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Phone Number</label>
+                      <input
+                        type="tel"
+                        value={adminForm.phone}
+                        onChange={(e) => setAdminForm({ ...adminForm, phone: e.target.value.replace(/\D/g, '') })}
+                        className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                        placeholder="10-digit mobile"
+                        maxLength={10}
+                      />
+                    </div>
+                 </div>
+
+                 <div className="space-y-3">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Assigned Branches</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[200px] overflow-y-auto p-1 custom-scrollbar">
+                       {branches.map(branch => (
+                         <button
+                           key={branch.id}
+                           type="button"
+                           onClick={() => {
+                             const branchIds = adminForm.branchIds.includes(branch.id)
+                               ? adminForm.branchIds.filter(id => id !== branch.id)
+                               : [...adminForm.branchIds, branch.id];
+                             setAdminForm({ ...adminForm, branchIds });
+                           }}
+                           className={cn(
+                             "flex items-center gap-3 px-4 py-3 rounded-2xl border text-left transition-all",
+                             adminForm.branchIds.includes(branch.id)
+                               ? "bg-indigo-50 dark:bg-indigo-500/10 border-indigo-600 text-indigo-600 dark:text-indigo-400"
+                               : "bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/5 text-gray-500"
+                           )}
+                         >
+                           <div className={cn(
+                             "w-4 h-4 rounded border flex items-center justify-center transition-colors",
+                             adminForm.branchIds.includes(branch.id) ? "bg-indigo-600 border-indigo-600" : "bg-white dark:bg-white/5 border-gray-300 dark:border-white/20"
+                           )}>
+                             {adminForm.branchIds.includes(branch.id) && <Check className="w-3 h-3 text-white" />}
+                           </div>
+                           <div className="min-w-0">
+                             <p className="text-sm font-bold truncate">{branch.name}</p>
+                             <p className="text-[10px] opacity-70 truncate">{branch.branchName || 'Main'}</p>
+                           </div>
+                         </button>
+                       ))}
+                    </div>
+                 </div>
+
+                 <div className="flex gap-4 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingAdmin(false)}
+                    className="flex-1 px-6 py-3 bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 rounded-2xl font-bold transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 px-6 py-3 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20"
+                  >
+                    {editingAdmin ? 'Update Admin' : 'Create Admin'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 
@@ -783,6 +1082,124 @@ export const SuperAdminPage = () => {
                 </div>
               </form>
             </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Tab Visibility Modal */}
+      <AnimatePresence>
+        {isManagingVisibility && selectedBranchIdForVisibility && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            {(() => {
+              const liveBranch = branches.find(b => b.id === selectedBranchIdForVisibility);
+              if (!liveBranch) return null;
+
+              const plan = subscriptionPlans.find(p => p.id === liveBranch.planId);
+              const planFeatures = plan?.features || [];
+              // Merge plan features with core features so super admin can toggle everything
+              const coreFeatures = ['tenants', 'rooms', 'payments', 'complaints'];
+              const features = [...new Set([...coreFeatures, ...planFeatures])];
+              
+              const featureLabels: Record<string, string> = {
+                tenants: 'Tenants Management',
+                rooms: 'Rooms & Occupancy',
+                payments: 'Rent & Payments',
+                complaints: 'Complaint Desk',
+                kyc: 'Digital KYC',
+                employees: 'Staff Management',
+                broadcast: 'Announcements',
+                analytics: 'Platform Analytics',
+                whatsapp: 'WhatsApp Automation',
+                reports: 'Financial Reports',
+                'multi-branch': 'Multi-Branch Support',
+                expenses: 'Expense Tracker',
+                tasks: 'Task Management'
+              };
+
+              return (
+                <motion.div
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.95, opacity: 0 }}
+                  className="bg-white dark:bg-[#111111] rounded-[32px] p-8 w-full max-w-2xl border border-gray-200 dark:border-white/5 shadow-2xl"
+                >
+                  <div className="flex justify-between items-start mb-8">
+                    <div>
+                      <h3 className="text-2xl font-black text-gray-900 dark:text-white uppercase tracking-tight">Branch Tab Visibility</h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                        Control which modules are accessible for <span className="font-bold text-indigo-600 dark:text-indigo-400">{liveBranch.name}</span>
+                      </p>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        setIsManagingVisibility(false);
+                        setSelectedBranchIdForVisibility(null);
+                      }}
+                      className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors"
+                    >
+                      <X className="w-5 h-5 text-gray-400" />
+                    </button>
+                  </div>
+
+                  <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                    <div className="p-4 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl border border-indigo-100 dark:border-indigo-500/20 mb-6">
+                       <div className="flex gap-3">
+                          <ShieldCheck className="w-5 h-5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                          <p className="text-xs text-indigo-600 dark:text-indigo-400 leading-relaxed font-medium">
+                            These controls allow you to <span className="font-bold">restrict</span> access to modules that are included in the branch's subscription (<span className="font-bold">{plan?.name || 'No Plan'}</span>). You cannot enable modules that are not part of their plan.
+                          </p>
+                       </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {features.map(feature => {
+                        const permission = branchTabPermissions.find(p => p.branchId === liveBranch.id && p.moduleName === feature);
+                        const isEnabled = permission ? permission.isEnabled : true;
+
+                        return (
+                          <div key={feature} className={cn(
+                            "flex items-center justify-between p-4 rounded-2xl border transition-all",
+                            isEnabled 
+                              ? "bg-white dark:bg-white/5 border-gray-100 dark:border-white/10" 
+                              : "bg-gray-50/50 dark:bg-black/20 border-gray-200 dark:border-white/5 opacity-70"
+                          )}>
+                            <div>
+                              <p className="text-sm font-bold text-gray-900 dark:text-white">{featureLabels[feature] || feature}</p>
+                              <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mt-0.5">{feature}</p>
+                            </div>
+                            
+                            <button
+                              onClick={() => toggleBranchTabPermission(liveBranch.id, feature as AppFeature, !isEnabled)}
+                              className={cn(
+                                "relative w-12 h-6 rounded-full transition-all duration-300 cursor-pointer",
+                                isEnabled ? "bg-indigo-600" : "bg-gray-300 dark:bg-white/10"
+                              )}
+                            >
+                              <div className={cn(
+                                "absolute top-1 w-4 h-4 rounded-full bg-white transition-all duration-300 shadow-sm",
+                                isEnabled ? "left-7" : "left-1"
+                              )} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="mt-8 flex justify-end">
+                     <button
+                       onClick={() => {
+                         setIsManagingVisibility(false);
+                         setSelectedBranchIdForVisibility(null);
+                       }}
+                       className="px-8 py-3 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20"
+                     >
+                       Done
+                     </button>
+                  </div>
+                </motion.div>
+              );
+            })()}
           </div>
         )}
       </AnimatePresence>
