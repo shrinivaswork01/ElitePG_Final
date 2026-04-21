@@ -5,7 +5,7 @@
 
 export type UserRole = 'super' | 'admin' | 'partner' | 'manager' | 'caretaker' | 'tenant' | 'cleaner' | 'security' | 'none' | (string & {});
 
-export type AppFeature = 'tenants' | 'rooms' | 'payments' | 'complaints' | 'kyc' | 'employees' | 'broadcast' | 'analytics' | 'whatsapp' | 'reports' | 'multi-branch' | 'expenses' | 'tasks';
+export type AppFeature = 'tenants' | 'rooms' | 'payments' | 'complaints' | 'kyc' | 'employees' | 'broadcast' | 'analytics' | 'whatsapp' | 'reports' | 'partner-payouts' | 'multi-branch' | 'expenses' | 'tasks';
 
 export interface SubscriptionPlan {
   id: string;
@@ -374,5 +374,18 @@ export interface ProfitDistribution {
     sharePercentage: number;
     amount: number;
   }[];
+  createdAt: string;
+}
+
+export interface PartnerPayout {
+  id: string;
+  partnerId: string;
+  month: string;
+  branchId?: string | null;
+  amount: number;
+  status: 'REQUESTED' | 'PARTNER_APPROVED' | 'PAID';
+  requestedBy?: string;
+  partnerApprovedBy?: string;
+  adminApprovedBy?: string;
   createdAt: string;
 }

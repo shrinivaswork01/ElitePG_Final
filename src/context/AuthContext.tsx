@@ -103,10 +103,57 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         console.error('Failed to resolve PBAC permissions', err);
       }
     }
+
+    // Fetch Super Admin configured overrides for 'admin' role
+    if (baseUser.role === 'admin') {
+      try {
+        const { data: adminPerms } = await supabase.from('admin_permissions')
+          .select('module_name, is_enabled')
+          .eq('admin_id', baseUser.id);
+        
+        // If there are specific configurations for this admin, apply them.
+        if (adminPerms && adminPerms.length > 0) {
+          permissions = adminPerms.filter((p: any) => p.is_enabled).map((p: any) => p.module_name.replace(/^\//, ''));
+        }
+      } catch (err) {
+        console.error('Failed to fetch admin permissions', err);
+      }
+    }
     
     const isSuperOrAdmin = baseUser.role === 'admin' || baseUser.role === 'super' || baseUser.role === 'partner';
+
+    // CRITICAL: Ensure admin/partner always has a valid branchId (never null)
+    let resolvedBranchId = baseUser.branchId;
+    let resolvedBranchIds = baseUser.branchIds || (baseUser.branchId ? [baseUser.branchId] : []);
+    
+    if ((baseUser.role === 'admin' || baseUser.role === 'partner') && !resolvedBranchId) {
+      // Fallback 1: Use first item from branchIds
+      if (resolvedBranchIds.length > 0) {
+        resolvedBranchId = resolvedBranchIds[0];
+      } else {
+        // Fallback 2: Query latest active branch from DB
+        try {
+          const { data: latestBranch } = await supabase.from('pg_branches')
+            .select('id')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (latestBranch) {
+            resolvedBranchId = latestBranch.id;
+            resolvedBranchIds = [latestBranch.id];
+            // Persist the assignment back to DB
+            await supabase.from('users').update({ branch_id: latestBranch.id, branch_ids: [latestBranch.id] }).eq('id', baseUser.id);
+          }
+        } catch (err) {
+          console.error('Failed to resolve default branch for admin/partner', err);
+        }
+      }
+    }
+
     const finalUser: User = {
       ...baseUser,
+      branchId: resolvedBranchId,
+      branchIds: resolvedBranchIds,
       isAuthorized: isSuperOrAdmin ? true : baseUser.isAuthorized,
       permissions
     };
@@ -642,6 +689,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const switchBranch = (branchId: string) => {
     if (!user) return;
+    // Allow 'all' as pseudo-branch for combined views
+    if (branchId === 'all') {
+      const updatedUser = { ...user, branchId: 'all' };
+      setUser(updatedUser);
+      localStorage.setItem('elite_pg_user', JSON.stringify(updatedUser));
+      return;
+    }
     // Only allow switching to branches the user owns
     const allowed = user.branchIds || (user.branchId ? [user.branchId] : []);
     if (user.role === 'super' || allowed.includes(branchId)) {

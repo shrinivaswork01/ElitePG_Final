@@ -219,7 +219,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         { data: expenses },
         { data: depositLogs },
         { data: shares },
-        { data: distributions }
+        { data: distributions },
+        { data: tabPermissions }
       ] = await Promise.all([
         // Branches: super gets all, admin gets their owned branches, others get their single branch
         isSuper 
@@ -248,26 +249,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         branchQuery(supabase.from('expenses').select('*')),
         branchQuery(supabase.from('tenant_deposit_logs').select('*')),
         branchQuery(supabase.from('partner_shares').select('*')),
-        branchQuery(supabase.from('profit_distributions').select('*'))
+        branchQuery(supabase.from('profit_distributions').select('*')),
+        branchQuery(supabase.from('branch_tab_permissions').select('*')).catch(() => ({ data: [] }))
       ]);
-
-      // Fetch tab permissions separately for better error handling
-      let tabPermissions: any[] = [];
-      try {
-        const tabPermsResult = await supabase.from('branch_tab_permissions').select('*');
-        if (tabPermsResult.error) {
-          console.warn('[TabPermissions] Query error:', tabPermsResult.error.message);
-          // Preserve existing permissions if query fails
-          tabPermissions = data.branchTabPermissions?.map((tp: any) => ({
-            id: tp.id, branch_id: tp.branchId, module_name: tp.moduleName, is_enabled: tp.isEnabled
-          })) || [];
-        } else {
-          tabPermissions = tabPermsResult.data || [];
-        }
-      } catch (e) {
-        console.warn('[TabPermissions] Exception:', e);
-        tabPermissions = [];
-      }
 
       const newData = {
         branches: (branches || []).map(b => ({
@@ -455,29 +439,31 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const checkFeatureAccess = (feature: AppFeature) => {
     if (user?.role === 'super') return true;
 
+    // Implicit core modules strictly required for any PG to function
+    if (['tenants', 'rooms', 'payments', 'complaints'].includes(feature)) return true;
+
     // Use active branch from context/url to check features
     const branch = filteredData.currentBranch || data.branches.find((b: PGBranch) => b.id === user?.branchId);
     
-    if (!branch) {
-      // No branch context — allow core modules only
-      return ['tenants', 'rooms', 'payments', 'complaints'].includes(feature);
-    }
-
-    // Check for branch-level overrides FIRST (super admin restrictions)
-    const permission = (data.branchTabPermissions || []).find((tp: any) => tp.branchId === branch.id && tp.moduleName === feature);
-    if (permission && permission.isEnabled === false) {
-      return false;
-    }
-
-    // Core modules are allowed by default (if not explicitly disabled above)
-    if (['tenants', 'rooms', 'payments', 'complaints'].includes(feature)) return true;
-
-    if (branch.subscriptionStatus !== 'active' && branch.subscriptionStatus !== 'trial') {
+    if (!branch || (branch.subscriptionStatus !== 'active' && branch.subscriptionStatus !== 'trial')) {
+      // If no subscription or inactive, only core modules are visible
       return false;
     }
     
     const plan = data.subscriptionPlans.find((p: SubscriptionPlan) => p.id === branch.planId);
-    return plan?.features?.includes(feature) || false;
+    const isSubscribed = plan?.features?.includes(feature) || false;
+
+    if (!isSubscribed) return false;
+
+    // Check for branch-level overrides
+    const permission = (filteredData.branchTabPermissions || []).find((tp: any) => tp.moduleName === feature);
+    
+    // If permission exists and is explicitly false, hide it
+    if (permission && permission.isEnabled === false) {
+      return false;
+    }
+
+    return true;
   };
 
   const toggleBranchTabPermission = async (branchId: string, moduleName: AppFeature, isEnabled: boolean) => {
@@ -505,15 +491,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       if (error) {
         console.error('Tab permission error:', error);
         toast.error('Failed to update tab visibility: ' + error.message);
+        await fetchData();
         return;
       }
 
       toast.success(`Module ${isEnabled ? 'enabled' : 'disabled'} successfully`);
-      // Do NOT call fetchData() here - the optimistic state is already correct
-      // Calling fetchData would wipe the state if the SELECT query has issues
+      fetchData();
     } catch (err: any) {
       console.error('Tab permission exception:', err);
       toast.error('Failed to update tab visibility');
+      await fetchData();
     }
   };
 

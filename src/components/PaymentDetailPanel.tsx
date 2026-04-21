@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, CreditCard, Calendar, Clock, CheckCircle2, AlertCircle, FileText, Printer, Trash2 } from 'lucide-react';
+import { X, CreditCard, Calendar, Clock, CheckCircle2, AlertCircle, FileText, Printer, Trash2, Shield, Ticket, Zap, Home, Activity } from 'lucide-react';
 import { Payment } from '../types';
 import { format, parseISO } from 'date-fns';
 import { cn } from '../utils';
@@ -72,7 +72,17 @@ export const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
                   "w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg uppercase",
                   payment.status === 'paid' ? "bg-emerald-500 text-white shadow-emerald-500/20" : "bg-amber-500 text-white shadow-amber-500/20"
                 )}>
-                  {payment.status === 'paid' ? <CheckCircle2 className="w-6 h-6" /> : <Clock className="w-6 h-6" />}
+                  {(() => {
+                    if (payment.status !== 'paid') return <Clock className="w-6 h-6" />;
+                    const type = payment.paymentType || 'rent';
+                    switch (type) {
+                      case 'electricity': return <Zap className="w-6 h-6" />;
+                      case 'token': return <Ticket className="w-6 h-6" />;
+                      case 'deposit': return <Shield className="w-6 h-6" />;
+                      case 'adjust': return <Activity className="w-6 h-6" />;
+                      default: return <CheckCircle2 className="w-6 h-6" />;
+                    }
+                  })()}
                 </div>
                 <div>
                   <h3 className="text-lg font-black text-gray-900 dark:text-white">Payment</h3>
@@ -113,7 +123,7 @@ export const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
               <div className="bg-white dark:bg-white/5 rounded-2xl p-4 border border-gray-100 dark:border-white/5 shadow-sm space-y-3">
                 <p className="text-xs font-black uppercase tracking-widest text-gray-400 border-b border-gray-100 dark:border-white/5 pb-2">Amount Summary</p>
                 <div className="flex justify-between items-center text-sm">
-                  <span className="text-gray-600 dark:text-gray-400">Rent</span>
+                  <span className="text-gray-600 dark:text-gray-400 capitalize">{payment.paymentType || 'Rent'}</span>
                   <span className="font-semibold text-gray-900 dark:text-white">₹{(Number(payment.amount) || 0).toLocaleString()}</span>
                 </div>
                 

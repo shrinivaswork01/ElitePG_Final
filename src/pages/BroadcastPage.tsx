@@ -20,7 +20,7 @@ import { Navigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
 export const BroadcastPage = () => {
-  const { user } = useAuth();
+  const { user, users } = useAuth();
   const { tenants, announcements, addAnnouncement, deleteAnnouncement } = useApp();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [formData, setFormData] = useState<Omit<Announcement, 'id' | 'branchId'>>({
@@ -36,7 +36,7 @@ export const BroadcastPage = () => {
     message: ''
   });
 
-  if (user?.role !== 'admin') {
+  if (user?.role !== 'admin' && user?.role !== 'super' && user?.role !== 'partner') {
     return <Navigate to="/" replace />;
   }
 
@@ -89,18 +89,23 @@ export const BroadcastPage = () => {
   };
 
   const handleQuickBroadcast = () => {
-    if (quickBroadcast.tenantId === 'all') {
+    if (quickBroadcast.tenantId === 'all' || quickBroadcast.tenantId === 'all_admins') {
       sendWhatsApp(null, quickBroadcast.message);
       setQuickBroadcast({ tenantId: '', message: '' });
       return;
     }
 
     const tenant = tenants.find(t => t.id === quickBroadcast.tenantId);
-    if (!tenant || !quickBroadcast.message) {
-      toast.error('Please select a tenant or "All Tenants" and enter a message.');
+    const admin = users.find(u => u.id === quickBroadcast.tenantId);
+    
+    const targetPhone = tenant?.phone || admin?.phone;
+
+    if (!targetPhone || !quickBroadcast.message) {
+      toast.error('Please select a valid user and enter a message.');
       return;
     }
-    sendWhatsApp(tenant.phone, quickBroadcast.message);
+    
+    sendWhatsApp(targetPhone, quickBroadcast.message);
     setQuickBroadcast({ tenantId: '', message: '' });
   };
 
@@ -202,8 +207,14 @@ export const BroadcastPage = () => {
                 >
                   <option value="">Choose tenant...</option>
                   <option value="all">All Tenants (WhatsApp Group)</option>
+                  {user?.role === 'super' && (
+                    <option value="all_admins">All Admins</option>
+                  )}
+                  {user?.role === 'super' && users.filter(u => u.role === 'admin' || u.role === 'partner').map(admin => (
+                    <option key={`admin_${admin.id}`} value={admin.id}>[Admin] {admin.name} ({admin.phone || 'No phone'})</option>
+                  ))}
                   {tenants.map(t => (
-                    <option key={t.id} value={t.id}>{t.name} ({t.phone})</option>
+                    <option key={`tenant_${t.id}`} value={t.id}>{t.name} ({t.phone})</option>
                   ))}
                 </select>
               </div>

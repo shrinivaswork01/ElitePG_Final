@@ -24,6 +24,7 @@ import { UnauthorizedPage } from './pages/UnauthorizedPage';
 import { SuperAdminPage } from './pages/SuperAdminPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ReportsPage } from './pages/ReportsPage';
+import { PartnerPayoutsPage } from './pages/PartnerPayoutsPage';
 import { SubscriptionPage } from './pages/SubscriptionPage';
 import { HelpSupportPage } from './pages/HelpSupportPage';
 import { TasksPage } from './pages/TasksPage';
@@ -35,15 +36,22 @@ const RootRedirect = () => {
   if (isInitializing) return <LoadingScreen />;
   if (!user) return <Navigate to="/login" replace />;
   
-  const defaultBranchId = user.branchId || user.branchIds?.[0];
-  if (!defaultBranchId) {
-    if (user.role === 'super') return <Navigate to="/branch/all/branches" replace />;
+  // For super admin: land on first available branch dashboard
+  if (user.role === 'super') {
+    const defaultBranchId = user.branchId || user.branchIds?.[0];
+    if (defaultBranchId) {
+      return <Navigate to={`/branch/${defaultBranchId}/dashboard`} replace />;
+    }
+    // Super admin with no branches yet — still valid, send to first branch context
     return <Navigate to="/unauthorized" replace />;
   }
 
-  // Super-admin or Admin: favor branches/management view if no specific branch was picked
-  if (user.role === 'super') {
-    return <Navigate to={`/branch/${defaultBranchId}/dashboard`} replace />;
+  // For admin/partner: MUST have a branch. AuthContext setActiveUser guarantees this,
+  // but as a safety net, try branchIds[0] as well.
+  const defaultBranchId = user.branchId || user.branchIds?.[0];
+  if (!defaultBranchId) {
+    // Absolute fallback — should never happen after AuthContext fix
+    return <Navigate to="/unauthorized" replace />;
   }
   
   return <Navigate to={`/branch/${defaultBranchId}/dashboard`} replace />;
@@ -145,6 +153,13 @@ export default function App() {
                   </PermissionGuard>
                 </RoleGuard>
               } />
+              <Route path="partner-payouts" element={
+                <RoleGuard requiredLevel={3}>
+                  <PermissionGuard requiredPermission="partner-payouts">
+                    <PartnerPayoutsPage />
+                  </PermissionGuard>
+                </RoleGuard>
+              } />
               <Route path="settings" element={
                 <RoleGuard requiredLevel={3}>
                   <SettingsPage />
@@ -155,8 +170,8 @@ export default function App() {
                   <SubscriptionPage />
                 </RoleGuard>
               } />
-              <Route path="branches" element={
-                <RoleGuard requiredLevel={3}>
+              <Route path="platform-management" element={
+                <RoleGuard requiredLevel={4}>
                   <SuperAdminPage />
                 </RoleGuard>
               } />

@@ -7,6 +7,14 @@ import {
   AlertCircle,
   Receipt,
   PieChart as PieChartIcon,
+  ChevronLeft,
+  ChevronRight,
+  Lock,
+  Calendar,
+  ChevronDown,
+  Users,
+  Wallet,
+  DollarSign,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useApp } from '../context/AppContext';
@@ -31,9 +39,13 @@ import { format, subMonths, parseISO } from 'date-fns';
 import { cn } from '../utils';
 
 export const ReportsPage = () => {
-  const { user } = useAuth();
-  const { tenants, rooms, payments, complaints, expenses, getStats, pgConfig, currentBranch, rawData, branches, updatePartnerShareBatch, addProfitDistribution } = useApp();
+  const { user, users } = useAuth();
+  const { tenants, rooms, payments, complaints, expenses, salaryPayments, getStats, pgConfig, currentBranch, rawData, branches, updatePartnerShareBatch, addProfitDistribution, processPartnerPayoutBatch } = useApp();
   const [viewMode, setViewMode] = useState<'active' | 'combined'>('active');
+  const [transactionFilter, setTransactionFilter] = useState<'all' | 'rent' | 'electricity' | 'token' | 'deposit' | 'adjustment' | 'payout'>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const RECORDS_PER_PAGE = 10;
+  const [payoutMonth, setPayoutMonth] = useState(format(new Date(), 'yyyy-MM'));
 
   const canViewCombined = user?.role === 'super' || user?.role === 'admin' || user?.role === 'partner';
   const shouldRenderCombined = viewMode === 'combined' && canViewCombined;
@@ -66,6 +78,7 @@ export const ReportsPage = () => {
 
   const currentPayments = shouldRenderCombined ? getRelevantData(rawData.payments || payments) : payments;
   const currentExpenses = shouldRenderCombined ? getRelevantData(rawData.expenses || expenses) : (expenses || []);
+  const currentSalaries = shouldRenderCombined ? getRelevantData(rawData.salaryPayments || salaryPayments) : (salaryPayments || []);
 
   const themeColor = pgConfig?.primaryColor || '#4f46e5';
   const expenseColor = '#f43f5e'; // Rose for expenses
@@ -80,12 +93,18 @@ export const ReportsPage = () => {
       const monthStr = format(d, 'yyyy-MM');
       
       const rev = currentPayments
-        .filter(p => p.month === monthStr && p.status === 'paid')
+        .filter(p => p.month === monthStr && p.status === 'paid' && (p.paymentType || (p as any).payment_type || 'rent').toLowerCase() === 'rent')
         .reduce((sum, p) => sum + (p.totalAmount || (p as any).total_amount || 0), 0);
 
-      const exp = currentExpenses
+      const expOps = currentExpenses
         .filter(e => e.month === monthStr && e.status !== 'rejected')
         .reduce((sum, e) => sum + (e.amount || 0), 0);
+        
+      const expSalaries = currentSalaries
+        .filter(s => s.month === monthStr && s.status === 'paid')
+        .reduce((sum, s) => sum + (s.amount || 0), 0);
+
+      const exp = expOps + expSalaries;
 
       data.push({
         name: format(d, 'MMM yyyy'),
@@ -115,6 +134,11 @@ export const ReportsPage = () => {
       return acc;
     }, {} as Record<string, number>);
     
+    // Add Salary data
+    const currentMonthSalaries = currentSalaries.filter(s => s.month === currentMonthStr && s.status === 'paid');
+    const totalSalary = currentMonthSalaries.reduce((sum, s) => sum + s.amount, 0);
+    if (totalSalary > 0) grouped['Salaries'] = (grouped['Salaries'] || 0) + totalSalary;
+
     return Object.entries(grouped)
       .map(([name, value]) => ({ name, value: value as number }))
       .sort((a, b) => (b.value as number) - (a.value as number));
@@ -142,26 +166,67 @@ export const ReportsPage = () => {
 
   // Detailed Transaction Logs (Revenue + Expenses)
   const detailedLogs = useMemo(() => {
-     const revenue = currentPayments.map(p => ({
-        type: 'revenue',
-        branch_name: (branches.find(b => b.id === (p.branchId || p.branch_id))?.name || 'Unknown'),
-        date: p.paymentDate || p.createdAt || p.month,
-        category: p.paymentType || 'Rent',
-        description: `Room ${p.roomId} - ${p.tenantName || 'Tenant'}`,
-        amount: p.totalAmount
-     }));
+     const allRooms = shouldRenderCombined ? (rawData.rooms || rooms) : rooms;
+     const allTenants = shouldRenderCombined ? (rawData.tenants || tenants) : tenants;
 
-     const exps = currentExpenses.map(e => ({
+     let filteredPayments = currentPayments;
+     if (transactionFilter !== 'all') {
+       filteredPayments = currentPayments.filter(p => {
+         const pType = (p.paymentType || (p as any).payment_type || 'rent').toLowerCase();
+         if (transactionFilter === 'adjustment') return pType === 'adjust' || pType === 'adjustment';
+         return pType === transactionFilter;
+       });
+     }
+
+     const revenue = filteredPayments.map(p => {
+        const room = allRooms.find((r: any) => r.id === p.roomId || r.id === (p as any).room_id);
+        const tenant = allTenants.find((t: any) => t.id === p.tenantId || t.id === (p as any).tenant_id);
+        const roomLabel = room?.roomNumber || room?.room_number || '—';
+        const tenantLabel = tenant?.name || 'Tenant';
+        return {
+          type: ['rent', 'electricity'].includes((p.paymentType || (p as any).payment_type || 'rent').toLowerCase()) ? 'revenue' : 'other',
+          branch_name: (branches.find(b => b.id === (p.branchId || p.branch_id))?.name || 'Unknown'),
+          date: p.paymentDate || p.createdAt || p.month,
+          category: p.paymentType || 'Rent',
+          description: `Room ${roomLabel} — ${tenantLabel}`,
+          amount: p.totalAmount
+        };
+     });
+
+     // Only include expenses when filter is 'all' (specific payment type filters should exclude expenses)
+     const exps = transactionFilter === 'all' || transactionFilter === 'adjustment' ? currentExpenses.map(e => ({
         type: 'expense',
         branch_name: (branches.find(b => b.id === (e.branchId || e.branch_id))?.name || 'Unknown'),
         date: e.date,
         category: e.category,
-        description: e.description,
+        description: e.description || e.title || 'Expense',
         amount: -e.amount
-     }));
+     })) : [];
 
-     return [...revenue, ...exps].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [currentPayments, currentExpenses, branches]);
+     const currentPayouts = rawData?.partnerPayouts?.filter((p: any) => shouldRenderCombined || p.branchId === currentBranch?.id) || [];
+     const payoutsArr = transactionFilter === 'all' || transactionFilter === 'payout' ? currentPayouts.filter((p: any) => p.status === 'PAID').map((p: any) => {
+        const partnerName = rawData.users?.find((u: any) => u.id === p.partnerId)?.name || 'Partner';
+        return {
+          type: 'expense',
+          branch_name: (branches.find(b => b.id === (p.branchId || p.branch_id))?.name || 'Unknown'),
+          date: p.createdAt || p.month,
+          category: 'Partner Payout',
+          description: `Profit Distribution — ${partnerName}`,
+          amount: -p.amount
+        };
+     }) : [];
+
+     return [...revenue, ...exps, ...payoutsArr].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [currentPayments, currentExpenses, branches, transactionFilter, rooms, tenants, rawData, shouldRenderCombined, currentBranch]);
+
+  // Pagination calculations
+  const totalPages = Math.max(1, Math.ceil(detailedLogs.length / RECORDS_PER_PAGE));
+  const paginatedLogs = detailedLogs.slice((currentPage - 1) * RECORDS_PER_PAGE, currentPage * RECORDS_PER_PAGE);
+
+  // Reset page on filter change
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [transactionFilter]);
 
   return (
     <div className="space-y-8 pb-20">
@@ -422,14 +487,32 @@ export const ReportsPage = () => {
             transition={{ delay: 0.3 }}
             className="col-span-1 lg:col-span-3 bg-white dark:bg-[#0d0d0d] rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden"
           >
-            <div className="p-6 border-b border-gray-100 dark:border-white/5 flex items-center justify-between">
-               <h3 className="text-xl font-black text-gray-900 dark:text-white flex items-center gap-2 font-display">
-                  <Receipt className="w-5 h-5 text-indigo-500" />
-                  Detailed Transaction Logs
-               </h3>
-               <p className="text-[10px] font-bold text-gray-400 tracking-widest uppercase italic">Showing {detailedLogs.length} Records</p>
-            </div>
-            <div className="overflow-x-auto">
+             <div className="p-6 border-b border-gray-100 dark:border-white/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                   <h3 className="text-xl font-black text-gray-900 dark:text-white flex items-center gap-2 font-display">
+                      <Receipt className="w-5 h-5 text-indigo-500" />
+                      Detailed Transaction Logs
+                   </h3>
+                   <p className="text-[10px] font-bold text-gray-400 tracking-widest uppercase italic mt-1">Showing {paginatedLogs.length} of {detailedLogs.length} Records (Page {currentPage}/{totalPages})</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                   {(['all', 'rent', 'electricity', 'token', 'deposit', 'adjustment', 'payout'] as const).map(filter => (
+                      <button
+                         key={filter}
+                         onClick={() => setTransactionFilter(filter)}
+                         className={cn(
+                            "px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all",
+                            transactionFilter === filter 
+                               ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400 shadow-sm" 
+                               : "bg-gray-50 text-gray-500 dark:bg-white/5 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10"
+                         )}
+                      >
+                         {filter}
+                      </button>
+                   ))}
+                </div>
+             </div>
+             <div className="overflow-x-auto">
                <table className="w-full text-left border-collapse min-w-[800px]">
                   <thead>
                      <tr className="bg-gray-50/50 dark:bg-white/[0.02] border-b border-gray-100 dark:border-white/5">
@@ -441,8 +524,17 @@ export const ReportsPage = () => {
                      </tr>
                   </thead>
                   <tbody>
-                     {detailedLogs.slice(0, 50).map((log, i) => (
-                        <tr key={i} className="border-b border-gray-50 dark:border-white/5 hover:bg-gray-50/50 dark:hover:bg-white/[0.02] transition-colors group">
+                     {paginatedLogs.length === 0 ? (
+                        <tr>
+                           <td colSpan={5} className="px-6 py-12 text-center">
+                              <div className="flex flex-col items-center gap-2 text-gray-400">
+                                 <Receipt className="w-8 h-8 opacity-40" />
+                                 <p className="text-xs font-black uppercase tracking-widest">No transactions found for this filter</p>
+                              </div>
+                           </td>
+                        </tr>
+                     ) : paginatedLogs.map((log, i) => (
+                        <tr key={`${currentPage}-${i}`} className="border-b border-gray-50 dark:border-white/5 hover:bg-gray-50/50 dark:hover:bg-white/[0.02] transition-colors group">
                            <td className="px-6 py-4">
                               <div className="flex items-center gap-2">
                                  <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/5 flex items-center justify-center text-[10px] font-black group-hover:bg-indigo-50 dark:group-hover:bg-indigo-500/10 transition-colors">
@@ -455,7 +547,7 @@ export const ReportsPage = () => {
                            <td className="px-6 py-4">
                               <span className={cn(
                                  "px-2 py-1 text-[10px] font-black rounded-lg uppercase tracking-wider",
-                                 log.type === 'revenue' ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400" : "bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400"
+                                 log.type === 'revenue' || log.type === 'other' ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400" : "bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400"
                               )}>
                                  {log.category}
                               </span>
@@ -472,149 +564,72 @@ export const ReportsPage = () => {
                   </tbody>
                </table>
             </div>
-          </motion.div>
-
-          {/* Profit Sharing System */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="col-span-1 lg:col-span-3 bg-white dark:bg-[#0d0d0d] rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm p-8 space-y-8"
-          >
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div>
-                <h3 className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-3 tracking-tight font-display">
-                  <TrendingUp className="w-6 h-6 text-emerald-500" />
-                  Profit Sharing & Payouts
-                </h3>
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Manage partner earnings for {currentBranch?.name || 'Active Branch'}</p>
-              </div>
-              {!shouldRenderCombined && (user?.role === 'super' || user?.role === 'partner') && (
-                <div className="flex items-center gap-3">
-                   <div className="text-right">
-                      <p className="text-[10px] font-black text-gray-400 uppercase">Available Profit</p>
-                      <p className="text-lg font-black text-gray-900 dark:text-white">₹{currentMonthData.profit.toLocaleString()}</p>
-                   </div>
-                   <button
-                     disabled={currentMonthData.profit <= 0}
-                     onClick={async () => {
-                        // Find latest shares where effectiveFrom <= currentMonthStr
-                        const branchShares = (rawData.partnerShares || [])
-                          .filter(s => s.branchId === currentBranch?.id && s.effectiveFrom <= currentMonthStr)
-                          .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom));
-                        
-                        const latestMonth = branchShares[0]?.effectiveFrom;
-                        const shares = latestMonth ? branchShares.filter(s => s.effectiveFrom === latestMonth) : [];
-
-                        if (shares.length === 0) {
-                           toast.error('Define partner ratios in Employees tab first!');
-                           return;
-                        }
-
-                        const dist = shares.map(s => {
-                           const p = rawData.branches.flatMap(b => b.partners || []).find(p => p.id === s.userId);
-                           return {
-                             userId: s.userId,
-                             partnerName: p?.name || 'Partner',
-                             sharePercentage: s.ratio,
-                             amount: Math.round((currentMonthData.profit * s.ratio) / 100)
-                           };
-                        });
-
-                        await addProfitDistribution({
-                           branchId: currentBranch?.id || '',
-                           month: currentMonthStr,
-                           totalRevenue: currentMonthData.revenue,
-                           totalExpenses: currentMonthData.expenses,
-                           netProfit: currentMonthData.profit,
-                           distributions: dist
-                        });
-                        toast.success('Payout record created successfully');
-                     }}
-                     className="px-6 py-3 bg-emerald-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all disabled:opacity-50"
-                   >
-                     Record Monthly Payout
-                   </button>
+            {/* Pagination Controls */}
+            {detailedLogs.length > RECORDS_PER_PAGE && (
+              <div className="px-6 py-4 border-t border-gray-100 dark:border-white/5 flex items-center justify-between">
+                <p className="text-xs font-bold text-gray-400">
+                  {(currentPage - 1) * RECORDS_PER_PAGE + 1}–{Math.min(currentPage * RECORDS_PER_PAGE, detailedLogs.length)} of {detailedLogs.length}
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className={cn(
+                      "flex items-center gap-1 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all",
+                      currentPage === 1
+                        ? "bg-gray-50 dark:bg-white/5 text-gray-300 dark:text-gray-600 cursor-not-allowed"
+                        : "bg-gray-100 dark:bg-white/5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-white/10 active:scale-95"
+                    )}
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                    Previous
+                  </button>
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: Math.min(totalPages, 5) }, (_, idx) => {
+                      let pageNum: number;
+                      if (totalPages <= 5) {
+                        pageNum = idx + 1;
+                      } else if (currentPage <= 3) {
+                        pageNum = idx + 1;
+                      } else if (currentPage >= totalPages - 2) {
+                        pageNum = totalPages - 4 + idx;
+                      } else {
+                        pageNum = currentPage - 2 + idx;
+                      }
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => setCurrentPage(pageNum)}
+                          className={cn(
+                            "w-8 h-8 rounded-lg text-xs font-black transition-all",
+                            currentPage === pageNum
+                              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
+                              : "bg-gray-50 dark:bg-white/5 text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10"
+                          )}
+                        >
+                          {pageNum}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <button
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className={cn(
+                      "flex items-center gap-1 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all",
+                      currentPage === totalPages
+                        ? "bg-gray-50 dark:bg-white/5 text-gray-300 dark:text-gray-600 cursor-not-allowed"
+                        : "bg-gray-100 dark:bg-white/5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-white/10 active:scale-95"
+                    )}
+                  >
+                    Next
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
                 </div>
-              )}
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-               {/* Ratios Configuration */}
-               <div className="space-y-4">
-                  <div className="flex items-center justify-between border-b border-gray-100 dark:border-white/5 pb-2">
-                    <h4 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest">Applied Ratios</h4>
-                    <span className="text-[10px] font-bold text-gray-400 italic">Effective for {currentMonthStr}</span>
-                  </div>
-                  <div className="space-y-3">
-                     {(() => {
-                        const branchShares = (rawData.partnerShares || [])
-                          .filter(s => s.branchId === currentBranch?.id && s.effectiveFrom <= currentMonthStr)
-                          .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom));
-                        
-                        const latestMonth = branchShares[0]?.effectiveFrom;
-                        const activeShares = latestMonth ? branchShares.filter(s => s.effectiveFrom === latestMonth) : [];
-
-                        if (activeShares.length === 0) return <p className="text-xs text-gray-500 italic">No ratios defined for this month</p>;
-
-                        return activeShares.map(s => {
-                           const partner = rawData.branches.flatMap(b => b.partners || []).find(p => p.id === s.userId);
-                           return (
-                              <div key={s.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-white/3 rounded-2xl border border-gray-100 dark:border-white/5 group">
-                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-black">
-                                       {partner?.name?.charAt(0) || '?'}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                       <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{partner?.name || 'Partner'}</p>
-                                       <p className="text-[10px] text-gray-400 font-medium truncate">{partner?.email}</p>
-                                    </div>
-                                 </div>
-                                 <div className="text-right">
-                                    <span className="text-lg font-black text-indigo-600 dark:text-indigo-400">{s.ratio}%</span>
-                                 </div>
-                              </div>
-                           );
-                        });
-                     })()}
-                     {!currentBranch && <p className="text-xs text-gray-500 italic">Select a branch to view ratios</p>}
-                  </div>
-               </div>
-
-               {/* Distribution History */}
-               <div className="space-y-4">
-                  <h4 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest border-b border-gray-100 dark:border-white/5 pb-2">Recent Payouts</h4>
-                  <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                     {(rawData.profitDistributions || [])
-                        .filter(d => d.branchId === currentBranch?.id)
-                        .sort((a, b) => b.month.localeCompare(a.month))
-                        .map(d => (
-                           <div key={d.id} className="p-4 bg-emerald-50/30 dark:bg-emerald-500/5 rounded-2xl border border-emerald-100 dark:border-emerald-500/10">
-                              <div className="flex justify-between items-center mb-3">
-                                 <span className="text-sm font-black text-gray-900 dark:text-white">{format(parseISO(d.month + '-01'), 'MMMM yyyy')}</span>
-                                 <span className="text-xs font-black text-emerald-600">₹{d.netProfit.toLocaleString()} Profit</span>
-                              </div>
-                              <div className="grid grid-cols-2 gap-2">
-                                 {d.distributions.map((item: any, idx: number) => {
-                                    const partner = rawData.branches.flatMap(b => b.partners || []).find(p => p.id === item.userId);
-                                    return (
-                                       <div key={idx} className="flex justify-between items-center text-[10px] bg-white dark:bg-black/20 p-2 rounded-lg">
-                                          <span className="text-gray-500 font-bold truncate">{partner?.name || 'Partner'}</span>
-                                          <span className="font-bold text-gray-900 dark:text-white">₹{item.amount.toLocaleString()}</span>
-                                       </div>
-                                    );
-                                 })}
-                              </div>
-                           </div>
-                        ))}
-                     {(rawData.profitDistributions || []).filter(d => d.branchId === currentBranch?.id).length === 0 && (
-                        <div className="h-48 flex flex-col items-center justify-center p-8 border-2 border-dashed border-gray-100 dark:border-white/5 rounded-3xl opacity-50">
-                           <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">No payout history</p>
-                        </div>
-                     )}
-                  </div>
-               </div>
-            </div>
+              </div>
+            )}
           </motion.div>
+
         </div>
       </div>
   );

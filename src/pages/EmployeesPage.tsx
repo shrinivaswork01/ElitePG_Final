@@ -70,7 +70,7 @@ export const EmployeesPage = () => {
   }
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isMobileActionsOpen, setIsMobileActionsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'list' | 'salaries' | 'partners'>('list');
+  const [activeTab, setActiveTab] = useState<'list' | 'salaries' | 'admins'>('list');
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
@@ -85,16 +85,13 @@ export const EmployeesPage = () => {
   const [isVisibilityModalOpen, setIsVisibilityModalOpen] = useState(false);
   const [newRoleName, setNewRoleName] = useState('');
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [isRatioModalOpen, setIsRatioModalOpen] = useState(false);
-  const [ratioFormData, setRatioFormData] = useState<{ userId: string; ratio: number }[]>([]);
-  const [effectiveFromMonth, setEffectiveFromMonth] = useState(format(new Date(), 'yyyy-MM'));
   
   const [userFormData, setUserFormData] = useState({
     name: '',
     username: '',
     email: '',
     password: '',
-    role: 'partner' as UserRole,
+    role: 'admin' as UserRole,
     branchIds: [] as string[]
   });
 
@@ -299,7 +296,7 @@ export const EmployeesPage = () => {
       username: '',
       email: '',
       password: '',
-      role: user?.role === 'super' ? 'admin' : 'partner',
+      role: 'admin',
       branchIds: []
     });
   };
@@ -326,35 +323,7 @@ export const EmployeesPage = () => {
     }));
   };
 
-  const handleOpenRatioModal = () => {
-    if (!currentBranch) return;
-    const branchPartners = users.filter(u => (u.role === 'admin' || u.role === 'partner') && u.branchIds?.includes(currentBranch.id));
-    
-    // Get latest active shares for this branch to pre-fill
-    const currentMonth = format(new Date(), 'yyyy-MM');
-    const branchShares = partnerShares
-      .filter(s => s.branchId === currentBranch.id && s.effectiveFrom <= currentMonth)
-      .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom));
-    
-    const latestMonth = branchShares[0]?.effectiveFrom;
-    const latestShares = branchShares.filter(s => s.effectiveFrom === latestMonth);
-
-    const initialRatios = branchPartners.map(p => {
-      const existing = latestShares.find(s => s.userId === p.id);
-      return { userId: p.id, ratio: existing?.ratio || 0 };
-    });
-
-    setRatioFormData(initialRatios);
-    setEffectiveFromMonth(format(new Date(), 'yyyy-MM'));
-    setIsRatioModalOpen(true);
-  };
-
-  const handleSaveRatios = async () => {
-    if (!currentBranch) return;
-    await updatePartnerShareBatch(currentBranch.id, ratioFormData, effectiveFromMonth);
-    setIsRatioModalOpen(false);
-  };
-
+  
 
   const handleKYCAction = (kycId: string, action: 'verify' | 'reject', reason?: string) => {
     if (action === 'verify') {
@@ -382,7 +351,7 @@ export const EmployeesPage = () => {
     const matchesSearch = e.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       e.role.toLowerCase().includes(searchTerm.toLowerCase());
 
-    if (user?.role === 'admin' || user?.role === 'partner') return matchesSearch;
+    if (user?.role === 'admin') return matchesSearch;
 
     // Staff see only themselves
     return matchesSearch && (e.userId === user?.id || e.email === user?.email);
@@ -405,67 +374,65 @@ export const EmployeesPage = () => {
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Employees</h2>
           <p className="text-gray-500 dark:text-gray-400">Manage your staff and payroll.</p>
         </div>
-        {(user?.role === 'admin' || user?.role === 'partner') && (
+        {(user?.role === 'admin' || user?.role === 'super') && (
           <>
             <div className="hidden md:flex gap-2">
               <button
                 onClick={() => setActiveTab(activeTab === 'list' ? 'salaries' : 'list')}
                 className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all"
               >
-                {activeTab === 'list' || activeTab === 'partners' ? <History className="w-5 h-5" /> : <Users className="w-5 h-5" />}
-                {activeTab === 'list' || activeTab === 'partners' ? 'Salary History' : 'Staff List'}
+                {activeTab === 'list' || activeTab === 'admins' ? <History className="w-5 h-5" /> : <Users className="w-5 h-5" />}
+                {activeTab === 'list' || activeTab === 'admins' ? 'Salary History' : 'Staff List'}
               </button>
-              {(user?.role === 'admin' || user?.role === 'super') && (
+              {user?.role === 'super' && (
                 <button
-                  onClick={() => setActiveTab(activeTab === 'partners' ? 'list' : 'partners')}
+                  onClick={() => setActiveTab(activeTab === 'admins' ? 'list' : 'admins')}
                   className={cn(
                     "flex items-center gap-2 px-4 py-2.5 border rounded-xl font-semibold transition-all",
-                    activeTab === 'partners' 
+                    activeTab === 'admins' 
                       ? "bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-600/20" 
                       : "bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/10"
                   )}
                 >
                   <ShieldCheck className="w-5 h-5" />
-                  Partners & Admins
+                  Administrators
                 </button>
               )}
-              <button
-                onClick={() => setIsRolesModalOpen(true)}
-                className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all"
-              >
-                <Shield className="w-5 h-5 text-indigo-500" />
-                Manage Roles
-              </button>
-              <button
-                onClick={() => setIsVisibilityModalOpen(true)}
-                className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all"
-              >
-                <UserCog className="w-5 h-5 text-amber-500" />
-                Role Visibility
-              </button>
-              <button
-                onClick={() => setIsTaskModalOpen(true)}
-                className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all"
-              >
-                <ClipboardList className="w-5 h-5 text-indigo-500" />
-                Add Task
-              </button>
-              {activeTab === 'partners' && user?.role === 'admin' && (
+              {user?.role === 'super' && (
+                <>
+                  <button
+                    onClick={() => setIsRolesModalOpen(true)}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all"
+                  >
+                    <Shield className="w-5 h-5 text-indigo-500" />
+                    Manage Roles
+                  </button>
+                  <button
+                    onClick={() => setIsVisibilityModalOpen(true)}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all"
+                  >
+                    <UserCog className="w-5 h-5 text-amber-500" />
+                    Role Visibility
+                  </button>
+                </>
+              )}
+              {checkFeatureAccess('tasks') && (
                 <button
-                  onClick={handleOpenRatioModal}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 dark:bg-emerald-500/5 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-500/10 rounded-xl font-bold hover:bg-emerald-100 dark:hover:bg-emerald-500/10 transition-all"
+                  onClick={() => setIsTaskModalOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all"
                 >
-                  <TrendingUp className="w-5 h-5" />
-                  Edit Ratios
+                  <ClipboardList className="w-5 h-5 text-indigo-500" />
+                  Add Task
                 </button>
               )}
+              
               <button
-                onClick={() => activeTab === 'partners' ? setIsUserModalOpen(true) : setIsAddModalOpen(true)}
+                onClick={() => (activeTab === 'admins' && user?.role === 'super') ? setIsUserModalOpen(true) : setIsAddModalOpen(true)}
                 className="flex items-center gap-2 px-4 py-2.5 text-white rounded-xl font-semibold shadow-lg transition-all"
                 style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
               >
                 <Plus className="w-5 h-5" />
-                {activeTab === 'partners' ? 'Add User' : 'Add Employee'}
+                {(activeTab === 'admins' && user?.role === 'super') ? 'Add Admin' : 'Add Employee'}
               </button>
             </div>
             
@@ -721,14 +688,14 @@ export const EmployeesPage = () => {
             )}
           </div>
         </div>
-      ) : (
+      ) : (activeTab === 'admins' && user?.role === 'super') ? (
         <div className="space-y-6">
           <div className="bg-white dark:bg-[#111111] p-4 rounded-2xl border border-gray-100 dark:border-white/5 shadow-sm flex flex-col sm:flex-row gap-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
                 type="text"
-                placeholder="Search partners & admins..."
+                placeholder="Search admins..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
@@ -736,13 +703,13 @@ export const EmployeesPage = () => {
             </div>
             <div className="flex items-center gap-2 px-4 py-2 bg-indigo-50/50 dark:bg-indigo-500/5 border border-indigo-100 dark:border-indigo-500/10 rounded-xl text-xs font-bold text-indigo-600 dark:text-indigo-400">
               <ShieldCheck className="w-4 h-4" />
-              {users.filter(u => u.role === 'admin' || u.role === 'partner').length} Total Administrators
+              {users.filter(u => u.role === 'admin').length} Total Administrators
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {users
-              .filter(u => (u.role === 'admin' || u.role === 'partner') && (
+              .filter(u => (u.role === 'admin') && (
                 u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 u.username.toLowerCase().includes(searchTerm.toLowerCase())
@@ -867,6 +834,12 @@ export const EmployeesPage = () => {
               </div>
             )}
           </div>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center justify-center p-20 bg-gray-50 dark:bg-white/5 rounded-[40px] border border-dashed border-gray-200 dark:border-white/10 text-center">
+            <Shield className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Access Restricted</h3>
+            <p className="text-sm text-gray-500 max-w-xs mx-auto mt-2">Only Super Administrators can manage other administrative accounts.</p>
         </div>
       )}
 
@@ -1660,6 +1633,7 @@ export const EmployeesPage = () => {
                     <tr>
                       <th className="p-4 text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 dark:border-white/5">Tab Name</th>
                       {[
+                        'admin',
                         'manager',
                         'caretaker',
                         'cleaner',
@@ -1691,6 +1665,7 @@ export const EmployeesPage = () => {
                           <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">{tab.name}</span>
                         </td>
                         {[
+                          'admin',
                           'manager',
                           'caretaker',
                           'cleaner',
@@ -2073,114 +2048,7 @@ export const EmployeesPage = () => {
           </div>
         )}
       </AnimatePresence>
-      {/* Partner Ratio Modal */}
-      <AnimatePresence>
-        {isRatioModalOpen && (
-          <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsRatioModalOpen(false)}
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-lg bg-white dark:bg-[#111111] rounded-[2.5rem] shadow-2xl overflow-hidden border border-white/10"
-            >
-              <div className="p-8 border-b border-gray-100 dark:border-white/5 flex items-center justify-between bg-gray-50/50 dark:bg-white/[0.02]">
-                <div>
-                  <h3 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">Set Profit Ratios</h3>
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">For {currentBranch?.name}</p>
-                </div>
-                <button onClick={() => setIsRatioModalOpen(false)} className="p-2 hover:bg-gray-200 dark:hover:bg-white/10 rounded-2xl transition-all">
-                  <X className="w-6 h-6 text-gray-400" />
-                </button>
-              </div>
 
-              <div className="p-8 space-y-8">
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between px-2">
-                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Effective From</span>
-                    <input
-                      type="month"
-                      value={effectiveFromMonth}
-                      onChange={(e) => setEffectiveFromMonth(e.target.value)}
-                      className="px-4 py-2 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none text-gray-900 dark:text-white"
-                    />
-                  </div>
-                  
-                  <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                    {ratioFormData.map((item, idx) => {
-                      const partner = users.find(u => u.id === item.userId);
-                      return (
-                        <div key={item.userId} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-white/3 rounded-2xl border border-gray-100 dark:border-white/5">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-black">
-                              {partner?.name?.charAt(0)}
-                            </div>
-                            <div>
-                              <p className="text-sm font-bold text-gray-900 dark:text-white">{partner?.name}</p>
-                              <p className="text-[10px] text-gray-400 font-medium">{partner?.email}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="number"
-                              min="0"
-                              max="100"
-                              value={item.ratio}
-                              onChange={(e) => {
-                                const newRatios = [...ratioFormData];
-                                newRatios[idx].ratio = Number(e.target.value);
-                                setRatioFormData(newRatios);
-                              }}
-                              className="w-20 px-3 py-2 bg-white dark:bg-black/20 border border-gray-200 dark:border-white/10 rounded-xl text-sm font-black text-center focus:ring-2 focus:ring-emerald-500 outline-none text-gray-900 dark:text-white"
-                            />
-                            <span className="text-sm font-black text-gray-400">%</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="pt-6 border-t border-gray-100 dark:border-white/5">
-                   <div className="flex items-center justify-between mb-6">
-                      <span className="text-sm font-black text-gray-500 uppercase tracking-widest">Total Share</span>
-                      <div className={cn(
-                        "flex items-center gap-2 px-4 py-2 rounded-2xl font-black text-lg",
-                        ratioFormData.reduce((sum, r) => sum + r.ratio, 0) === 100 
-                          ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400" 
-                          : "bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400"
-                      )}>
-                         {ratioFormData.reduce((sum, r) => sum + r.ratio, 0)}%
-                         {ratioFormData.reduce((sum, r) => sum + r.ratio, 0) === 100 ? (
-                            <CheckCircle className="w-5 h-5" />
-                         ) : (
-                            <AlertCircle className="w-5 h-5" />
-                         )}
-                      </div>
-                   </div>
-
-                   <button
-                     disabled={ratioFormData.reduce((sum, r) => sum + r.ratio, 0) !== 100}
-                     onClick={handleSaveRatios}
-                     className="w-full py-4 bg-indigo-600 text-white rounded-[1.5rem] font-black text-sm uppercase tracking-widest shadow-xl shadow-indigo-600/20 hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:grayscale"
-                   >
-                     Confirm & Save Ratios
-                   </button>
-                   <p className="text-[10px] text-gray-400 text-center font-bold mt-4 italic uppercase">
-                      Changes will take effect from the selected month.
-                   </p>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </div>
   );
 };

@@ -27,7 +27,10 @@ import {
   History as HistoryIcon,
   Settings,
   Zap,
-  Home
+  Home,
+  Shield,
+  Ticket,
+  Activity
 } from 'lucide-react';
 import { format, parseISO, differenceInDays, getDate, isAfter } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
@@ -57,7 +60,7 @@ export const PaymentsPage = () => {
   const [receiptNotes, setReceiptNotes] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'paid' | 'pending'>('all');
-  const [filterType, setFilterType] = useState<'all' | 'rent' | 'electricity'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'rent' | 'electricity' | 'token' | 'deposit'>('all');
   const [filterMonth, setFilterMonth] = useState<string>(format(new Date(), 'yyyy-MM'));
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [detailPayment, setDetailPayment] = useState<any | null>(null);
@@ -157,11 +160,21 @@ export const PaymentsPage = () => {
         <div>
           <p className="text-sm font-bold text-gray-900 dark:text-white">₹{Number(p.total_amount).toLocaleString()}</p>
           <div className="flex items-center gap-1.5 mt-0.5">
-            {(p.payment_type || 'rent') === 'electricity' ? (
-              <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center gap-0.5">⚡ Electricity</span>
-            ) : (
-              <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center gap-0.5">🏠 Rent</span>
-            )}
+            {(() => {
+              const type = p.payment_type || 'rent';
+              switch (type) {
+                case 'electricity':
+                  return <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center gap-0.5"><Zap className="w-2.5 h-2.5" /> Electricity</span>;
+                case 'token':
+                  return <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center gap-0.5"><Ticket className="w-2.5 h-2.5" /> Token</span>;
+                case 'deposit':
+                  return <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center gap-0.5"><Shield className="w-2.5 h-2.5" /> Deposit</span>;
+                case 'adjust':
+                  return <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 flex items-center gap-0.5"><Activity className="w-2.5 h-2.5" /> Adjustment</span>;
+                default:
+                  return <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center gap-0.5"><Home className="w-2.5 h-2.5" /> Rent</span>;
+              }
+            })()}
           </div>
           {p.late_fee > 0 && <p className="text-[10px] text-rose-500">+₹{p.late_fee} late fee</p>}
         </div>
@@ -495,20 +508,20 @@ export const PaymentsPage = () => {
     paymentDate: new Date().toISOString().split('T')[0],
     month: format(new Date(), 'yyyy-MM'),
     status: 'paid',
-    method: 'Offline',
+    method: 'Cash',
     paymentType: 'rent'
   });
 
-  // Detect if this is a move-in first rent (tenant has move_in_date, token > 0, no prior rent paid)
+  // Detect if this is a move-in first rent (existing partial rent record that matches token)
   const isFirstRent = React.useMemo(() => {
     if (!newPayment.tenantId || newPayment.paymentType !== 'rent') return false;
     const tenant = tenants.find(t => t.id === newPayment.tenantId);
     if (!tenant) return false;
-    const hasToken = (tenant.tokenAmount || 0) > 0 && tenant.tokenStatus === 'paid';
-    const hasMoveIn = !!(tenant as any).moveInDate;
-    const hasPriorRent = payments.some(p => p.tenantId === tenant.id && p.paymentType === 'rent' && p.status === 'paid');
-    return hasToken && hasMoveIn && !hasPriorRent;
-  }, [newPayment.tenantId, newPayment.paymentType, tenants, payments]);
+    
+    // Check if there is an existing rent payment for this month that matches the token amount
+    const existingRent = payments.find(p => p.tenantId === tenant.id && p.month === newPayment.month && p.status === 'paid' && p.paymentType === 'rent');
+    return !!existingRent && existingRent.amount === tenant.tokenAmount && existingRent.amount < tenant.rentAmount;
+  }, [newPayment.tenantId, newPayment.paymentType, newPayment.month, tenants, payments]);
 
   // Move-in first rent amount (rent - token)
   const firstRentAmount = React.useMemo(() => {
@@ -549,9 +562,23 @@ export const PaymentsPage = () => {
           linkedBillId = bill.id;
         }
 
-        const existingPayment = payments.find(p => p.tenantId === newPayment.tenantId && p.month === newPayment.month && p.paymentType === newPayment.paymentType);
-        if (existingPayment) {
-          toast.error(`A ${newPayment.paymentType} payment record already exists for this tenant for ${newPayment.month}.`);
+        const existingPaymentForMonth = payments.find(p => p.tenantId === newPayment.tenantId && p.month === newPayment.month && p.paymentType === newPayment.paymentType);
+        
+        if (newPayment.paymentType === 'rent') {
+          if (existingPaymentForMonth && !isFirstRent) {
+            toast.error('Payment already recorded for this tenant for selected month');
+            return;
+          }
+        } else {
+          if (existingPaymentForMonth) {
+            toast.error(`A ${newPayment.paymentType} payment record already exists for this tenant for ${newPayment.month}.`);
+            return;
+          }
+        }
+
+        // Amount > 0 validation
+        if (newPayment.amount <= 0 && (!adjustFromDeposit || depositAdjustAmount <= 0)) {
+          toast.error('Amount must be greater than zero.');
           return;
         }
 
@@ -580,19 +607,33 @@ export const PaymentsPage = () => {
           return;
         }
 
-        await addPayment({
-          ...newPayment,
-          amount: effectiveAmount,
-          totalAmount: effectiveTotal,
-          branchId: tenant?.branchId || user?.branchId || '',
-          electricityBillId: linkedBillId,
-          electricityAmount: newPayment.paymentType === 'electricity' ? newPayment.amount : 0,
-          electricity_amount: newPayment.paymentType === 'electricity' ? newPayment.amount : 0,
-          base_share: 0,
-          ac_share: 0,
-          units_consumed: 0,
-          cost_per_unit: 0,
-        } as any);
+        if (newPayment.paymentType === 'rent' && isFirstRent) {
+          const existingRent = payments.find(p => p.tenantId === newPayment.tenantId && p.month === newPayment.month && p.paymentType === 'rent');
+          if (existingRent) {
+            await updatePayment(existingRent.id, {
+              ...existingRent,
+              amount: tenant.rentAmount,
+              totalAmount: tenant.rentAmount + (newPayment.lateFee || 0),
+              paymentDate: newPayment.paymentDate,
+              method: newPayment.method,
+              status: 'paid'
+            });
+          }
+        } else {
+          await addPayment({
+            ...newPayment,
+            amount: effectiveAmount,
+            totalAmount: effectiveTotal,
+            branchId: tenant?.branchId || user?.branchId || '',
+            electricityBillId: linkedBillId,
+            electricityAmount: newPayment.paymentType === 'electricity' ? newPayment.amount : 0,
+            electricity_amount: newPayment.paymentType === 'electricity' ? newPayment.amount : 0,
+            base_share: 0,
+            ac_share: 0,
+            units_consumed: 0,
+            cost_per_unit: 0,
+          } as any);
+        }
 
         // If deposit adjustment was used, record an ADJUST payment and update tenant deposit_balance
         if (adjustFromDeposit && depositAdjustAmount > 0) {
@@ -625,7 +666,7 @@ export const PaymentsPage = () => {
           paymentDate: new Date().toISOString().split('T')[0],
           month: format(new Date(), 'yyyy-MM'),
           status: 'paid',
-          method: 'Offline',
+          method: 'Cash',
           paymentType: 'rent'
         });
         refetchPayments();
@@ -635,6 +676,85 @@ export const PaymentsPage = () => {
       } finally {
         setIsSubmitting(false);
       }
+    }
+  };
+
+  const handleAutoPopulate = async (type: string, tenantId: string, month: string) => {
+    if (!tenantId || !month) return 0;
+    
+    if (type === 'rent') {
+      const tenant = tenants.find(t => t.id === tenantId);
+      return tenant?.rentAmount || 0;
+    }
+    
+    if (type === 'electricity') {
+      const tenant = tenants.find(t => t.id === tenantId);
+      const room = rooms.find(r => r.id === (tenant?.roomId || (tenant as any)?.room_id));
+      if (room?.meterGroupId) {
+        const bill = await fetchElectricityBill(room.meterGroupId, month);
+        if (bill) {
+          const flatRooms = rooms.filter(r => r.meterGroupId === room.meterGroupId);
+          // Find tenants in this flat
+          const flatTenants = tenants.filter(t => {
+            const r = rooms.find(rm => rm.id === (t.roomId || (t as any).room_id));
+            return r?.meterGroupId === room.meterGroupId;
+          });
+          
+          // Get AC readings if needed
+          const acReadings = await fetchRoomAcReadings(room.meterGroupId, month, rooms);
+          const shares = calculateElectricityShares(bill, flatTenants, flatRooms, acReadings);
+          const myShare = shares.find(s => s.tenantId === tenantId);
+          return myShare?.total || 0;
+        }
+      }
+    }
+    return 0;
+  };
+
+  const handleAdjustElectricity = async () => {
+    if (!paymentToEdit || paymentToEdit.paymentType !== 'electricity') return;
+    
+    const tenant = tenants.find(t => t.id === paymentToEdit.tenantId);
+    if (!tenant) return;
+
+    const totalToPay = paymentToEdit.totalAmount;
+    if (tenant.depositBalance < totalToPay) {
+      toast.error(`Insufficient deposit. Tenant has ₹${tenant.depositBalance}, needs ₹${totalToPay}`);
+      return;
+    }
+
+    try {
+      // 1. Mark as paid
+      await updatePayment(paymentToEdit.id, {
+        ...paymentToEdit,
+        paymentDate: new Date().toISOString().split('T')[0],
+        status: 'paid',
+        method: 'Offline',
+      });
+
+      // 2. Adjust deposit
+      const newBalance = tenant.depositBalance - totalToPay;
+      await updateTenant(tenant.id, { depositBalance: newBalance });
+
+      // 3. Create ADJUST payment record
+      await addPayment({
+        tenantId: tenant.id,
+        month: paymentToEdit.month,
+        amount: -totalToPay,
+        lateFee: 0,
+        totalAmount: -totalToPay,
+        paymentDate: new Date().toISOString().split('T')[0],
+        status: 'paid',
+        method: 'Offline',
+        paymentType: 'adjustment' as any
+      });
+
+      toast.success('Electricity bill adjusted from deposit successfully');
+      setIsEditModalOpen(false);
+      setPaymentToEdit(null);
+      refetchPayments();
+    } catch (e) {
+      toast.error('Failed to adjust. Please try again.');
     }
   };
 
@@ -813,7 +933,7 @@ export const PaymentsPage = () => {
   // Dashboard stats should be independent of the current search term to match Dashboard expectations
   const totalRevenue = React.useMemo(() => {
     return (isTenant ? payments.filter(p => p.tenantId === tenantData?.id) : payments)
-      .filter(p => p.status === 'paid')
+      .filter(p => p.status === 'paid' && (p.paymentType || 'rent').toLowerCase() === 'rent')
       .reduce((sum, p) => sum + p.totalAmount, 0);
   }, [isTenant, payments, tenantData?.id]);
 
@@ -1008,7 +1128,7 @@ export const PaymentsPage = () => {
               <TrendingUp className="w-6 h-6" />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{isTenant ? 'Total Paid to Date' : 'Total Revenue'}</p>
+              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{isTenant ? 'Total Paid to Date' : 'Total Rent Revenue'}</p>
               <h3 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">₹{totalRevenue.toLocaleString()}</h3>
             </div>
           </div>
@@ -1046,7 +1166,9 @@ export const PaymentsPage = () => {
           {[
             { id: 'all', label: 'All Payments', icon: <HistoryIcon className="w-4 h-4" /> },
             { id: 'rent', label: 'Rent Only', icon: <CreditCard className="w-4 h-4" /> },
-            { id: 'electricity', label: 'Electricity Only', icon: <Zap className="w-4 h-4" /> }
+            { id: 'electricity', label: 'Electricity Only', icon: <Zap className="w-4 h-4" /> },
+            { id: 'token', label: 'Tokens', icon: <Ticket className="w-4 h-4" /> },
+            { id: 'deposit', label: 'Deposits', icon: <Shield className="w-4 h-4" /> }
           ].map((tab) => (
             <button
               key={tab.id}
@@ -1590,45 +1712,23 @@ export const PaymentsPage = () => {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                        <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Payment Type</label>
-                       <select
-                         required
-                         value={newPayment.paymentType}
-                         onChange={(e) => {
-                           const type = e.target.value as 'rent' | 'electricity';
-                           const tenant = tenants.find(t => t.id === newPayment.tenantId);
-                           let amount = 0;
-                           if (type === 'rent') amount = tenant?.rentAmount || 0;
-                           else {
-                             // For electricity, we check if there's a pending bill or allow manual entry
-                             // For now, let's allow manual entry for admin ease if not using the auto-modal
-                             amount = 0;
-                           }
-                           
-                           setNewPayment({
-                             ...newPayment,
-                             paymentType: type,
-                             amount,
-                             totalAmount: amount + (newPayment.lateFee || 0)
-                           });
-                         }}
-                         className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white font-bold"
-                       >
-                         <option value="rent">Rent Payment</option>
-                         <option value="electricity">Electricity Bill</option>
-                       </select>
+                       <div className="w-full px-4 py-2.5 bg-indigo-50 dark:bg-indigo-500/10 border-none rounded-xl text-indigo-600 dark:text-indigo-400 font-bold flex items-center gap-2">
+                         <Home className="w-4 h-4" /> Rent Payment
+                       </div>
+                       <p className="text-[10px] text-gray-500 mt-1 italic">This modal strictly handles rent payments.</p>
                     </div>
                     <div className="space-y-2">
                       <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Select Tenant</label>
                       <select
                         required
                         value={newPayment.tenantId}
-                        onChange={(e) => {
-                          const tenant = tenants.find(t => t.id === e.target.value);
-                          const lateFee = newPayment.paymentType === 'rent' ? calculateLateFee(e.target.value, newPayment.month || '') : 0;
-                          const amount = newPayment.paymentType === 'rent' ? (tenant?.rentAmount || 0) : 0;
+                        onChange={async (e) => {
+                          const tenantId = e.target.value;
+                          const amount = await handleAutoPopulate(newPayment.paymentType || 'rent', tenantId, newPayment.month || '');
+                          const lateFee = newPayment.paymentType === 'rent' ? calculateLateFee(tenantId, newPayment.month || '') : 0;
                           setNewPayment({
                             ...newPayment,
-                            tenantId: e.target.value,
+                            tenantId,
                             amount,
                             lateFee,
                             totalAmount: amount + lateFee
@@ -1659,13 +1759,16 @@ export const PaymentsPage = () => {
                         required
                         type="month"
                         value={newPayment.month}
-                        onChange={(e) => {
-                          const lateFee = newPayment.paymentType === 'rent' ? calculateLateFee(newPayment.tenantId || '', e.target.value) : 0;
+                        onChange={async (e) => {
+                          const month = e.target.value;
+                          const amount = await handleAutoPopulate(newPayment.paymentType || 'rent', newPayment.tenantId || '', month);
+                          const lateFee = newPayment.paymentType === 'rent' ? calculateLateFee(newPayment.tenantId || '', month) : 0;
                           setNewPayment({
                             ...newPayment,
-                            month: e.target.value,
+                            month,
+                            amount,
                             lateFee,
-                            totalAmount: (newPayment.amount || 0) + lateFee
+                            totalAmount: amount + lateFee
                           });
                         }}
                         className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
@@ -1717,7 +1820,7 @@ export const PaymentsPage = () => {
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Payment Method</label>
                     <div className="flex gap-2">
-                      {['Online', 'Cash', 'Offline'].map((method) => (
+                      {['Online', 'Cash'].map((method) => (
                         <button
                           key={method}
                           type="button"
@@ -1744,30 +1847,43 @@ export const PaymentsPage = () => {
                   )}
 
                   {/* Move-in First Rent Summary Card */}
-                  {isFirstRent && newPayment.paymentType === 'rent' && (
-                    <div className="p-4 bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-500/10 dark:to-indigo-500/10 rounded-2xl space-y-3 border border-purple-200 dark:border-purple-500/20">
-                      <div className="flex items-center gap-2 mb-1">
-                        <div className="w-8 h-8 bg-purple-500 text-white rounded-xl flex items-center justify-center">
-                          <Home className="w-4 h-4" />
+                  {isFirstRent && newPayment.paymentType === 'rent' && (() => {
+                    const tenant = tenants.find(t => t.id === newPayment.tenantId);
+                    const fullRent = tenant?.rentAmount || 0;
+                    const tokenPaid = tenant?.tokenAmount || 0;
+                    const payNow = firstRentAmount;
+                    return (
+                      <div className="p-4 bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-500/10 dark:to-indigo-500/10 rounded-2xl space-y-3 border border-purple-200 dark:border-purple-500/20">
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="w-8 h-8 bg-purple-500 text-white rounded-xl flex items-center justify-center">
+                            <Home className="w-4 h-4" />
+                          </div>
+                          <span className="text-sm font-black text-purple-700 dark:text-purple-300 uppercase tracking-tight">Move-in First Rent</span>
                         </div>
-                        <span className="text-sm font-black text-purple-700 dark:text-purple-300 uppercase tracking-tight">Move-in Rent</span>
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between text-xs">
+                            <span className="text-gray-500">Full Monthly Rent</span>
+                            <span className="font-bold text-gray-700 dark:text-gray-300">₹{fullRent.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-purple-500 font-medium">Token Already Paid</span>
+                            <span className="font-bold text-purple-600 dark:text-purple-400">− ₹{tokenPaid.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between text-sm pt-2 border-t border-purple-200 dark:border-purple-500/20">
+                            <span className="font-black text-purple-800 dark:text-purple-200">Remaining to Pay Now</span>
+                            <span className="font-black text-purple-600 dark:text-purple-300 text-lg">₹{payNow.toLocaleString()}</span>
+                          </div>
+                        </div>
+                        {/* Reporting note */}
+                        <div className="flex items-start gap-2 mt-2 pt-2 border-t border-purple-200/50 dark:border-purple-500/10">
+                          <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest shrink-0 mt-0.5">📊 Revenue</span>
+                          <p className="text-[10px] text-indigo-500 dark:text-indigo-400 font-medium leading-relaxed">
+                            Full rent of <strong>₹{fullRent.toLocaleString()}</strong> counts as revenue (Token ₹{tokenPaid.toLocaleString()} + Remaining ₹{payNow.toLocaleString()}). Token is NOT double-counted.
+                          </p>
+                        </div>
                       </div>
-                      <div className="space-y-1.5">
-                        <div className="flex justify-between text-xs">
-                          <span className="text-gray-500">Total Rent</span>
-                          <span className="font-bold text-gray-700 dark:text-gray-300">₹{(tenants.find(t => t.id === newPayment.tenantId)?.rentAmount || 0).toLocaleString()}</span>
-                        </div>
-                        <div className="flex justify-between text-xs">
-                          <span className="text-purple-500 font-medium">Token Paid</span>
-                          <span className="font-bold text-purple-600 dark:text-purple-400">− ₹{(tenants.find(t => t.id === newPayment.tenantId)?.tokenAmount || 0).toLocaleString()}</span>
-                        </div>
-                        <div className="flex justify-between text-sm pt-2 border-t border-purple-200 dark:border-purple-500/20">
-                          <span className="font-black text-purple-800 dark:text-purple-200">Pay Now</span>
-                          <span className="font-black text-purple-600 dark:text-purple-300 text-lg">₹{firstRentAmount.toLocaleString()}</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                    );
+                  })()}
 
                   {/* Deposit Adjustment Controls */}
                   {selectedTenantDepositBalance > 0 && (
@@ -1894,7 +2010,17 @@ export const PaymentsPage = () => {
                         required
                         type="month"
                         value={paymentToEdit.month}
-                        onChange={(e) => setPaymentToEdit({ ...paymentToEdit, month: e.target.value })}
+                        onChange={async (e) => {
+                          const month = e.target.value;
+                          const amount = await handleAutoPopulate(paymentToEdit.paymentType, paymentToEdit.tenantId, month);
+                          const lateFee = paymentToEdit.paymentType === 'rent' ? calculateLateFee(paymentToEdit.tenantId, month) : 0;
+                          setPaymentToEdit({ 
+                            ...paymentToEdit, 
+                            month,
+                            amount,
+                            lateFee
+                          });
+                        }}
                         className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                       />
                     </div>
@@ -1911,7 +2037,7 @@ export const PaymentsPage = () => {
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Rent Amount</label>
+                      <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Amount</label>
                       <input
                         required
                         type="number"
@@ -1961,6 +2087,20 @@ export const PaymentsPage = () => {
                     <span className="text-xl font-bold text-indigo-600 dark:text-indigo-400">₹{(paymentToEdit.amount + paymentToEdit.lateFee).toLocaleString()}</span>
                   </div>
                 </div>
+                
+                {paymentToEdit.paymentType === 'electricity' && paymentToEdit.status === 'pending' && (
+                  <div className="flex justify-end w-full mb-2">
+                     <button
+                       type="button"
+                       onClick={handleAdjustElectricity}
+                       className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-amber-50 dark:bg-amber-500/10 text-amber-600 hover:bg-amber-100 hover:text-amber-700 dark:hover:bg-amber-500/20 rounded-xl transition-all font-bold tracking-tight shadow-sm"
+                     >
+                       <Zap className="w-4 h-4" />
+                       Adjust from Deposit
+                     </button>
+                  </div>
+                )}
+
                 <div className="flex justify-end gap-3 pt-4">
                   <button
                     type="button"
