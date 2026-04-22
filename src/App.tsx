@@ -102,28 +102,36 @@ export default function App() {
               <Route path="tenants" element={
                 <RoleGuard requiredLevel={2}>
                   <PermissionGuard requiredPermission="tenants">
-                    <TenantsPage />
+                    <FeatureGuard feature="tenants" fallback={<Navigate to="dashboard" replace />}>
+                      <TenantsPage />
+                    </FeatureGuard>
                   </PermissionGuard>
                 </RoleGuard>
               } />
               <Route path="rooms" element={
                 <RoleGuard requiredLevel={2}>
                   <PermissionGuard requiredPermission="rooms">
-                    <RoomsPage />
+                    <FeatureGuard feature="rooms" fallback={<Navigate to="dashboard" replace />}>
+                      <RoomsPage />
+                    </FeatureGuard>
                   </PermissionGuard>
                 </RoleGuard>
               } />
               <Route path="payments" element={
                 <RoleGuard requiredLevel={1}>
                   <PermissionGuard requiredPermission="payments">
-                    <PaymentsPage />
+                    <FeatureGuard feature="payments" fallback={<Navigate to="dashboard" replace />}>
+                      <PaymentsPage />
+                    </FeatureGuard>
                   </PermissionGuard>
                 </RoleGuard>
               } />
               <Route path="complaints" element={
                 <RoleGuard requiredLevel={1}>
                   <PermissionGuard requiredPermission="complaints">
-                    <ComplaintsPage />
+                    <FeatureGuard feature="complaints" fallback={<Navigate to="dashboard" replace />}>
+                      <ComplaintsPage />
+                    </FeatureGuard>
                   </PermissionGuard>
                 </RoleGuard>
               } />
@@ -137,7 +145,9 @@ export default function App() {
               <Route path="employees" element={
                 <RoleGuard requiredLevel={2}>
                   <PermissionGuard requiredPermission="employees">
-                    <EmployeesPage />
+                    <FeatureGuard feature="employees" fallback={<Navigate to="dashboard" replace />}>
+                      <EmployeesPage />
+                    </FeatureGuard>
                   </PermissionGuard>
                 </RoleGuard>
               } />
@@ -149,14 +159,18 @@ export default function App() {
               <Route path="reports" element={
                 <RoleGuard requiredLevel={2}>
                   <PermissionGuard requiredPermission="reports">
-                    <ReportsPage />
+                    <FeatureGuard feature="reports" fallback={<Navigate to="dashboard" replace />}>
+                      <ReportsPage />
+                    </FeatureGuard>
                   </PermissionGuard>
                 </RoleGuard>
               } />
               <Route path="partner-payouts" element={
                 <RoleGuard requiredLevel={3}>
                   <PermissionGuard requiredPermission="partner-payouts">
-                    <PartnerPayoutsPage />
+                    <FeatureGuard feature="partner-payouts" fallback={<Navigate to="dashboard" replace />}>
+                      <PartnerPayoutsPage />
+                    </FeatureGuard>
                   </PermissionGuard>
                 </RoleGuard>
               } />
@@ -178,7 +192,7 @@ export default function App() {
               <Route path="tasks" element={
                 <RoleGuard requiredLevel={2}>
                   <PermissionGuard requiredPermission="tasks">
-                    <FeatureGuard feature="tasks">
+                    <FeatureGuard feature="tasks" fallback={<Navigate to="dashboard" replace />}>
                       <TasksPage />
                     </FeatureGuard>
                   </PermissionGuard>
@@ -187,7 +201,7 @@ export default function App() {
               <Route path="expenses" element={
                 <RoleGuard requiredLevel={2}>
                   <PermissionGuard requiredPermission="expenses">
-                    <FeatureGuard feature="expenses">
+                    <FeatureGuard feature="expenses" fallback={<Navigate to="dashboard" replace />}>
                       <ExpensesPage />
                     </FeatureGuard>
                   </PermissionGuard>

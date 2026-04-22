@@ -2,14 +2,14 @@ import React, { useState } from 'react';
 import toast from 'react-hot-toast';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
-import { 
-  Building2, 
-  Plus, 
-  Search, 
-  MapPin, 
-  Phone, 
-  UserPlus, 
-  Trash2, 
+import {
+  Building2,
+  Plus,
+  Search,
+  MapPin,
+  Phone,
+  UserPlus,
+  Trash2,
   Edit2,
   CheckCircle2,
   XCircle,
@@ -30,14 +30,14 @@ import { cn } from '../utils';
 import { PGBranch, UserRole, User, SubscriptionPlan, AppFeature } from '../types';
 
 export const SuperAdminPage = () => {
-  const { 
-    branches, 
-    addBranch, 
-    updateBranch, 
-    deleteBranch, 
-    subscriptionPlans, 
-    addSubscriptionPlan, 
-    updateSubscriptionPlan, 
+  const {
+    branches,
+    addBranch,
+    updateBranch,
+    deleteBranch,
+    subscriptionPlans,
+    addSubscriptionPlan,
+    updateSubscriptionPlan,
     deleteSubscriptionPlan,
     updateBranchSubscription,
     userInvites,
@@ -47,26 +47,27 @@ export const SuperAdminPage = () => {
     updatePGConfig,
     payments,
     branchTabPermissions,
-    toggleBranchTabPermission
+    toggleBranchTabPermission,
+    rawData
   } = useApp();
   const { users, register, deleteUser, updateUser, user } = useAuth();
-  
+
   const primaryBranch = branches.find(b => b.id === user?.branchId) || branches.find(b => user?.branchIds?.includes(b.id));
   const currentPlan = subscriptionPlans.find(plan => plan.id === primaryBranch?.planId);
-  
+
   const [activeTab, setActiveTab] = useState<'branches' | 'subscriptions' | 'admins'>('branches');
   const [isAddingBranch, setIsAddingBranch] = useState(false);
   const [isAddingAdmin, setIsAddingAdmin] = useState(false);
   const [isAddingPlan, setIsAddingPlan] = useState(false);
   const [isAssigningPlan, setIsAssigningPlan] = useState(false);
   const [isManagingVisibility, setIsManagingVisibility] = useState(false);
-  
+
   const [editingBranch, setEditingBranch] = useState<PGBranch | null>(null);
   const [editingAdmin, setEditingAdmin] = useState<User | null>(null);
   const [editingPlan, setEditingPlan] = useState<SubscriptionPlan | null>(null);
   const [selectedBranch, setSelectedBranch] = useState<PGBranch | null>(null);
   const [selectedBranchIdForVisibility, setSelectedBranchIdForVisibility] = useState<string | null>(null);
-  
+
   const [adminBranchFilter, setAdminBranchFilter] = useState('all');
   const [billingInterval, setBillingInterval] = useState<'monthly' | 'yearly'>('monthly');
 
@@ -125,11 +126,11 @@ export const SuperAdminPage = () => {
       if (newId && branchForm.razorpayKeyId) {
         await updatePGConfig({ razorpayKeyId: branchForm.razorpayKeyId }, newId as string);
       }
-      
+
       // If admin or partner, auto-assign this new branch to their branchIds
       if (newId && (user?.role === 'admin' || user?.role === 'partner') && user.id) {
-         const updatedBranchIds = [...(user.branchIds || []), newId as string];
-         await updateUser(user.id, { branchIds: updatedBranchIds });
+        const updatedBranchIds = [...(user.branchIds || []), newId as string];
+        await updateUser(user.id, { branchIds: updatedBranchIds });
       }
     }
     setBranchForm({ name: '', branchName: '', address: '', phone: '', razorpayKeyId: '' });
@@ -140,7 +141,7 @@ export const SuperAdminPage = () => {
   const handleAddPlan = async (e: React.FormEvent) => {
     e.preventDefault();
     let success = false;
-    
+
     // Explicitly exclude 'id' from planForm to avoid conflicts during update
     const { id, ...planData } = planForm as any;
 
@@ -167,7 +168,7 @@ export const SuperAdminPage = () => {
 
   const handleAddAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (editingAdmin) {
       await updateUser(editingAdmin.id, {
         name: adminForm.name,
@@ -189,7 +190,7 @@ export const SuperAdminPage = () => {
         branchIds: adminForm.branchIds,
         requiresPasswordChange: true
       });
-      
+
       if (result.success) {
         toast.success('Admin created successfully');
       } else {
@@ -197,7 +198,7 @@ export const SuperAdminPage = () => {
         return;
       }
     }
-    
+
     setIsAddingAdmin(false);
     setEditingAdmin(null);
     setAdminForm({ name: '', username: '', email: '', phone: '', branchIds: [] });
@@ -206,10 +207,10 @@ export const SuperAdminPage = () => {
   const handleEditBranch = (branch: PGBranch) => {
     setEditingBranch(branch);
     const existingConfig = pgConfigs?.find(c => c.branchId === branch.id);
-    setBranchForm({ 
-      name: branch.name, 
-      branchName: branch.branchName || '', 
-      address: branch.address, 
+    setBranchForm({
+      name: branch.name,
+      branchName: branch.branchName || '',
+      address: branch.address,
       phone: branch.phone,
       razorpayKeyId: existingConfig?.razorpayKeyId || ''
     });
@@ -356,7 +357,7 @@ export const SuperAdminPage = () => {
                     </button>
                   )}
                 </div>
-                
+
                 <div className="p-6 border-b border-gray-100 dark:border-white/5">
                   <div className="flex items-center gap-4 mb-4">
                     <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-black text-xl shadow-inner border border-indigo-100 dark:border-indigo-500/20">
@@ -406,8 +407,8 @@ export const SuperAdminPage = () => {
                     <span className={cn(
                       "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider",
                       branch.subscriptionStatus === 'active' ? "bg-green-100 text-green-700 dark:bg-green-500/10 dark:text-green-400" :
-                      branch.subscriptionStatus === 'trial' ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400" :
-                      "bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400"
+                        branch.subscriptionStatus === 'trial' ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400" :
+                          "bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400"
                     )}>
                       {branch.subscriptionStatus || 'Inactive'}
                     </span>
@@ -448,104 +449,104 @@ export const SuperAdminPage = () => {
           >
             {/* Global Subscription Header */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-indigo-600 p-8 rounded-[2.5rem] text-white shadow-xl shadow-indigo-600/20 relative overflow-hidden">
-               <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-32 -mt-32 blur-3xl" />
-               <div className="relative z-10">
-                 <h3 className="text-2xl font-black uppercase tracking-tight mb-1">Global Subscription Analytics</h3>
-                 <p className="text-indigo-100 text-sm font-medium">Monitoring revenue streams and renewal cycles across all branches</p>
-               </div>
-               <div className="flex items-center bg-white/10 p-1.5 rounded-2xl border border-white/10 relative z-10">
-                  <button 
-                    onClick={() => setBillingInterval('monthly')}
-                    className={cn("px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all", billingInterval === 'monthly' ? "bg-white text-indigo-600 shadow-lg" : "text-white hover:bg-white/5")}
-                  >Monthly</button>
-                  <button 
-                    onClick={() => setBillingInterval('yearly')}
-                    className={cn("px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all", billingInterval === 'yearly' ? "bg-white text-indigo-600 shadow-lg" : "text-white hover:bg-white/5")}
-                  >Yearly</button>
-               </div>
+              <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-32 -mt-32 blur-3xl" />
+              <div className="relative z-10">
+                <h3 className="text-2xl font-black uppercase tracking-tight mb-1">Global Subscription Analytics</h3>
+                <p className="text-indigo-100 text-sm font-medium">Monitoring revenue streams and renewal cycles across all branches</p>
+              </div>
+              <div className="flex items-center bg-white/10 p-1.5 rounded-2xl border border-white/10 relative z-10">
+                <button
+                  onClick={() => setBillingInterval('monthly')}
+                  className={cn("px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all", billingInterval === 'monthly' ? "bg-white text-indigo-600 shadow-lg" : "text-white hover:bg-white/5")}
+                >Monthly</button>
+                <button
+                  onClick={() => setBillingInterval('yearly')}
+                  className={cn("px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all", billingInterval === 'yearly' ? "bg-white text-indigo-600 shadow-lg" : "text-white hover:bg-white/5")}
+                >Yearly</button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {subscriptionPlans.map((plan) => (
-              <div key={plan.id} className="bg-white dark:bg-[#111111] p-6 rounded-3xl border border-gray-200 dark:border-white/5 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button 
-                    onClick={() => {
-                      const { id, ...planData } = plan;
-                      setEditingPlan(plan);
-                      setPlanForm(planData);
-                      setIsAddingPlan(true);
-                    }}
-                    className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg text-gray-500"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                  <button 
-                    onClick={() => deleteSubscriptionPlan(plan.id)}
-                    className="p-2 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg text-red-600"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
+              {subscriptionPlans.map((plan) => (
+                <div key={plan.id} className="bg-white dark:bg-[#111111] p-6 rounded-3xl border border-gray-200 dark:border-white/5 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
+                  <div className="absolute top-0 right-0 p-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => {
+                        const { id, ...planData } = plan;
+                        setEditingPlan(plan);
+                        setPlanForm(planData);
+                        setIsAddingPlan(true);
+                      }}
+                      className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg text-gray-500"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => deleteSubscriptionPlan(plan.id)}
+                      className="p-2 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg text-red-600"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
 
-                <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-500/20 rounded-2xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 mb-6">
-                  <Zap className="w-6 h-6" />
-                </div>
+                  <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-500/20 rounded-2xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 mb-6">
+                    <Zap className="w-6 h-6" />
+                  </div>
 
-                <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight mb-2">{plan.name}</h3>
-                <div className="flex items-baseline gap-2 mb-1">
-                  <span className="text-4xl font-black text-gray-900 dark:text-white tracking-tighter">
-                    ₹{billingInterval === 'monthly' ? plan.price : plan.annualPrice}
-                  </span>
-                  <span className="text-sm font-bold text-gray-400">/{billingInterval === 'monthly' ? 'month' : 'year'}</span>
-                </div>
-                <div className="flex items-baseline gap-2 mb-6">
-                  <span className="text-lg font-bold text-indigo-600 dark:text-indigo-400">₹{plan.annualPrice}</span>
-                  <span className="text-xs text-gray-500">/year</span>
-                  {plan.annualPrice > 0 && (
-                    <span className="text-[10px] font-black px-1.5 py-0.5 bg-green-100 dark:bg-green-500/10 text-green-600 dark:text-green-400 rounded-full">
-                      {Math.round((1 - (plan.annualPrice / (plan.price * 12))) * 100)}% off
+                  <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight mb-2">{plan.name}</h3>
+                  <div className="flex items-baseline gap-2 mb-1">
+                    <span className="text-4xl font-black text-gray-900 dark:text-white tracking-tighter">
+                      ₹{billingInterval === 'monthly' ? plan.price : plan.annualPrice}
                     </span>
-                  )}
-                </div>
+                    <span className="text-sm font-bold text-gray-400">/{billingInterval === 'monthly' ? 'month' : 'year'}</span>
+                  </div>
+                  <div className="flex items-baseline gap-2 mb-6">
+                    <span className="text-lg font-bold text-indigo-600 dark:text-indigo-400">₹{plan.annualPrice}</span>
+                    <span className="text-xs text-gray-500">/year</span>
+                    {plan.annualPrice > 0 && (
+                      <span className="text-[10px] font-black px-1.5 py-0.5 bg-green-100 dark:bg-green-500/10 text-green-600 dark:text-green-400 rounded-full">
+                        {Math.round((1 - (plan.annualPrice / (plan.price * 12))) * 100)}% off
+                      </span>
+                    )}
+                  </div>
 
-                <div className="space-y-4 mb-8">
-                  <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
-                    <Check className="w-4 h-4 text-green-500" />
-                    {plan.maxTenants >= 9999 ? 'Unlimited' : `Up to ${plan.maxTenants}`} Tenants
+                  <div className="space-y-4 mb-8">
+                    <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
+                      <Check className="w-4 h-4 text-green-500" />
+                      {plan.maxTenants >= 9999 ? 'Unlimited' : `Up to ${plan.maxTenants}`} Tenants
+                    </div>
+                    <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
+                      <Check className="w-4 h-4 text-green-500" />
+                      {plan.maxRooms >= 9999 ? 'Unlimited' : `Up to ${plan.maxRooms}`} Rooms
+                    </div>
+                    <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
+                      <Check className="w-4 h-4 text-green-500" />
+                      {plan.maxBranches >= 9999 ? 'Unlimited' : `Up to ${plan.maxBranches}`} Branches
+                    </div>
+                    <div className="pt-2">
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Features Included</p>
+                      <div className="flex flex-wrap gap-2">
+                        {plan.features.map(f => (
+                          <span key={f} className="px-2 py-1 bg-gray-100 dark:bg-white/5 rounded-lg text-[10px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                            {f}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
-                    <Check className="w-4 h-4 text-green-500" />
-                    {plan.maxRooms >= 9999 ? 'Unlimited' : `Up to ${plan.maxRooms}`} Rooms
-                  </div>
-                  <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
-                    <Check className="w-4 h-4 text-green-500" />
-                    {plan.maxBranches >= 9999 ? 'Unlimited' : `Up to ${plan.maxBranches}`} Branches
-                  </div>
-                  <div className="pt-2">
-                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Features Included</p>
-                    <div className="flex flex-wrap gap-2">
-                      {plan.features.map(f => (
-                        <span key={f} className="px-2 py-1 bg-gray-100 dark:bg-white/5 rounded-lg text-[10px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
-                          {f}
-                        </span>
-                      ))}
+
+                  <div className="mt-8 pt-8 border-t border-gray-100 dark:border-white/5 grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Active Branches</p>
+                      <p className="text-lg font-black text-gray-900 dark:text-white">{branches.filter(b => b.planId === plan.id).length}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Total Revenue</p>
+                      <p className="text-lg font-black text-gray-900 dark:text-white">₹{getRevenuePerPlan(plan.id).toLocaleString()}</p>
                     </div>
                   </div>
                 </div>
-
-                <div className="mt-8 pt-8 border-t border-gray-100 dark:border-white/5 grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Active Branches</p>
-                    <p className="text-lg font-black text-gray-900 dark:text-white">{branches.filter(b => b.planId === plan.id).length}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Total Revenue</p>
-                    <p className="text-lg font-black text-gray-900 dark:text-white">₹{getRevenuePerPlan(plan.id).toLocaleString()}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
+              ))}
             </div>
           </motion.div>
         )}
@@ -560,14 +561,14 @@ export const SuperAdminPage = () => {
           >
             {users
               .filter(u => u.role === 'admin' && (
-                u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 u.username.toLowerCase().includes(searchTerm.toLowerCase())
               ))
               .map((admin) => (
                 <div key={admin.id} className="bg-white dark:bg-[#111111] rounded-[24px] border border-gray-200 dark:border-white/5 overflow-hidden shadow-sm hover:shadow-xl transition-all group relative">
                   <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                    <button 
+                    <button
                       onClick={() => {
                         setEditingAdmin(admin);
                         setAdminForm({
@@ -578,18 +579,18 @@ export const SuperAdminPage = () => {
                           branchIds: admin.branchIds || []
                         });
                         setIsAddingAdmin(true);
-                      }} 
+                      }}
                       className="p-2 bg-white/90 dark:bg-black/50 backdrop-blur rounded-xl text-indigo-600 dark:text-indigo-400 shadow-sm hover:scale-110 transition-transform"
                     >
                       <Edit2 className="w-4 h-4" />
                     </button>
-                    <button 
+                    <button
                       onClick={() => {
                         if (window.confirm(`Are you sure you want to delete admin ${admin.name}?`)) {
                           deleteUser(admin.id);
                           toast.success('Admin deleted successfully');
                         }
-                      }} 
+                      }}
                       className="p-2 bg-white/90 dark:bg-black/50 backdrop-blur rounded-xl text-red-600 shadow-sm hover:scale-110 transition-transform"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -606,35 +607,35 @@ export const SuperAdminPage = () => {
                         <p className="text-xs font-medium text-gray-500">@{admin.username}</p>
                       </div>
                     </div>
-                    
+
                     <div className="space-y-2">
-                       <p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2">
-                         <Search className="w-3 h-3" /> {admin.email}
-                       </p>
-                       {admin.phone && (
-                         <p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2">
-                           <Phone className="w-3 h-3" /> {admin.phone}
-                         </p>
-                       )}
+                      <p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                        <Search className="w-3 h-3" /> {admin.email}
+                      </p>
+                      {admin.phone && (
+                        <p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                          <Phone className="w-3 h-3" /> {admin.phone}
+                        </p>
+                      )}
                     </div>
                   </div>
 
                   <div className="px-6 pb-6 pt-2 bg-gray-50 dark:bg-[#0a0a0a]">
-                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Branch Assignments</p>
-                     <div className="flex flex-wrap gap-1.5">
-                        {admin.branchIds && admin.branchIds.length > 0 ? (
-                          admin.branchIds.map(bid => {
-                            const b = branches.find(branch => branch.id === bid);
-                            return (
-                              <span key={bid} className="px-2 py-0.5 bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
-                                {b?.branchName || b?.name || bid}
-                              </span>
-                            );
-                          })
-                        ) : (
-                          <span className="text-[10px] text-gray-400 italic">No branches assigned</span>
-                        )}
-                     </div>
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Branch Assignments</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {admin.branchIds && admin.branchIds.length > 0 ? (
+                        admin.branchIds.map(bid => {
+                          const b = branches.find(branch => branch.id === bid);
+                          return (
+                            <span key={bid} className="px-2 py-0.5 bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                              {b?.branchName || b?.name || bid}
+                            </span>
+                          );
+                        })
+                      ) : (
+                        <span className="text-[10px] text-gray-400 italic">No branches assigned</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -646,7 +647,7 @@ export const SuperAdminPage = () => {
       <AnimatePresence>
         {isAddingAdmin && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-             <motion.div
+            <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
@@ -656,89 +657,89 @@ export const SuperAdminPage = () => {
                 {editingAdmin ? 'Edit System Admin' : 'Create System Admin'}
               </h3>
               <form onSubmit={handleAddAdmin} className="space-y-6">
-                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Full Name</label>
-                      <input
-                        required
-                        type="text"
-                        value={adminForm.name}
-                        onChange={(e) => setAdminForm({ ...adminForm, name: e.target.value })}
-                        className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                        placeholder="e.g. John Doe"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Username</label>
-                      <input
-                        required
-                        type="text"
-                        value={adminForm.username}
-                        onChange={(e) => setAdminForm({ ...adminForm, username: e.target.value.toLowerCase().replace(/\s/g, '') })}
-                        className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                        placeholder="e.g. johndoe"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Email Address</label>
-                      <input
-                        required
-                        type="email"
-                        value={adminForm.email}
-                        onChange={(e) => setAdminForm({ ...adminForm, email: e.target.value })}
-                        className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                        placeholder="email@example.com"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Phone Number</label>
-                      <input
-                        type="tel"
-                        value={adminForm.phone}
-                        onChange={(e) => setAdminForm({ ...adminForm, phone: e.target.value.replace(/\D/g, '') })}
-                        className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                        placeholder="10-digit mobile"
-                        maxLength={10}
-                      />
-                    </div>
-                 </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Full Name</label>
+                    <input
+                      required
+                      type="text"
+                      value={adminForm.name}
+                      onChange={(e) => setAdminForm({ ...adminForm, name: e.target.value })}
+                      className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                      placeholder="e.g. John Doe"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Username</label>
+                    <input
+                      required
+                      type="text"
+                      value={adminForm.username}
+                      onChange={(e) => setAdminForm({ ...adminForm, username: e.target.value.toLowerCase().replace(/\s/g, '') })}
+                      className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                      placeholder="e.g. johndoe"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Email Address</label>
+                    <input
+                      required
+                      type="email"
+                      value={adminForm.email}
+                      onChange={(e) => setAdminForm({ ...adminForm, email: e.target.value })}
+                      className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                      placeholder="email@example.com"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Phone Number</label>
+                    <input
+                      type="tel"
+                      value={adminForm.phone}
+                      onChange={(e) => setAdminForm({ ...adminForm, phone: e.target.value.replace(/\D/g, '') })}
+                      className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                      placeholder="10-digit mobile"
+                      maxLength={10}
+                    />
+                  </div>
+                </div>
 
-                 <div className="space-y-3">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Assigned Branches</label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[200px] overflow-y-auto p-1 custom-scrollbar">
-                       {branches.map(branch => (
-                         <button
-                           key={branch.id}
-                           type="button"
-                           onClick={() => {
-                             const branchIds = adminForm.branchIds.includes(branch.id)
-                               ? adminForm.branchIds.filter(id => id !== branch.id)
-                               : [...adminForm.branchIds, branch.id];
-                             setAdminForm({ ...adminForm, branchIds });
-                           }}
-                           className={cn(
-                             "flex items-center gap-3 px-4 py-3 rounded-2xl border text-left transition-all",
-                             adminForm.branchIds.includes(branch.id)
-                               ? "bg-indigo-50 dark:bg-indigo-500/10 border-indigo-600 text-indigo-600 dark:text-indigo-400"
-                               : "bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/5 text-gray-500"
-                           )}
-                         >
-                           <div className={cn(
-                             "w-4 h-4 rounded border flex items-center justify-center transition-colors",
-                             adminForm.branchIds.includes(branch.id) ? "bg-indigo-600 border-indigo-600" : "bg-white dark:bg-white/5 border-gray-300 dark:border-white/20"
-                           )}>
-                             {adminForm.branchIds.includes(branch.id) && <Check className="w-3 h-3 text-white" />}
-                           </div>
-                           <div className="min-w-0">
-                             <p className="text-sm font-bold truncate">{branch.name}</p>
-                             <p className="text-[10px] opacity-70 truncate">{branch.branchName || 'Main'}</p>
-                           </div>
-                         </button>
-                       ))}
-                    </div>
-                 </div>
+                <div className="space-y-3">
+                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Assigned Branches</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[200px] overflow-y-auto p-1 custom-scrollbar">
+                    {branches.map(branch => (
+                      <button
+                        key={branch.id}
+                        type="button"
+                        onClick={() => {
+                          const branchIds = adminForm.branchIds.includes(branch.id)
+                            ? adminForm.branchIds.filter(id => id !== branch.id)
+                            : [...adminForm.branchIds, branch.id];
+                          setAdminForm({ ...adminForm, branchIds });
+                        }}
+                        className={cn(
+                          "flex items-center gap-3 px-4 py-3 rounded-2xl border text-left transition-all",
+                          adminForm.branchIds.includes(branch.id)
+                            ? "bg-indigo-50 dark:bg-indigo-500/10 border-indigo-600 text-indigo-600 dark:text-indigo-400"
+                            : "bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/5 text-gray-500"
+                        )}
+                      >
+                        <div className={cn(
+                          "w-4 h-4 rounded border flex items-center justify-center transition-colors",
+                          adminForm.branchIds.includes(branch.id) ? "bg-indigo-600 border-indigo-600" : "bg-white dark:bg-white/5 border-gray-300 dark:border-white/20"
+                        )}>
+                          {adminForm.branchIds.includes(branch.id) && <Check className="w-3 h-3 text-white" />}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold truncate">{branch.name}</p>
+                          <p className="text-[10px] opacity-70 truncate">{branch.branchName || 'Main'}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-                 <div className="flex gap-4 pt-4">
+                <div className="flex gap-4 pt-4">
                   <button
                     type="button"
                     onClick={() => setIsAddingAdmin(false)}
@@ -917,7 +918,7 @@ export const SuperAdminPage = () => {
             >
               <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Manage Subscription</h3>
               <p className="text-sm text-gray-500 mb-8">Assign plan to {selectedBranch?.name}</p>
-              
+
               <form onSubmit={handleAssignPlan} className="space-y-6">
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Select Plan</label>
@@ -1099,7 +1100,7 @@ export const SuperAdminPage = () => {
               // Merge plan features with core features so super admin can toggle everything
               const coreFeatures = ['tenants', 'rooms', 'payments', 'complaints'];
               const features = [...new Set([...coreFeatures, ...planFeatures])];
-              
+
               const featureLabels: Record<string, string> = {
                 tenants: 'Tenants Management',
                 rooms: 'Rooms & Occupancy',
@@ -1130,7 +1131,7 @@ export const SuperAdminPage = () => {
                         Control which modules are accessible for <span className="font-bold text-indigo-600 dark:text-indigo-400">{liveBranch.name}</span>
                       </p>
                     </div>
-                    <button 
+                    <button
                       onClick={() => {
                         setIsManagingVisibility(false);
                         setSelectedBranchIdForVisibility(null);
@@ -1143,31 +1144,32 @@ export const SuperAdminPage = () => {
 
                   <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
                     <div className="p-4 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl border border-indigo-100 dark:border-indigo-500/20 mb-6">
-                       <div className="flex gap-3">
-                          <ShieldCheck className="w-5 h-5 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                          <p className="text-xs text-indigo-600 dark:text-indigo-400 leading-relaxed font-medium">
-                            These controls allow you to <span className="font-bold">restrict</span> access to modules that are included in the branch's subscription (<span className="font-bold">{plan?.name || 'No Plan'}</span>). You cannot enable modules that are not part of their plan.
-                          </p>
-                       </div>
+                      <div className="flex gap-3">
+                        <ShieldCheck className="w-5 h-5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                        <p className="text-xs text-indigo-600 dark:text-indigo-400 leading-relaxed font-medium">
+                          These controls allow you to <span className="font-bold">restrict</span> access to modules that are included in the branch's subscription (<span className="font-bold">{plan?.name || 'No Plan'}</span>). You cannot enable modules that are not part of their plan.
+                        </p>
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {features.map(feature => {
-                        const permission = branchTabPermissions.find(p => p.branchId === liveBranch.id && p.moduleName === feature);
+                        const allPerms = rawData?.branchTabPermissions || [];
+                        const permission = allPerms.find((p: any) => p.branchId === liveBranch.id && p.moduleName === feature);
                         const isEnabled = permission ? permission.isEnabled : true;
 
                         return (
                           <div key={feature} className={cn(
                             "flex items-center justify-between p-4 rounded-2xl border transition-all",
-                            isEnabled 
-                              ? "bg-white dark:bg-white/5 border-gray-100 dark:border-white/10" 
+                            isEnabled
+                              ? "bg-white dark:bg-white/5 border-gray-100 dark:border-white/10"
                               : "bg-gray-50/50 dark:bg-black/20 border-gray-200 dark:border-white/5 opacity-70"
                           )}>
                             <div>
                               <p className="text-sm font-bold text-gray-900 dark:text-white">{featureLabels[feature] || feature}</p>
                               <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mt-0.5">{feature}</p>
                             </div>
-                            
+
                             <button
                               onClick={() => toggleBranchTabPermission(liveBranch.id, feature as AppFeature, !isEnabled)}
                               className={cn(
@@ -1187,15 +1189,15 @@ export const SuperAdminPage = () => {
                   </div>
 
                   <div className="mt-8 flex justify-end">
-                     <button
-                       onClick={() => {
-                         setIsManagingVisibility(false);
-                         setSelectedBranchIdForVisibility(null);
-                       }}
-                       className="px-8 py-3 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20"
-                     >
-                       Done
-                     </button>
+                    <button
+                      onClick={() => {
+                        setIsManagingVisibility(false);
+                        setSelectedBranchIdForVisibility(null);
+                      }}
+                      className="px-8 py-3 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20"
+                    >
+                      Done
+                    </button>
                   </div>
                 </motion.div>
               );

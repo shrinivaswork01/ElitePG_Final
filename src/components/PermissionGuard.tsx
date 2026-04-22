@@ -16,7 +16,7 @@ export const PermissionGuard = ({ children, requiredPermission }: PermissionGuar
     return <>{children}</>;
   }
 
-  const controlledRoles = ['admin', 'manager', 'caretaker', 'cleaner', 'security'];
+  const controlledRoles = ['manager', 'caretaker', 'cleaner', 'security'];
   const isControlled = controlledRoles.includes(user.role);
 
   // If user has permissions explicitly defined, and they are in the controlled roles list

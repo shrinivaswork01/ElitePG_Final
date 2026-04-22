@@ -91,7 +91,7 @@ interface AppContextType {
   fetchData: () => Promise<void>;
 
   // Stats
-    getStats: () => {
+  getStats: () => {
     totalTenants: number;
     verifiedTenants: number;
     pendingKYC: number;
@@ -174,16 +174,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const isSuper = userRole === 'super';
       const isTenant = userRole === 'tenant';
       const branchId = activeBranchId;
-      
+
       if (!branchId && !isSuper) {
-         console.warn("No branchId found for non-super user");
-         return;
+        console.warn("No branchId found for non-super user");
+        return;
       }
-      
+
       // Multi-branch support: get all branch IDs this user owns
       const userBranchIds: string[] = user?.branchIds || (branchId ? [branchId] : []);
       const isMultiBranch = userBranchIds.length > 1;
-      
+
       // Helper: applies correct branch filter to a Supabase query
       const branchQuery = (query: any) => {
         if (isSuper) return query;
@@ -219,13 +219,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         { data: expenses },
         { data: depositLogs },
         { data: shares },
-        { data: distributions },
-        { data: tabPermissions }
+        { data: distributions }
       ] = await Promise.all([
         // Branches: super gets all, admin gets their owned branches, others get their single branch
-        isSuper 
+        isSuper
           ? supabase.from('pg_branches').select('*')
-          : supabase.from('pg_branches').select('*').in('id', userBranchIds), // Keep all owned branches for the switcher, but other data is filtered
+          : supabase.from('pg_branches').select('*').in('id', userBranchIds),
         supabase.from('subscription_plans').select('*'),
         isTenant
           ? supabase.from('tenants').select('*, users(is_authorized)').eq('user_id', userId)
@@ -239,7 +238,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           ? supabase.from('complaints').select('*').eq('tenant_id', activeTenantId)
           : branchQuery(supabase.from('complaints').select('*')),
         branchQuery(supabase.from('employees').select('*')),
-        supabase.from('kyc_documents').select('*'), // Filtered locally in filteredData for better resilience and legacy support
+        supabase.from('kyc_documents').select('*'),
         branchQuery(supabase.from('announcements').select('*')),
         branchQuery(supabase.from('salary_payments').select('*')),
         branchQuery(supabase.from('tasks').select('*')),
@@ -249,9 +248,24 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         branchQuery(supabase.from('expenses').select('*')),
         branchQuery(supabase.from('tenant_deposit_logs').select('*')),
         branchQuery(supabase.from('partner_shares').select('*')),
-        branchQuery(supabase.from('profit_distributions').select('*')),
-        branchQuery(supabase.from('branch_tab_permissions').select('*')).catch(() => ({ data: [] }))
+        branchQuery(supabase.from('profit_distributions').select('*'))
       ]);
+
+      // Fetch branch_tab_permissions SEPARATELY so it can never crash the main data load
+      let tabPermissions: any[] = [];
+      try {
+        const permQuery = isSuper
+          ? supabase.from('branch_tab_permissions').select('*')
+          : supabase.from('branch_tab_permissions').select('*').in('branch_id', userBranchIds);
+        const { data: permData, error: permError } = await permQuery;
+        if (permError) {
+          console.error('Failed to fetch branch_tab_permissions:', permError);
+        } else {
+          tabPermissions = permData || [];
+        }
+      } catch (permErr) {
+        console.error('branch_tab_permissions fetch exception:', permErr);
+      }
 
       const newData = {
         branches: (branches || []).map(b => ({
@@ -333,7 +347,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         expenses: (expenses || []).map(e => ({
           id: e.id, branchId: e.branch_id, category: e.category, title: e.title, description: e.description,
           amount: e.amount, date: e.date, receiptUrl: e.receipt_url, createdBy: e.created_by,
-          approvedBy: e.approved_by, rejectedBy: e.rejected_by, status: e.status as 'saved'|'pending'|'approved'|'rejected', month: e.month,
+          approvedBy: e.approved_by, rejectedBy: e.rejected_by, status: e.status as 'saved' | 'pending' | 'approved' | 'rejected', month: e.month,
           editedBy: e.edited_by, editedAt: e.edited_at, createdAt: e.created_at
         })),
         tenantDepositLogs: (depositLogs || []).map(l => ({
@@ -347,20 +361,20 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           id: d.id, branchId: d.branch_id, month: d.month, totalRevenue: d.total_revenue,
           totalExpenses: d.total_expenses, netProfit: d.net_profit, distributions: d.distributions
         })),
-        branchTabPermissions: (tabPermissions || []).map(tp => ({
+        branchTabPermissions: tabPermissions.map(tp => ({
           id: tp.id, branchId: tp.branch_id, moduleName: tp.module_name as AppFeature, isEnabled: tp.is_enabled
         })),
         superSignatureUrl: superUserSignature?.signature_url || null
       };
-      
-    setData(newData);
-    localStorage.setItem('elite_pg_cached_data', JSON.stringify(newData));
-  } catch (e) {
-    console.error(e);
-  } finally {
-    setIsAppLoading(false);
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
+      setData(newData);
+      localStorage.setItem('elite_pg_cached_data', JSON.stringify(newData));
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsAppLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, userRole, activeBranchId, JSON.stringify(user?.branchIds)]);
 
   useEffect(() => {
@@ -439,36 +453,31 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const checkFeatureAccess = (feature: AppFeature) => {
     if (user?.role === 'super') return true;
 
-    // Implicit core modules strictly required for any PG to function
-    if (['tenants', 'rooms', 'payments', 'complaints'].includes(feature)) return true;
-
     // Use active branch from context/url to check features
     const branch = filteredData.currentBranch || data.branches.find((b: PGBranch) => b.id === user?.branchId);
-    
-    if (!branch || (branch.subscriptionStatus !== 'active' && branch.subscriptionStatus !== 'trial')) {
-      // If no subscription or inactive, only core modules are visible
-      return false;
-    }
-    
-    const plan = data.subscriptionPlans.find((p: SubscriptionPlan) => p.id === branch.planId);
-    const isSubscribed = plan?.features?.includes(feature) || false;
 
-    if (!isSubscribed) return false;
-
-    // Check for branch-level overrides
-    const permission = (filteredData.branchTabPermissions || []).find((tp: any) => tp.moduleName === feature);
-    
-    // If permission exists and is explicitly false, hide it
+    // Check for branch-level overrides FIRST (super admin can disable ANY tab including core ones)
+    const allPerms = data.branchTabPermissions || [];
+    const branchId = branch?.id || user?.branchId;
+    const permission = allPerms.find((tp: any) => tp.branchId === branchId && tp.moduleName === feature);
     if (permission && permission.isEnabled === false) {
       return false;
     }
 
-    return true;
+    // Core modules are allowed by default (only if not explicitly disabled above)
+    if (['tenants', 'rooms', 'payments', 'complaints'].includes(feature)) return true;
+
+    if (!branch || (branch.subscriptionStatus !== 'active' && branch.subscriptionStatus !== 'trial')) {
+      return false;
+    }
+
+    const plan = data.subscriptionPlans.find((p: SubscriptionPlan) => p.id === branch.planId);
+    return plan?.features?.includes(feature) || false;
   };
 
   const toggleBranchTabPermission = async (branchId: string, moduleName: AppFeature, isEnabled: boolean) => {
     console.log('[TabPermission] Toggle:', { branchId, moduleName, isEnabled });
-    
+
     // Optimistic update: apply immediately to local state
     setData(prev => {
       const perms = [...(prev.branchTabPermissions || [])];
@@ -481,26 +490,46 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       return { ...prev, branchTabPermissions: perms };
     });
 
+    // Use a select-then-update/insert to avoid requiring a unique constraint on the database table
     try {
-      // Use upsert with the unique constraint (branch_id, module_name) to avoid temp ID issues
-      const { error } = await supabase.from('branch_tab_permissions').upsert(
-        { branch_id: branchId, module_name: moduleName, is_enabled: isEnabled },
-        { onConflict: 'branch_id,module_name' }
-      );
+      const { data: existing } = await supabase.from('branch_tab_permissions')
+        .select('id')
+        .eq('branch_id', branchId)
+        .eq('module_name', moduleName)
+        .maybeSingle();
 
-      if (error) {
-        console.error('Tab permission error:', error);
-        toast.error('Failed to update tab visibility: ' + error.message);
-        await fetchData();
-        return;
+      let dbError;
+      if (existing) {
+        const { error } = await supabase.from('branch_tab_permissions')
+          .update({ is_enabled: isEnabled })
+          .eq('id', existing.id);
+        dbError = error;
+      } else {
+        const { error } = await supabase.from('branch_tab_permissions')
+          .insert({ branch_id: branchId, module_name: moduleName, is_enabled: isEnabled });
+        dbError = error;
+      }
+
+      if (dbError) {
+        throw dbError;
       }
 
       toast.success(`Module ${isEnabled ? 'enabled' : 'disabled'} successfully`);
-      fetchData();
+      // Do NOT call fetchData() here immediately.
+      // Supabase takes a moment to process the upsert, and an immediate fetch may retrieve stale data,
+      // causing the optimistic UI to "snap back" to the old value.
     } catch (err: any) {
       console.error('Tab permission exception:', err);
       toast.error('Failed to update tab visibility');
-      await fetchData();
+      // Rollback optimistic update
+      setData(prev => {
+        const perms = [...(prev.branchTabPermissions || [])];
+        const idx = perms.findIndex((p: any) => p.branchId === branchId && p.moduleName === moduleName);
+        if (idx !== -1) {
+          perms[idx] = { ...perms[idx], isEnabled: !isEnabled };
+        }
+        return { ...prev, branchTabPermissions: perms };
+      });
     }
   };
 
@@ -598,7 +627,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           toast.error('Failed to upload KYC Document. Please ensure the "kyc-docs" bucket exists open to public.');
         }
       } else if (kycDoc?.url) {
-         finalKycUrl = kycDoc.url;
+        finalKycUrl = kycDoc.url;
       }
     }
 
@@ -635,7 +664,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     if (logsToInsert.length > 0) {
       const { data: insertedLogs } = await supabase.from('tenant_deposit_logs').insert(logsToInsert).select();
-      
+
       // If any log is "paid", record a corresponding payment for revenue tracking
       for (const log of (insertedLogs || [])) {
         if (log.status === 'paid') {
@@ -728,10 +757,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (Object.keys(updates).length > 0 || finalRentAgreementUrl || kycDoc) {
       applyOptimistic(prev => {
         const nextTenants = prev.tenants.map((t: any) =>
-          t.id === id ? { 
-            ...t, 
-            ...updates, 
-            ...(finalRentAgreementUrl ? { rentAgreementUrl: finalRentAgreementUrl, rent_agreement_url: finalRentAgreementUrl } : {}), 
+          t.id === id ? {
+            ...t,
+            ...updates,
+            ...(finalRentAgreementUrl ? { rentAgreementUrl: finalRentAgreementUrl, rent_agreement_url: finalRentAgreementUrl } : {}),
             ...(kycDoc ? { kycStatus: newKycStatus, kyc_status: newKycStatus } : {}),
             ...(updates.kycStatus ? { kyc_status: updates.kycStatus } : {}),
             ...(updates.status ? { status: updates.status } : {})
@@ -741,18 +770,18 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         // Also optimistically update kycs array if a kycDoc is provided
         let nextKycs = prev.kycs;
         if (kycDoc && finalKycUrl) {
-           const tempKyc: KYCData = {
-             id: `temp-${Date.now()}`,
-             tenantId: id,
-             documentType: kycDoc.type,
-             documentUrl: finalKycUrl,
-             status: newKycStatus || 'pending',
-             submittedAt: new Date().toISOString().split('T')[0],
-             branchId: (nextTenants.find((t: any) => t.id === id) as any)?.branchId || user?.branchId || ''
-           };
-           // Remove any existing KYC for this tenant first
-           nextKycs = nextKycs.filter((k: any) => k.tenantId !== id);
-           nextKycs = [...nextKycs, tempKyc];
+          const tempKyc: KYCData = {
+            id: `temp-${Date.now()}`,
+            tenantId: id,
+            documentType: kycDoc.type,
+            documentUrl: finalKycUrl,
+            status: newKycStatus || 'pending',
+            submittedAt: new Date().toISOString().split('T')[0],
+            branchId: (nextTenants.find((t: any) => t.id === id) as any)?.branchId || user?.branchId || ''
+          };
+          // Remove any existing KYC for this tenant first
+          nextKycs = nextKycs.filter((k: any) => k.tenantId !== id);
+          nextKycs = [...nextKycs, tempKyc];
         }
 
         return { ...prev, tenants: nextTenants, kycs: nextKycs };
@@ -791,7 +820,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
       if (logsToInsert.length > 0) {
         const { data: insertedLogs } = await supabase.from('tenant_deposit_logs').insert(logsToInsert).select();
-        
+
         for (const log of (insertedLogs || [])) {
           await supabase.from('payments').insert({
             tenant_id: id,
@@ -817,7 +846,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       if (existingKYC) {
         await supabase.from('kyc_documents').delete().eq('id', existingKYC.id);
         if (existingKYC.documentUrl && existingKYC.documentUrl.includes('kyc-docs')) {
-           await deleteFromSupabase('kyc-docs', existingKYC.documentUrl);
+          await deleteFromSupabase('kyc-docs', existingKYC.documentUrl);
         }
       }
       const { error: kycError } = await supabase.from('kyc_documents').insert({
@@ -843,7 +872,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       kycs: prev.kycs.filter((k: any) => k.tenantId !== id)
     }));
     toast.success('Tenant deleted successfully');
-    
+
     // Cleanup Supabase Storage files
     try {
       if (targetTenant?.rentAgreementUrl?.includes('agreements')) {
@@ -852,7 +881,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       if (existingKYC?.documentUrl?.includes('kyc-docs')) {
         await deleteFromSupabase('kyc-docs', existingKYC.documentUrl);
       }
-    } catch(e) { console.error('Error cleaning up storage files', e); }
+    } catch (e) { console.error('Error cleaning up storage files', e); }
 
     // Cascade-delete related records in background
     const { data: tenantComplaints } = await supabase.from('complaints').select('id').eq('tenant_id', id);
@@ -863,16 +892,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await supabase.from('complaints').delete().eq('tenant_id', id);
     await supabase.from('payments').delete().eq('tenant_id', id);
     await supabase.from('kyc_documents').delete().eq('tenant_id', id);
-    
+
     // Delete tenant record FIRST
     const { error } = await supabase.from('tenants').delete().eq('id', id);
-    if (error) { 
+    if (error) {
       console.error('Failed to delete tenant:', error);
-      toast.error(`Delete failed: ${error.message}`); 
-      fetchData(); 
+      toast.error(`Delete failed: ${error.message}`);
+      fetchData();
       return;
     }
-    
+
     // Delete user record LAST (since tenants.user_id references users.id)
     if (targetTenant?.userId) {
       await supabase.from('users').delete().eq('id', targetTenant.userId);
@@ -929,18 +958,18 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const updateRoom = async (id: string, updates: Partial<Room>) => {
     applyOptimistic(prev => ({ ...prev, rooms: prev.rooms.map((r: any) => r.id === id ? { ...r, ...updates } : r) }));
-    
+
     // If room type changes, update all tenants in this room
     if (updates.type !== undefined) {
       const isAcRoom = updates.type === 'AC';
       const tenantsToUpdate = data.tenants.filter(t => t.roomId === id);
-      
+
       if (tenantsToUpdate.length > 0) {
         // Background DB update
         supabase.from('tenants').update({ is_ac_user: isAcRoom }).eq('room_id', id).then(({ error }) => {
           if (error) console.error('Failed to sync tenant AC status:', error);
         });
-        
+
         // Optimistic local update
         applyOptimistic(prev => ({
           ...prev,
@@ -961,7 +990,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await refetch(supabase.from('rooms').update(dbUpdates).eq('id', id), 'Room updated successfully');
   };
 
-  const deleteRoom = async (id: string) => { 
+  const deleteRoom = async (id: string) => {
     // Unassign tenants from this room first
     const tenantsInRoom = data.tenants.filter((t: any) => t.roomId === id);
     if (tenantsInRoom.length > 0) {
@@ -973,7 +1002,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
 
     applyOptimistic(prev => ({ ...prev, rooms: prev.rooms.filter((r: any) => r.id !== id) }));
-    await refetch(supabase.from('rooms').delete().eq('id', id), 'Room deleted'); 
+    await refetch(supabase.from('rooms').delete().eq('id', id), 'Room deleted');
   };
 
   const addMeterGroup = async (meterGroup: Omit<MeterGroup, 'id' | 'branchId' | 'createdAt'> & { branchId?: string }) => {
@@ -993,19 +1022,19 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await refetch(supabase.from('meter_groups').update(dbUpdates).eq('id', id), 'Flat / Meter Group updated');
   };
 
-  const deleteMeterGroup = async (id: string) => { 
+  const deleteMeterGroup = async (id: string) => {
     // Cascade delete electricity bills and readings for this flat
     const { data: bills } = await supabase.from('electricity_bills').select('id').eq('meter_group_id', id);
     if (bills && bills.length > 0) {
       const billIds = bills.map((b: any) => b.id);
-      
+
       // Nullify references in payments first so we don't violate payments fk constraint
       await supabase.from('payments').update({ electricity_bill_id: null }).in('electricity_bill_id', billIds);
-      
+
       // Clear out the readings
       await supabase.from('room_ac_readings').delete().in('electricity_bill_id', billIds);
     }
-    
+
     // Now electricity bills can safely be deleted
     await supabase.from('electricity_bills').delete().eq('meter_group_id', id);
 
@@ -1020,7 +1049,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
 
     applyOptimistic(prev => ({ ...prev, meterGroups: prev.meterGroups.filter((m: any) => m.id !== id) }));
-    await refetch(supabase.from('meter_groups').delete().eq('id', id), 'Flat deleted'); 
+    await refetch(supabase.from('meter_groups').delete().eq('id', id), 'Flat deleted');
   };
 
   const addPayment = async (payment: Omit<Payment, 'id' | 'branchId'> & { branchId?: string }) => {
@@ -1068,9 +1097,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await refetch(supabase.from('payments').update(dbUpdates).eq('id', id), 'Payment updated');
   };
 
-  const deletePayment = async (id: string) => { 
+  const deletePayment = async (id: string) => {
     applyOptimistic(prev => ({ ...prev, payments: prev.payments.filter((p: any) => p.id !== id) }));
-    await refetch(supabase.from('payments').delete().eq('id', id), 'Payment deleted'); 
+    await refetch(supabase.from('payments').delete().eq('id', id), 'Payment deleted');
   };
 
   const addComplaint = async (complaint: Omit<Complaint, 'id' | 'branchId'> & { branchId?: string }) => {
@@ -1101,25 +1130,25 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await refetch(supabase.from('complaints').update(dbUpdates).eq('id', id), 'Complaint updated');
   };
 
-  const deleteComplaint = async (id: string) => { 
+  const deleteComplaint = async (id: string) => {
     applyOptimistic(prev => ({ ...prev, complaints: prev.complaints.filter((c: any) => c.id !== id) }));
-    await refetch(supabase.from('complaints').delete().eq('id', id), 'Complaint deleted'); 
+    await refetch(supabase.from('complaints').delete().eq('id', id), 'Complaint deleted');
   };
 
   const addEmployee = async (employee: Omit<Employee, 'id' | 'kycStatus'>, kycDoc?: { type: string, file?: File, url?: string }) => {
     const targetBranch = employee.branchId || filteredData.currentBranch?.id || user?.branchId;
     if (!targetBranch) { toast.error("No active branch selected."); return false; }
-    
+
     const isAdmin = ['super', 'admin', 'manager'].includes(user?.role || '');
     const kycStatus = kycDoc ? (isAdmin ? 'verified' : 'pending') : 'unsubmitted';
     const tempId = `temp-${Date.now()}`;
-    
+
     // 1. First, check for existing email/username in the same branch
     const username = employee.email.split('@')[0] || `emp${Date.now()}`;
-    
+
     // Check local data first for speed
-    const isDuplicate = data.employees.some(e => 
-      e.email.toLowerCase() === employee.email.toLowerCase() || 
+    const isDuplicate = data.employees.some(e =>
+      e.email.toLowerCase() === employee.email.toLowerCase() ||
       (e as any).username?.toLowerCase() === username.toLowerCase()
     );
 
@@ -1148,15 +1177,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     // 2. Insert into employees table
     applyOptimistic(prev => ({ ...prev, employees: [...prev.employees, { ...employee, id: tempId, branchId: targetBranch, kycStatus, userId }] }));
-    
+
     const { data: createdEm, error } = await supabase.from('employees').insert({
       user_id: userId || null, name: employee.name, role: employee.role, email: employee.email, phone: employee.phone,
       salary: employee.salary, joining_date: employee.joiningDate, kyc_status: kycStatus, branch_id: targetBranch
     }).select().single();
-    
-    if (error) { 
-      toast.error(error.message); 
-      return false; 
+
+    if (error) {
+      toast.error(error.message);
+      return false;
     }
 
     if (createdEm && kycDoc) {
@@ -1175,7 +1204,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         });
       }
     }
-    
+
     toast.success('Employee added and login created (Default Pass: 123456)');
     setTimeout(() => fetchData(), 500);
     return true;
@@ -1209,7 +1238,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     // Optimistically update local state immediately
     if (Object.keys(updates).length > 0 || kycDoc) {
       applyOptimistic(prev => {
-        const nextEmployees = prev.employees.map((e: any) => 
+        const nextEmployees = prev.employees.map((e: any) =>
           e.id === id ? { ...e, ...updates, ...(kycDoc ? { kycStatus: newKycStatus } : {}) } : e
         );
 
@@ -1261,7 +1290,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const deleteEmployee = async (id: string) => {
     // If it's a temporary ID, just remove from local state and skip DB
     if (id.startsWith('temp-')) {
-       applyOptimistic(prev => ({
+      applyOptimistic(prev => ({
         ...prev,
         employees: prev.employees.filter((e: any) => e.id !== id)
       }));
@@ -1270,7 +1299,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     const targetEmployee = data.employees.find((e: any) => e.id === id);
     const existingKYC = data.kycs.find((k: any) => k.employeeId === id);
-    
+
     // Optimistically remove from local state immediately
     applyOptimistic(prev => ({
       ...prev,
@@ -1289,7 +1318,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       if (existingKYC?.documentUrl?.includes('kyc-docs')) {
         await deleteFromSupabase('kyc-docs', existingKYC.documentUrl);
       }
-      
+
       // 2. Delete the employee record
       const { error: empError } = await supabase.from('employees').delete().eq('id', id);
       if (empError) throw empError;
@@ -1298,7 +1327,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       if (targetEmployee?.userId) {
         await supabase.from('users').delete().eq('id', targetEmployee.userId);
       }
-      
+
       toast.success('Employee and associated data deleted securely');
     } catch (error: any) {
       console.error('Delete failed:', error);
@@ -1340,7 +1369,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const uploadVerifiedKYC = async (tenantId: string, docType: string, fileOrUrl: File | string) => {
     const tenant = data.tenants.find((t: any) => t.id === tenantId);
     if (!tenant) return;
-    
+
     let docUrl = typeof fileOrUrl === 'string' ? fileOrUrl : '';
     if (typeof fileOrUrl !== 'string') {
       docUrl = await uploadToSupabase('kyc-docs', `tenant_${tenantId}/${Date.now()}_${fileOrUrl.name}`, fileOrUrl);
@@ -1372,9 +1401,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }), 'Announcement published');
   };
 
-  const deleteAnnouncement = async (id: string) => { 
+  const deleteAnnouncement = async (id: string) => {
     applyOptimistic(prev => ({ ...prev, announcements: prev.announcements.filter((a: any) => a.id !== id) }));
-    await refetch(supabase.from('announcements').delete().eq('id', id), 'Announcement deleted'); 
+    await refetch(supabase.from('announcements').delete().eq('id', id), 'Announcement deleted');
   };
 
   const addSalaryPayment = async (payment: Omit<SalaryPayment, 'id' | 'branchId'> & { branchId?: string }) => {
@@ -1407,9 +1436,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const addTask = async (task: Omit<Task, 'id' | 'branchId'>) => {
     const branchId = user?.branchId || data.branches[0]?.id;
     if (!branchId) return;
-    applyOptimistic(prev => ({ 
-      ...prev, 
-      tasks: [...prev.tasks, { ...task, id: `temp-${Date.now()}`, branchId, createdAt: new Date().toISOString() }] 
+    applyOptimistic(prev => ({
+      ...prev,
+      tasks: [...prev.tasks, { ...task, id: `temp-${Date.now()}`, branchId, createdAt: new Date().toISOString() }]
     }));
     await refetch(supabase.from('tasks').insert({
       employee_id: task.employeeId,
@@ -1437,7 +1466,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.completedAt !== undefined) dbUpdates.completed_at = updates.completedAt;
     if (updates.completionComment !== undefined) dbUpdates.completion_comment = updates.completionComment;
     if (updates.completionImages !== undefined) dbUpdates.completion_images = updates.completionImages;
-    
+
     await refetch(supabase.from('tasks').update(dbUpdates).eq('id', id), 'Task updated');
 
     // Auto-resolve linked complaint when task is completed
@@ -1445,18 +1474,18 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const task = data.tasks.find((t: any) => t.id === id);
       const complaintIdOfTask = updates.complaintId || task?.complaintId;
       if (complaintIdOfTask) {
-        await updateComplaint(complaintIdOfTask, { 
-          status: 'resolved', 
-          resolvedAt: new Date().toISOString() 
+        await updateComplaint(complaintIdOfTask, {
+          status: 'resolved',
+          resolvedAt: new Date().toISOString()
         });
         toast.success('Linked complaint marked as resolved!');
       }
     }
   };
 
-  const deleteTask = async (id: string) => { 
+  const deleteTask = async (id: string) => {
     applyOptimistic(prev => ({ ...prev, tasks: prev.tasks.filter((t: any) => t.id !== id) }));
-    await refetch(supabase.from('tasks').delete().eq('id', id), 'Task deleted'); 
+    await refetch(supabase.from('tasks').delete().eq('id', id), 'Task deleted');
   };
 
   // === Expenses Operations ===
@@ -1464,10 +1493,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const addExpense = async (expense: Omit<Expense, 'id' | 'branchId' | 'createdAt' | 'editedAt'>) => {
     const branchId = user?.branchId || data.branches[0]?.id;
     if (!branchId) return;
-    
+
     applyOptimistic(prev => ({
-       ...prev,
-       expenses: [...(prev.expenses || []), { ...expense, id: `temp-${Date.now()}`, branchId, createdAt: new Date().toISOString() }]
+      ...prev,
+      expenses: [...(prev.expenses || []), { ...expense, id: `temp-${Date.now()}`, branchId, createdAt: new Date().toISOString() }]
     }));
 
     await refetch(supabase.from('expenses').insert({
@@ -1511,14 +1540,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const deleteExpense = async (id: string) => {
     const expense = data.expenses?.find((e: any) => e.id === id);
-    
+
     applyOptimistic(prev => ({
       ...prev,
       expenses: (prev.expenses || []).filter((e: any) => e.id !== id)
     }));
 
     await refetch(supabase.from('expenses').delete().eq('id', id), 'Expense deleted');
-    
+
     if (expense && expense.receiptUrl) {
       try {
         await deleteFromSupabase('receipts', expense.receiptUrl);
@@ -1556,11 +1585,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       } else {
         return {
           ...prev,
-          pgConfigs: [...prev.pgConfigs, { 
-            branchId: targetBranch, 
-            rules: updates.rules || [], 
-            rolePermissions: updates.rolePermissions || [], 
-            complaintCategories: updates.complaintCategories || [], 
+          pgConfigs: [...prev.pgConfigs, {
+            branchId: targetBranch,
+            rules: updates.rules || [],
+            rolePermissions: updates.rolePermissions || [],
+            complaintCategories: updates.complaintCategories || [],
             customRoles: updates.customRoles || [],
             logoUrl: updates.logoUrl,
             pgName: updates.pgName,
@@ -1603,7 +1632,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (bData) {
       // Create initial config. Note: updatePGConfig can be called subsequently to add more details.
       await supabase.from('pg_configs').insert({ branch_id: bData.id, rules: [], role_permissions: [] });
-      
+
       // Auto-generate a random 8-character invite code for this branch
       const randomCode = Math.random().toString(36).substring(2, 10).toUpperCase();
       await supabase.from('user_invites').insert({
@@ -1612,7 +1641,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         role: 'tenant',
         status: 'pending'
       });
-      
+
       toast.success('Branch added successfully');
       await fetchData();
       return bData.id;
@@ -1657,9 +1686,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const deleteSubscriptionPlan = async (id: string) => { await refetch(supabase.from('subscription_plans').delete().eq('id', id), 'Plan deleted'); };
 
   const updateBranchSubscription = async (
-    branchId: string, 
-    planId: string, 
-    status: 'active' | 'expired' | 'trial', 
+    branchId: string,
+    planId: string,
+    status: 'active' | 'expired' | 'trial',
     endDate: string,
     razorpayCustomerId?: string,
     razorpaySubscriptionId?: string
@@ -1768,7 +1797,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       })),
       { onConflict: 'branch_id,user_id,effective_from' }
     );
-    
+
     if (error) { toast.error(error.message); return; }
     toast.success(`Share ratios updated effective from ${effectiveFrom}`);
     fetchData();
@@ -1783,7 +1812,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       net_profit: distribution.netProfit,
       distributions: distribution.distributions
     });
-    
+
     if (error) { toast.error(error.message); return; }
     toast.success('Profit Distribution recorded');
     fetchData();

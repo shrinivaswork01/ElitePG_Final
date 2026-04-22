@@ -62,7 +62,8 @@ export const EmployeesPage = () => {
     branches,
     currentBranch,
     partnerShares,
-    updatePartnerShareBatch
+    updatePartnerShareBatch,
+    checkFeatureAccess
   } = useApp();
 
   if (user?.role === 'tenant') {
@@ -348,8 +349,8 @@ export const EmployeesPage = () => {
   };
 
   const filteredEmployees = employees.filter(e => {
-    const matchesSearch = e.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      e.role.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = (e.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (e.role || '').toLowerCase().includes(searchTerm.toLowerCase());
 
     if (user?.role === 'admin') return matchesSearch;
 
@@ -360,12 +361,12 @@ export const EmployeesPage = () => {
   const filteredSalaries = salaryPayments
     .filter(p => {
       const employee = employees.find(e => e.id === p.employeeId);
-      const matchesSearch = employee?.name.toLowerCase().includes(salarySearchTerm.toLowerCase()) ||
-        p.month.toLowerCase().includes(salarySearchTerm.toLowerCase()) ||
-        p.method.toLowerCase().includes(salarySearchTerm.toLowerCase());
+      const matchesSearch = (employee?.name || '').toLowerCase().includes(salarySearchTerm.toLowerCase()) ||
+        (p.month || '').toLowerCase().includes(salarySearchTerm.toLowerCase()) ||
+        (p.method || '').toLowerCase().includes(salarySearchTerm.toLowerCase());
       return matchesSearch;
     })
-    .sort((a, b) => b.paymentDate.localeCompare(a.paymentDate));
+    .sort((a, b) => (b.paymentDate || '').localeCompare(a.paymentDate || ''));
 
   return (
     <div className="space-y-6">
@@ -710,9 +711,9 @@ export const EmployeesPage = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {users
               .filter(u => (u.role === 'admin') && (
-                u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                u.username.toLowerCase().includes(searchTerm.toLowerCase())
+                (u.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (u.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (u.username || '').toLowerCase().includes(searchTerm.toLowerCase())
               ))
               .map((admin) => (
                 <motion.div

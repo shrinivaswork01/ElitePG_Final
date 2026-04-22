@@ -110,10 +110,10 @@ export const BranchSwitcher: React.FC<BranchSwitcherProps> = ({ collapsed, onAdd
         </div>
         <div className="flex-1 text-left min-w-0">
           <p className="text-xs font-bold text-gray-900 dark:text-white truncate">
-            {activeBranch?.branchName || activeBranch?.name || 'Select Branch'}
+            {activeBranch?.name || activeBranch?.branchName || 'Select Branch'}
           </p>
           <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
-            {activeBranch?.address?.split(',')[0] || activeBranch?.name || 'No branch selected'}
+            {activeBranch?.branchName || ''}
           </p>
         </div>
         <ChevronDown className={cn(
@@ -163,24 +163,24 @@ const BranchList: React.FC<{
         key={branch.id}
         onClick={() => onSelect(branch.id)}
         className={cn(
-          "w-full flex items-center gap-3 px-3 py-2.5 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition-all",
+          "w-full flex items-center gap-3 px-3 py-3 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition-all",
           branch.id === activeBranchId && "bg-indigo-50/50 dark:bg-indigo-500/5"
         )}
       >
         <div className={cn(
-          "w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black shrink-0",
+          "w-9 h-9 rounded-xl flex items-center justify-center text-sm font-black shrink-0",
           branch.id === activeBranchId
             ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
             : "bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-gray-400"
         )}>
-          {branch.branchName?.charAt(0) || branch.name?.charAt(0) || '?'}
+          {branch.name?.charAt(0) || branch.branchName?.charAt(0) || '?'}
         </div>
         <div className="flex-1 text-left min-w-0">
-          <p className="text-sm font-bold text-gray-900 dark:text-white truncate">
-            {branch.branchName || branch.name}
+          <p className="text-sm font-extrabold text-gray-900 dark:text-white truncate leading-tight">
+            {branch.name || branch.branchName}
           </p>
-          <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
-            {branch.address?.split(',')[0] || branch.name || ''}
+          <p className="text-[11px] text-gray-400 dark:text-gray-500 truncate mt-0.5">
+            {branch.branchName || ''}
           </p>
         </div>
         {branch.id === activeBranchId && (

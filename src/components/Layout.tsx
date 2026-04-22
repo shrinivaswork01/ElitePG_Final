@@ -105,11 +105,12 @@ export const Layout = ({ children }: LayoutProps) => {
       '/expenses': 'expenses',
       '/tasks': 'tasks',
       '/broadcast': 'broadcast',
-      '/kyc': 'kyc'
+      '/kyc': 'kyc',
+      '/employees': 'employees'
     };
 
     const feature = featureMap[item.href];
-    if (feature && !checkFeatureAccess(feature) && user.role !== 'admin' && user.role !== 'partner') {
+    if (feature && !checkFeatureAccess(feature)) {
       return false;
     }
 
@@ -117,8 +118,8 @@ export const Layout = ({ children }: LayoutProps) => {
     const alwaysVisible = ['/', '/dashboard', '/profile', '/help'];
     if (alwaysVisible.includes(item.href)) return true;
 
-    // PBAC Check: admin_permissions overrides take priority when defined
-    if (user.permissions !== undefined) {
+    // PBAC Check: admin_permissions overrides take priority when defined (except for admins, whose visibility is branch-based)
+    if (user.role !== 'admin' && user.permissions !== undefined) {
       const key = item.href.replace(/^\//, '');
       // These structural tabs (branches, settings, subscription) are always available to admin/partner
       const structuralTabs = ['branches', 'settings', 'subscription', 'platform-management'];
