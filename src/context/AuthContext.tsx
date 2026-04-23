@@ -521,6 +521,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       is_authorized: newIsAuthorized,
       password: newPassword,
       branch_id: finalBranchId || null,
+      branch_ids: userData.branchIds || (finalBranchId ? [finalBranchId] : []),
       provider: 'local',
       google_id: null,
       seen_announcements: userData.seenAnnouncements || [],

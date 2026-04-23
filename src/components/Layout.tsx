@@ -60,20 +60,20 @@ export const Layout = ({ children }: LayoutProps) => {
     { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant', 'super'] },
     { name: 'Platform Management', href: '/platform-management', icon: Building2, roles: ['super'] },
     { name: 'Broadcast / WhatsApp', href: '/broadcast', icon: Megaphone, roles: ['admin', 'partner', 'super'] },
-    { name: 'Rooms', href: '/rooms', icon: DoorOpen, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker'] },
-    { name: 'Tenants', href: '/tenants', icon: Users, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker', 'security'] },
-    { name: ['admin', 'manager', 'partner'].includes(user?.role || '') ? 'Payments' : 'My Payments', href: '/payments', icon: CreditCard, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker', 'tenant'] },
-    { name: 'Complaints', href: '/complaints', icon: MessageSquare, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant'] },
-    { name: 'KYC Verification', href: '/kyc', icon: ShieldCheck, roles: ['admin', 'partner', 'manager', 'receptionist'] },
-    { name: 'Employees', href: '/employees', icon: UserCog, roles: ['admin', 'partner', 'manager'] },
+    { name: 'Rooms', href: '/rooms', icon: DoorOpen, roles: ['admin', 'manager', 'receptionist', 'caretaker'] },
+    { name: 'Tenants', href: '/tenants', icon: Users, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'security'] },
+    { name: ['admin', 'manager', 'partner'].includes(user?.role || '') ? 'Payments' : 'My Payments', href: '/payments', icon: CreditCard, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'tenant'] },
+    { name: 'Complaints', href: '/complaints', icon: MessageSquare, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant'] },
+    { name: 'KYC Verification', href: '/kyc', icon: ShieldCheck, roles: ['admin', 'manager', 'receptionist'] },
+    { name: 'Employees', href: '/employees', icon: UserCog, roles: ['admin', 'manager'] },
     { name: 'Reports', href: '/reports', icon: BarChart3, roles: ['admin', 'partner', 'manager'] },
     { name: 'Partners & Payouts', href: '/partner-payouts', icon: CreditCard, roles: ['admin', 'partner'] },
     { name: 'Expenses', href: '/expenses', icon: Receipt, roles: ['admin', 'partner', 'manager'] },
-    { name: 'Tasks', href: '/tasks', icon: ClipboardList, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner'] },
+    { name: 'Tasks', href: '/tasks', icon: ClipboardList, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner'] },
     { name: 'Profile', href: '/profile', icon: User, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant', 'super'] },
-    { name: 'Subscription Plan', href: '/subscription', icon: Zap, roles: ['admin', 'partner'] },
-    { name: 'Settings', href: '/settings', icon: UserCog, roles: ['admin', 'partner'] },
-    { name: 'Help & Support', href: '/help', icon: LifeBuoy, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant'] },
+    { name: 'Subscription Plan', href: '/subscription', icon: Zap, roles: ['admin'] },
+    { name: 'Settings', href: '/settings', icon: UserCog, roles: ['admin'] },
+    { name: 'Help & Support', href: '/help', icon: LifeBuoy, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant'] },
   ];
 
   const filteredNavigation = navigation.filter(item => {
@@ -118,8 +118,8 @@ export const Layout = ({ children }: LayoutProps) => {
     const alwaysVisible = ['/', '/dashboard', '/profile', '/help'];
     if (alwaysVisible.includes(item.href)) return true;
 
-    // PBAC Check: admin_permissions overrides take priority when defined (except for admins, whose visibility is branch-based)
-    if (user.role !== 'admin' && user.permissions !== undefined) {
+    // PBAC Check: admin_permissions overrides take priority when defined (except for admins/partners, whose visibility is branch-based)
+    if (user.role !== 'admin' && user.role !== 'partner' && user.permissions !== undefined) {
       const key = item.href.replace(/^\//, '');
       // These structural tabs (branches, settings, subscription) are always available to admin/partner
       const structuralTabs = ['branches', 'settings', 'subscription', 'platform-management'];

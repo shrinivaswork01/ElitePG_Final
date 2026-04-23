@@ -203,10 +203,11 @@ export const ExpensesPage = () => {
       header: 'Created By',
       cell: (e) => {
         const creator = users?.find((u: any) => u.id === (e.createdBy || e.created_by));
+        const roleLabel = creator?.role === 'partner' ? 'Partner' : (creator?.role || 'Admin');
         return (
           <div className="flex flex-col">
             <span className="text-sm font-bold text-gray-900 dark:text-white">{creator?.name || 'System'}</span>
-            <span className="text-[10px] text-gray-500 font-medium uppercase tracking-wider">{creator?.role || 'Admin'}</span>
+            <span className="text-[10px] text-gray-500 font-medium uppercase tracking-wider">{roleLabel}</span>
           </div>
         );
       }
@@ -232,8 +233,8 @@ export const ExpensesPage = () => {
     {
       header: '',
       cell: (e) => {
-        const isPartnerOrSuper = ['partner', 'super'].includes(user?.role || '');
-        const canEdit = e.status !== 'approved' || isPartnerOrSuper;
+        const canApprove = ['super', 'admin'].includes(user?.role || '');
+        const canEdit = e.status !== 'approved' || canApprove;
         
         return (
           <div className="flex justify-end pr-2">
@@ -241,13 +242,13 @@ export const ExpensesPage = () => {
               {canEdit && (
                 <DropdownItem onClick={() => handleEdit(e)} icon={<Edit2 className="w-4 h-4" />} label="Edit Expense" />
               )}
-              {isPartnerOrSuper && e.status === 'pending' && (
+              {canApprove && e.status === 'pending' && (
                 <>
                   <DropdownItem onClick={() => handleApprove(e.id)} icon={<CheckCircle2 className="w-4 h-4 text-emerald-500" />} label="Approve" />
                   <DropdownItem onClick={() => handleReject(e.id)} icon={<XCircle className="w-4 h-4 text-rose-500" />} label="Reject" />
                 </>
               )}
-              {!isPartnerOrSuper && e.status === 'saved' && (
+              {!canApprove && e.status === 'saved' && (
                 <DropdownItem 
                   onClick={() => updateExpense(e.id, { status: 'pending' }).then(refetch)} 
                   icon={<Clock className="w-4 h-4 text-amber-500" />} 

@@ -103,8 +103,13 @@ interface AppContextType {
     revenueHistory: { name: string, revenue: number }[];
     occupancyByFlat: { name: string, occupied: number, total: number }[];
   };
-  updatePartnerShareBatch: (branchId: string, shares: { userId: string; ratio: number }[], effectiveFrom: string) => Promise<void>;
+  updatePartnerShareBatch: (branchIds: string[], shares: { userId: string; ratio: number }[], effectiveFrom: string) => Promise<void>;
   addProfitDistribution: (distribution: any) => Promise<void>;
+  processPartnerPayoutBatch: (payouts: any[]) => Promise<void>;
+  updatePartnerPayoutStatus: (id: string, status: string, field: string, userId: string) => Promise<void>;
+  deletePartnerPayout: (id: string) => Promise<void>;
+  deleteAllPartnerPayouts: () => Promise<void>;
+  deletePartnerAndReferences: (partnerId: string) => Promise<void>;
   currentBranch: PGBranch | undefined;
   currentPlan: SubscriptionPlan | undefined;
   rawData: any;
@@ -138,7 +143,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       tenantDepositLogs: [],
       partnerShares: [],
       profitDistributions: [],
-      branchTabPermissions: []
+      branchTabPermissions: [],
+      partnerPayouts: []
     };
 
     if (cached) {
@@ -163,7 +169,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const fetchData = useCallback(async () => {
     // We only fetch data if user is logged in
     if (!userId) {
-      setData({ tenants: [], rooms: [], payments: [], complaints: [], employees: [], kycs: [], announcements: [], salaryPayments: [], tasks: [], pgConfigs: [], branches: [], subscriptionPlans: [], userInvites: [], superSignatureUrl: null, expenses: [], tenantDepositLogs: [], partnerShares: [], profitDistributions: [], branchTabPermissions: [] });
+      setData({ tenants: [], rooms: [], payments: [], complaints: [], employees: [], kycs: [], announcements: [], salaryPayments: [], tasks: [], pgConfigs: [], branches: [], subscriptionPlans: [], userInvites: [], superSignatureUrl: null, expenses: [], tenantDepositLogs: [], partnerShares: [], profitDistributions: [], branchTabPermissions: [], partnerPayouts: [] });
       setIsAppLoading(false);
       localStorage.removeItem('elite_pg_cached_data');
       return;
@@ -251,8 +257,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         branchQuery(supabase.from('profit_distributions').select('*'))
       ]);
 
-      // Fetch branch_tab_permissions SEPARATELY so it can never crash the main data load
+      // Fetch branch_tab_permissions and partner_payouts SEPARATELY so they can never crash the main data load
       let tabPermissions: any[] = [];
+      let partnerPayoutsData: any[] = [];
       try {
         const permQuery = isSuper
           ? supabase.from('branch_tab_permissions').select('*')
@@ -265,6 +272,20 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         }
       } catch (permErr) {
         console.error('branch_tab_permissions fetch exception:', permErr);
+      }
+
+      try {
+        const payoutsQuery = isSuper
+          ? supabase.from('partner_payouts').select('*')
+          : supabase.from('partner_payouts').select('*').in('branch_id', userBranchIds);
+        const { data: payoutsRaw, error: payoutsError } = await payoutsQuery;
+        if (payoutsError) {
+          console.error('Failed to fetch partner_payouts:', payoutsError);
+        } else {
+          partnerPayoutsData = payoutsRaw || [];
+        }
+      } catch (payoutsErr) {
+        console.error('partner_payouts fetch exception:', payoutsErr);
       }
 
       const newData = {
@@ -363,6 +384,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         })),
         branchTabPermissions: tabPermissions.map(tp => ({
           id: tp.id, branchId: tp.branch_id, moduleName: tp.module_name as AppFeature, isEnabled: tp.is_enabled
+        })),
+        partnerPayouts: partnerPayoutsData.map(p => ({
+          id: p.id, partnerId: p.partner_id, branchId: p.branch_id, month: p.month,
+          amount: p.amount, status: p.status, requestedBy: p.requested_by,
+          partnerApprovedBy: p.partner_approved_by, adminApprovedBy: p.admin_approved_by,
+          createdAt: p.created_at
         })),
         superSignatureUrl: superUserSignature?.signature_url || null
       };
@@ -465,7 +492,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
 
     // Core modules are allowed by default (only if not explicitly disabled above)
-    if (['tenants', 'rooms', 'payments', 'complaints'].includes(feature)) return true;
+    if (['tenants', 'rooms', 'payments', 'complaints', 'partner-payouts'].includes(feature)) return true;
 
     if (!branch || (branch.subscriptionStatus !== 'active' && branch.subscriptionStatus !== 'trial')) {
       return false;
@@ -556,6 +583,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const addTenant = async (tenant: Omit<Tenant, 'id' | 'branchId'> & { branchId?: string }, kycDoc?: { type: string, file?: File, url?: string }, rentAgreementDoc?: { file?: File, url?: string }) => {
+    if (user?.role === 'partner') { toast.error('Partners are restricted from system operations'); return; }
     const branchId = tenant.branchId || filteredData.currentBranch?.id || user?.branchId || data.branches[0]?.id;
     if (!branchId) return;
     const isAdmin = ['super', 'admin', 'manager'].includes(user?.role || '');
@@ -700,6 +728,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updateTenant = async (id: string, updates: Partial<Tenant>, kycDoc?: { type: string, file?: File, url?: string }, rentAgreementDoc?: { file?: File, url?: string }) => {
+    if (user?.role === 'partner') { toast.error('Partners are restricted from system operations'); return; }
     const isAdmin = ['super', 'admin', 'manager'].includes(user?.role || '');
     const newKycStatus = kycDoc ? (isAdmin ? 'verified' : 'pending') : undefined;
 
@@ -860,6 +889,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const deleteTenant = async (id: string) => {
+    if (user?.role === 'partner') { toast.error('Partners are restricted from system operations'); return; }
     const targetTenant = data.tenants.find((t: any) => t.id === id);
     const existingKYC = data.kycs.find((k: any) => k.tenantId === id);
 
@@ -946,6 +976,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const addRoom = async (room: Omit<Room, 'id' | 'branchId'> & { branchId?: string }) => {
+    if (user?.role === 'partner') { toast.error('Partners are restricted from system operations'); return; }
     const targetBranch = room.branchId || filteredData.currentBranch?.id || user?.branchId;
     if (!targetBranch) { toast.error("No active branch selected."); return; }
     applyOptimistic(prev => ({ ...prev, rooms: [...prev.rooms, { ...room, id: `temp-${Date.now()}`, branchId: targetBranch }] }));
@@ -957,6 +988,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updateRoom = async (id: string, updates: Partial<Room>) => {
+    if (user?.role === 'partner') { toast.error('Partners are restricted from system operations'); return; }
     applyOptimistic(prev => ({ ...prev, rooms: prev.rooms.map((r: any) => r.id === id ? { ...r, ...updates } : r) }));
 
     // If room type changes, update all tenants in this room
@@ -991,6 +1023,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const deleteRoom = async (id: string) => {
+    if (user?.role === 'partner') { toast.error('Partners are restricted from system operations'); return; }
     // Unassign tenants from this room first
     const tenantsInRoom = data.tenants.filter((t: any) => t.roomId === id);
     if (tenantsInRoom.length > 0) {
@@ -1006,6 +1039,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const addMeterGroup = async (meterGroup: Omit<MeterGroup, 'id' | 'branchId' | 'createdAt'> & { branchId?: string }) => {
+    if (user?.role === 'partner') { toast.error('Partners are restricted from system operations'); return; }
     const targetBranch = meterGroup.branchId || filteredData.currentBranch?.id || user?.branchId;
     if (!targetBranch) { toast.error("No active branch selected."); return; }
     applyOptimistic(prev => ({ ...prev, meterGroups: [...prev.meterGroups, { ...meterGroup, id: `temp-${Date.now()}`, branchId: targetBranch, createdAt: new Date().toISOString() }] }));
@@ -1015,6 +1049,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updateMeterGroup = async (id: string, updates: Partial<MeterGroup>) => {
+    if (user?.role === 'partner') { toast.error('Partners are restricted from system operations'); return; }
     applyOptimistic(prev => ({ ...prev, meterGroups: prev.meterGroups.map((m: any) => m.id === id ? { ...m, ...updates } : m) }));
     const dbUpdates: any = {};
     if (updates.name !== undefined) dbUpdates.name = updates.name;
@@ -1023,6 +1058,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const deleteMeterGroup = async (id: string) => {
+    if (user?.role === 'partner') { toast.error('Partners are restricted from system operations'); return; }
     // Cascade delete electricity bills and readings for this flat
     const { data: bills } = await supabase.from('electricity_bills').select('id').eq('meter_group_id', id);
     if (bills && bills.length > 0) {
@@ -1053,6 +1089,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const addPayment = async (payment: Omit<Payment, 'id' | 'branchId'> & { branchId?: string }) => {
+    if (user?.role === 'partner') { toast.error('Partners are restricted from system operations'); return; }
     const targetBranch = payment.branchId || filteredData.currentBranch?.id || user?.branchId;
     if (!targetBranch) { toast.error("No active branch selected."); return; }
     applyOptimistic(prev => ({ ...prev, payments: [...prev.payments, { ...payment, id: `temp-${Date.now()}`, branchId: targetBranch, createdBy: user?.id || '' }] }));
@@ -1073,6 +1110,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updatePayment = async (id: string, updates: Partial<Payment>) => {
+    if (user?.role === 'partner') { toast.error('Partners are restricted from system operations'); return; }
     applyOptimistic(prev => ({ ...prev, payments: prev.payments.map((p: any) => p.id === id ? { ...p, ...updates } : p) }));
     const dbUpdates: any = {};
     if (updates.tenantId !== undefined) dbUpdates.tenant_id = updates.tenantId;
@@ -1098,6 +1136,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const deletePayment = async (id: string) => {
+    if (user?.role === 'partner') { toast.error('Partners are restricted from system operations'); return; }
     applyOptimistic(prev => ({ ...prev, payments: prev.payments.filter((p: any) => p.id !== id) }));
     await refetch(supabase.from('payments').delete().eq('id', id), 'Payment deleted');
   };
@@ -1136,6 +1175,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const addEmployee = async (employee: Omit<Employee, 'id' | 'kycStatus'>, kycDoc?: { type: string, file?: File, url?: string }) => {
+    if (user?.role === 'partner') { toast.error('Partners are restricted from system operations'); return false; }
     const targetBranch = employee.branchId || filteredData.currentBranch?.id || user?.branchId;
     if (!targetBranch) { toast.error("No active branch selected."); return false; }
 
@@ -1211,6 +1251,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updateEmployee = async (id: string, updates: Partial<Employee>, kycDoc?: { type: string, file?: File, url?: string }) => {
+    if (user?.role === 'partner') { toast.error('Partners are restricted from system operations'); return false; }
     const isAdmin = ['super', 'admin', 'manager'].includes(user?.role || '');
     const newKycStatus = kycDoc ? (isAdmin ? 'verified' : 'pending') : undefined;
 
@@ -1288,6 +1329,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const deleteEmployee = async (id: string) => {
+    if (user?.role === 'partner') { toast.error('Partners are restricted from system operations'); return; }
     // If it's a temporary ID, just remove from local state and skip DB
     if (id.startsWith('temp-')) {
       applyOptimistic(prev => ({
@@ -1779,7 +1821,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [filteredData]);
 
-  const updatePartnerShareBatch = async (branchId: string, shares: { userId: string; ratio: number }[], effectiveFrom: string) => {
+  const updatePartnerShareBatch = async (branchIds: string[], shares: { userId: string; ratio: number }[], effectiveFrom: string) => {
     // Validate total = 100%
     const total = shares.reduce((sum, s) => sum + s.ratio, 0);
     if (total !== 100) {
@@ -1787,19 +1829,26 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
+    const payload = [];
+    for (const bId of branchIds) {
+      for (const s of shares) {
+        payload.push({
+          branch_id: bId,
+          user_id: s.userId,
+          ratio: s.ratio,
+          share_percentage: s.ratio, // Keep for backward compatibility if needed by other views
+          effective_from: effectiveFrom
+        });
+      }
+    }
+
     const { error } = await supabase.from('partner_shares').upsert(
-      shares.map(s => ({
-        branch_id: branchId,
-        user_id: s.userId,
-        ratio: s.ratio,
-        share_percentage: s.ratio, // Keep for backward compatibility if needed by other views
-        effective_from: effectiveFrom
-      })),
+      payload,
       { onConflict: 'branch_id,user_id,effective_from' }
     );
 
     if (error) { toast.error(error.message); return; }
-    toast.success(`Share ratios updated effective from ${effectiveFrom}`);
+    toast.success(`Global share ratios synchronized effective from ${effectiveFrom}`);
     fetchData();
   };
 
@@ -1816,6 +1865,96 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (error) { toast.error(error.message); return; }
     toast.success('Profit Distribution recorded');
     fetchData();
+  };
+
+  const processPartnerPayoutBatch = async (payouts: any[]) => {
+    try {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const invalid = payouts.some((p: any) => !uuidRegex.test(p.partnerId) || !uuidRegex.test(p.requestedBy));
+      
+      if (invalid) {
+         toast.error("You are testing with an outdated Legacy Partner (e.g. u177...). Please delete this partner and recreate a fresh one to use Payouts!", { duration: 5000 });
+         return;
+      }
+
+      const inserts = payouts.map(p => ({
+        partner_id: p.partnerId,
+        branch_id: p.branchId,
+        month: p.month,
+        amount: p.amount,
+        status: p.status || 'REQUESTED',
+        requested_by: p.requestedBy
+      }));
+      const { error } = await supabase.from('partner_payouts').insert(inserts);
+      if (error) { toast.error(error.message); return; }
+      toast.success('Payout request created');
+      fetchData();
+    } catch (err: any) {
+      toast.error('Failed to process payouts');
+      console.error(err);
+    }
+  };
+
+  const updatePartnerPayoutStatus = async (id: string, status: string, field: string, userId: string) => {
+    try {
+      if (userId) {
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!uuidRegex.test(userId)) {
+           toast.error("Your current admin/partner account is using a Legacy ID format. Please log in with a newly registered account to process workflow approvals.");
+           return;
+        }
+      }
+
+      const updateData: any = { status };
+      if (field && userId) {
+        updateData[field] = userId;
+      }
+      const { error } = await supabase.from('partner_payouts').update(updateData).eq('id', id);
+      if (error) { toast.error(error.message); return; }
+      toast.success(`Payout status updated to ${status}`);
+      fetchData();
+    } catch (err: any) {
+      toast.error('Failed to update payout status');
+      console.error(err);
+    }
+  };
+
+  const deletePartnerPayout = async (id: string) => {
+    try {
+      const { error } = await supabase.from('partner_payouts').delete().eq('id', id);
+      if (error) { toast.error(error.message); return; }
+      toast.success('Transaction log deleted safely');
+      fetchData();
+    } catch (err: any) {
+      console.error(err);
+    }
+  };
+
+  const deleteAllPartnerPayouts = async () => {
+    try {
+      // In Supabase, delete without eq will delete all rows if RLS permits or with specific setup.
+      // Usually better to delete where id is not null.
+      const { error } = await supabase.from('partner_payouts').delete().not('id', 'is', null);
+      if (error) { toast.error(error.message); return; }
+      toast.success('All transactions cleared successfully');
+      fetchData();
+    } catch (err: any) {
+      console.error(err);
+    }
+  };
+
+  const deletePartnerAndReferences = async (partnerId: string) => {
+    try {
+      // Delete all dependent app records before ripping the auth user
+      await supabase.from('partner_shares').delete().eq('user_id', partnerId);
+      await supabase.from('partner_payouts').delete().eq('partner_id', partnerId);
+      await supabase.from('admin_permissions').delete().eq('admin_id', partnerId);
+      await supabase.from('employees').delete().eq('user_id', partnerId);
+      fetchData();
+    } catch (err: any) {
+      console.error('Failed to clear partner references:', err);
+      toast.error('Database connection error during cleanup.');
+    }
   };
 
   const getStats = useCallback(() => computedStats, [computedStats]);
@@ -1846,6 +1985,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       fetchData,
       getStats,
       updatePartnerShareBatch, addProfitDistribution,
+      processPartnerPayoutBatch, updatePartnerPayoutStatus,
+      deletePartnerPayout, deleteAllPartnerPayouts,
+      deletePartnerAndReferences,
       rawData: data,
       isAppLoading
     }}>

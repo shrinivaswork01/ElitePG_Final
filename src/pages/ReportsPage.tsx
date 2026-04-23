@@ -40,7 +40,7 @@ import { cn } from '../utils';
 
 export const ReportsPage = () => {
   const { user, users } = useAuth();
-  const { tenants, rooms, payments, complaints, expenses, salaryPayments, getStats, pgConfig, currentBranch, rawData, branches, updatePartnerShareBatch, addProfitDistribution, processPartnerPayoutBatch } = useApp();
+  const { tenants, rooms, payments, complaints, expenses, salaryPayments, getStats, pgConfig, currentBranch, rawData, branches, updatePartnerShareBatch, addProfitDistribution } = useApp();
   const [viewMode, setViewMode] = useState<'active' | 'combined'>('active');
   const [transactionFilter, setTransactionFilter] = useState<'all' | 'rent' | 'electricity' | 'token' | 'deposit' | 'adjustment' | 'payout'>('all');
   const [currentPage, setCurrentPage] = useState(1);
