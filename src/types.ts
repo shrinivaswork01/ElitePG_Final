@@ -314,6 +314,9 @@ export interface PGConfig {
   defaultPaymentDueDate?: number;
   defaultLateFeeDay?: number;
   lateFeeAmount?: number;
+  electricityLateFeeDay?: number;
+  electricityLateFeeAmount?: number;
+  electricityDueDate?: number;
   razorpayKeyId?: string;
 }
 

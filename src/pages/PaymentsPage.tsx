@@ -51,7 +51,7 @@ import toast from 'react-hot-toast';
 
 export const PaymentsPage = () => {
   const { user, users } = useAuth();
-  const { payments, tenants, rooms, addPayment, updatePayment, deletePayment, updateTenant, currentBranch, pgConfig, updatePGConfig } = useApp();
+  const { payments, tenants, rooms, addPayment, updatePayment, deletePayment, updateTenant, currentBranch, pgConfig, updatePGConfig, fetchData } = useApp();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
@@ -75,7 +75,10 @@ export const PaymentsPage = () => {
   const [policiesForm, setPoliciesForm] = useState({
     defaultPaymentDueDate: pgConfig?.defaultPaymentDueDate || 1,
     defaultLateFeeDay: pgConfig?.defaultLateFeeDay || 5,
-    lateFeeAmount: pgConfig?.lateFeeAmount || 50
+    lateFeeAmount: pgConfig?.lateFeeAmount || 50,
+    electricityDueDate: pgConfig?.electricityDueDate || 1,
+    electricityLateFeeDay: pgConfig?.electricityLateFeeDay || 5,
+    electricityLateFeeAmount: pgConfig?.electricityLateFeeAmount || 50
   });
 
   useEffect(() => {
@@ -83,7 +86,10 @@ export const PaymentsPage = () => {
       setPoliciesForm({
         defaultPaymentDueDate: pgConfig.defaultPaymentDueDate || 1,
         defaultLateFeeDay: pgConfig.defaultLateFeeDay || 5,
-        lateFeeAmount: pgConfig.lateFeeAmount || 50
+        lateFeeAmount: pgConfig.lateFeeAmount || 50,
+        electricityDueDate: pgConfig.electricityDueDate || 1,
+        electricityLateFeeDay: pgConfig.electricityLateFeeDay || 5,
+        electricityLateFeeAmount: pgConfig.electricityLateFeeAmount || 50
       });
     }
   }, [pgConfig]);
@@ -209,6 +215,22 @@ export const PaymentsPage = () => {
       cell: (p) => (
         <div className="flex justify-end">
           <DropdownMenu>
+            {p.status === 'pending' && (p.payment_type === 'electricity' || (p as any).paymentType === 'electricity') && (
+              <DropdownItem icon={<CreditCard className="w-4 h-4 text-emerald-500" />} label="Pay Now" onClick={() => {
+                setNewPayment({
+                  tenantId: p.tenant_id || p.tenantId || '',
+                  amount: p.amount || 0,
+                  lateFee: p.late_fee || p.lateFee || 0,
+                  totalAmount: p.total_amount || p.totalAmount || p.amount || 0,
+                  paymentDate: new Date().toISOString().split('T')[0],
+                  month: p.month || '',
+                  status: 'paid',
+                  method: 'Cash',
+                  paymentType: 'electricity'
+                });
+                setIsAddModalOpen(true);
+              }} />
+            )}
             {isAdmin && (
               <DropdownItem icon={<Edit2 className="w-4 h-4" />} label="Edit Payment" onClick={() => {
                 const normalized: Payment = {
@@ -286,25 +308,46 @@ export const PaymentsPage = () => {
         </div>
       )
     }
-  ], [user, deletePayment, refetchPayments, setPaymentToEdit, setSelectedPayment, setIsReceiptModalOpen]);
+  ], [user, deletePayment, fetchData, setPaymentToEdit, setSelectedPayment, setIsReceiptModalOpen]);
 
-  const calculateLateFee = (tenantId: string, month: string) => {
+  const calculateLateFee = (tenantId: string, month: string, overrideDate?: string, paymentType: string = 'rent') => {
     const tenant = tenants.find(t => t.id === tenantId);
     if (!tenant) return 0;
 
-    const dueDateDay = tenant.paymentDueDate || pgConfig?.defaultPaymentDueDate || 1;
-    const gracePeriod = pgConfig?.defaultLateFeeDay || 5;
-    const lateFeePerDay = pgConfig?.lateFeeAmount || 50;
-    
-    const dueDate = new Date(`${month}-${dueDateDay.toString().padStart(2, '0')}`);
-    const graceDate = new Date(dueDate);
-    graceDate.setDate(graceDate.getDate() + gracePeriod);
-    
-    const today = new Date();
+    // Use global policy first if available to match user expectations from "Payment Policies"
+    // Electricity only has a global due date. Rent now follows global first.
+    let dueDateDay = 1;
+    let gracePeriod = 5;
+    let lateFeePerDay = 50;
 
-    if (isAfter(today, graceDate)) {
-      const daysLate = Math.max(0, differenceInDays(today, graceDate));
-      return (daysLate + 1) * lateFeePerDay; 
+    if (paymentType === 'electricity') {
+      dueDateDay = pgConfig?.electricityDueDate || 1;
+      gracePeriod = pgConfig?.electricityLateFeeDay || 5;
+      lateFeePerDay = pgConfig?.electricityLateFeeAmount || 50;
+    } else {
+      dueDateDay = pgConfig?.defaultPaymentDueDate || tenant.paymentDueDate || 1;
+      gracePeriod = pgConfig?.defaultLateFeeDay || 5;
+      lateFeePerDay = pgConfig?.lateFeeAmount || 50;
+    }
+    
+    // Normalize logic: Use start of day for all date comparisons
+    const [year, monthVal] = month.split('-').map(Number);
+    const dueDate = new Date(year, monthVal - 1, dueDateDay);
+    
+    // Late Start Date = Due Date + Grace Period
+    const lateStartDate = new Date(dueDate);
+    lateStartDate.setDate(lateStartDate.getDate() + gracePeriod);
+    
+    // Payment date
+    const paymentDate = overrideDate ? parseISO(overrideDate) : new Date();
+
+    // Use 00:00:00 for comparison
+    const d1 = new Date(paymentDate.getFullYear(), paymentDate.getMonth(), paymentDate.getDate());
+    const d2 = new Date(lateStartDate.getFullYear(), lateStartDate.getMonth(), lateStartDate.getDate());
+
+    if (isAfter(d1, d2)) {
+      const lateDays = Math.max(0, differenceInDays(d1, d2));
+      return lateDays * lateFeePerDay;
     }
     return 0;
   };
@@ -512,6 +555,65 @@ export const PaymentsPage = () => {
     paymentType: 'rent'
   });
 
+  // Comprehensive Effect to sync Late Fee and Total Amount whenever ANY input or PG Policy changes
+  useEffect(() => {
+    if (isAddModalOpen) {
+      if (newPayment.tenantId) {
+        const calculatedLateFee = calculateLateFee(
+          newPayment.tenantId, 
+          newPayment.month, 
+          newPayment.paymentDate, 
+          newPayment.paymentType
+        );
+        
+        // Update late fee if it differs (prevents unnecessary re-renders)
+        if (calculatedLateFee !== newPayment.lateFee) {
+          setNewPayment(prev => {
+            const updatedTotal = (prev.amount || 0) + calculatedLateFee;
+            return { ...prev, lateFee: calculatedLateFee, totalAmount: updatedTotal };
+          });
+        }
+      } else if (newPayment.lateFee !== 0) {
+        // Clear late fee if no tenant selected
+        setNewPayment(prev => ({ ...prev, lateFee: 0, totalAmount: prev.amount || 0 }));
+      }
+    }
+  }, [
+    newPayment.tenantId, 
+    newPayment.month, 
+    newPayment.paymentDate, 
+    newPayment.paymentType, 
+    newPayment.amount, // Also react to manual amount changes
+    isAddModalOpen, 
+    pgConfig // CRITICAL: Updates when Payment Policies are saved
+  ]);
+
+  useEffect(() => {
+    if (isEditModalOpen && paymentToEdit) {
+      const calculatedLateFee = calculateLateFee(
+        paymentToEdit.tenantId, 
+        paymentToEdit.month, 
+        paymentToEdit.paymentDate, 
+        paymentToEdit.paymentType
+      );
+      if (calculatedLateFee !== paymentToEdit.lateFee) {
+        setPaymentToEdit(prev => prev ? { 
+          ...prev, 
+          lateFee: calculatedLateFee, 
+          totalAmount: (prev.amount || 0) + calculatedLateFee 
+        } : null);
+      }
+    }
+  }, [
+    paymentToEdit?.tenantId, 
+    paymentToEdit?.month, 
+    paymentToEdit?.paymentDate, 
+    paymentToEdit?.paymentType, 
+    paymentToEdit?.amount,
+    isEditModalOpen, 
+    pgConfig
+  ]);
+
   // Detect if this is a move-in first rent (existing partial rent record that matches token)
   const isFirstRent = React.useMemo(() => {
     if (!newPayment.tenantId || newPayment.paymentType !== 'rent') return false;
@@ -569,6 +671,11 @@ export const PaymentsPage = () => {
             toast.error('Payment already recorded for this tenant for selected month');
             return;
           }
+        } else if (newPayment.paymentType === 'electricity') {
+          if (existingPaymentForMonth && existingPaymentForMonth.status === 'paid') {
+            toast.error('Electricity bill already paid for this tenant for this month');
+            return;
+          }
         } else {
           if (existingPaymentForMonth) {
             toast.error(`A ${newPayment.paymentType} payment record already exists for this tenant for ${newPayment.month}.`);
@@ -619,6 +726,18 @@ export const PaymentsPage = () => {
               status: 'paid'
             });
           }
+        } else if (newPayment.paymentType === 'electricity' && existingPaymentForMonth) {
+          // Update existing pending electricity record (auto-generated by bill modal)
+          await updatePayment(existingPaymentForMonth.id, {
+            ...existingPaymentForMonth,
+            amount: effectiveAmount,
+            lateFee: newPayment.lateFee || 0,
+            totalAmount: effectiveTotal,
+            paymentDate: newPayment.paymentDate,
+            method: newPayment.method,
+            status: 'paid',
+            electricity_amount: effectiveAmount
+          });
         } else {
           await addPayment({
             ...newPayment,
@@ -669,7 +788,7 @@ export const PaymentsPage = () => {
           method: 'Cash',
           paymentType: 'rent'
         });
-        refetchPayments();
+        fetchData();
       } catch (err) {
         console.error(err);
         toast.error("Failed to record payment.");
@@ -944,7 +1063,7 @@ export const PaymentsPage = () => {
   const myPendingDuesCount = isTenant ? (hasPaidCurrentMonth ? 0 : 1) : 0;
   
   const paidThisMonthCount = React.useMemo(() => {
-    return payments.filter(p => p.month === currentMonth).length;
+    return payments.filter(p => p.month === currentMonth && p.status === 'paid').length;
   }, [payments, currentMonth]);
 
   const pendingTenantsCount = React.useMemo(() => {
@@ -1699,7 +1818,7 @@ export const PaymentsPage = () => {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-md bg-white dark:bg-[#111111] rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto border border-white/5"
+              className="relative w-full max-w-lg bg-white dark:bg-[#111111] rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto border border-white/5 mx-auto"
             >
               <div className="p-6 sm:p-8 border-b border-gray-100 dark:border-white/5 flex items-center justify-between sticky top-0 bg-white dark:bg-[#111111] z-10">
                 <h3 className="text-xl font-bold text-gray-900 dark:text-white">Record Payment</h3>
@@ -1712,10 +1831,19 @@ export const PaymentsPage = () => {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                        <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Payment Type</label>
-                       <div className="w-full px-4 py-2.5 bg-indigo-50 dark:bg-indigo-500/10 border-none rounded-xl text-indigo-600 dark:text-indigo-400 font-bold flex items-center gap-2">
-                         <Home className="w-4 h-4" /> Rent Payment
-                       </div>
-                       <p className="text-[10px] text-gray-500 mt-1 italic">This modal strictly handles rent payments.</p>
+                      <select
+                        value={newPayment.paymentType}
+                        onChange={async (e) => {
+                          const type = e.target.value as any;
+                          const amount = await handleAutoPopulate(type, newPayment.tenantId, newPayment.month || '');
+                          const lateFee = calculateLateFee(newPayment.tenantId, newPayment.month || '', newPayment.paymentDate, type);
+                          setNewPayment({ ...newPayment, paymentType: type, amount, lateFee, totalAmount: amount + lateFee });
+                        }}
+                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                      >
+                        <option value="rent">Rent</option>
+                        <option value="electricity">Electricity</option>
+                      </select>
                     </div>
                     <div className="space-y-2">
                       <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Select Tenant</label>
@@ -1725,7 +1853,7 @@ export const PaymentsPage = () => {
                         onChange={async (e) => {
                           const tenantId = e.target.value;
                           const amount = await handleAutoPopulate(newPayment.paymentType || 'rent', tenantId, newPayment.month || '');
-                          const lateFee = newPayment.paymentType === 'rent' ? calculateLateFee(tenantId, newPayment.month || '') : 0;
+                          const lateFee = calculateLateFee(tenantId, newPayment.month || '', newPayment.paymentDate, newPayment.paymentType || 'rent');
                           setNewPayment({
                             ...newPayment,
                             tenantId,
@@ -1736,17 +1864,26 @@ export const PaymentsPage = () => {
                         }}
                         className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                       >
-                        <option value="">Choose a tenant</option>
+                        <option value="">{newPayment.paymentType === 'rent' ? 'Select Tenant' : 'Select Tenant (with bills)'}</option>
                         {tenants
                           .filter(t => t.status === 'active' || t.status === 'vacating')
+                          .filter(t => {
+                            const type = newPayment.paymentType || 'rent';
+                            return !payments.some((p: any) => 
+                              p.tenantId === t.id && 
+                              p.month === newPayment.month && 
+                              (p.paymentType || 'rent') === type && 
+                              (type === 'electricity' ? p.status === 'paid' : p.status !== 'rejected')
+                            );
+                          })
                           .sort((a, b) => a.name.localeCompare(b.name))
                           .map(t => (
                           <option key={t.id} value={t.id}>{t.name} (Room {rooms.find(r => r.id === (t.roomId || (t as any).room_id))?.roomNumber || 'N/A'})</option>
                         ))}
                       </select>
                       {tenants.length === 0 && (
-                        <p className="text-[10px] text-rose-500 mt-1 italic font-semibold animate-pulse">
-                          No active tenants found for this branch. Please ensure tenants are added first.
+                        <p className="text-[10px] text-rose-500 mt-1 italic font-semibold">
+                          No active tenants found.
                         </p>
                       )}
                     </div>
@@ -1755,34 +1892,36 @@ export const PaymentsPage = () => {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Month</label>
-                      <input
-                        required
-                        type="month"
-                        value={newPayment.month}
-                        onChange={async (e) => {
-                          const month = e.target.value;
-                          const amount = await handleAutoPopulate(newPayment.paymentType || 'rent', newPayment.tenantId || '', month);
-                          const lateFee = newPayment.paymentType === 'rent' ? calculateLateFee(newPayment.tenantId || '', month) : 0;
-                          setNewPayment({
-                            ...newPayment,
-                            month,
-                            amount,
-                            lateFee,
-                            totalAmount: amount + lateFee
-                          });
-                        }}
-                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                      />
+                      <div className="relative">
+                        <input
+                          required
+                          type="month"
+                          value={newPayment.month}
+                          onChange={async (e) => {
+                            const month = e.target.value;
+                            const amount = await handleAutoPopulate(newPayment.paymentType || 'rent', newPayment.tenantId || '', month);
+                            setNewPayment({ ...newPayment, month, amount });
+                          }}
+                          className="w-full pl-11 pr-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                        />
+                        <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+                      </div>
                     </div>
                     <div className="space-y-2">
                       <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Payment Date</label>
-                      <input
-                        required
-                        type="date"
-                        value={newPayment.paymentDate}
-                        onChange={(e) => setNewPayment({ ...newPayment, paymentDate: e.target.value })}
-                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                      />
+                      <div className="relative">
+                        <input
+                          required
+                          type="date"
+                          value={newPayment.paymentDate}
+                          max={format(new Date(), 'yyyy-MM-dd')}
+                          onChange={(e) => {
+                            setNewPayment({ ...newPayment, paymentDate: e.target.value });
+                          }}
+                          className="w-full pl-11 pr-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                        />
+                        <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+                      </div>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
@@ -2006,33 +2145,44 @@ export const PaymentsPage = () => {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Month</label>
-                      <input
-                        required
-                        type="month"
-                        value={paymentToEdit.month}
-                        onChange={async (e) => {
-                          const month = e.target.value;
-                          const amount = await handleAutoPopulate(paymentToEdit.paymentType, paymentToEdit.tenantId, month);
-                          const lateFee = paymentToEdit.paymentType === 'rent' ? calculateLateFee(paymentToEdit.tenantId, month) : 0;
-                          setPaymentToEdit({ 
-                            ...paymentToEdit, 
-                            month,
-                            amount,
-                            lateFee
-                          });
-                        }}
-                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                      />
+                      <div className="relative">
+                        <input
+                          required
+                          type="month"
+                          value={paymentToEdit.month}
+                          onChange={async (e) => {
+                            const month = e.target.value;
+                            const amount = await handleAutoPopulate(paymentToEdit.paymentType, paymentToEdit.tenantId, month);
+                            const lateFee = calculateLateFee(paymentToEdit.tenantId, month, paymentToEdit.paymentDate, paymentToEdit.paymentType);
+                            setPaymentToEdit({ 
+                              ...paymentToEdit, 
+                              month,
+                              amount,
+                              lateFee
+                            });
+                          }}
+                          className="w-full pl-11 pr-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                        />
+                        <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+                      </div>
                     </div>
                     <div className="space-y-2">
                       <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Payment Date</label>
-                      <input
-                        required
-                        type="date"
-                        value={paymentToEdit.paymentDate}
-                        onChange={(e) => setPaymentToEdit({ ...paymentToEdit, paymentDate: e.target.value })}
-                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                      />
+                      <div className="relative">
+                        <input
+                          required
+                          type="date"
+                          value={paymentToEdit.paymentDate}
+                          max={format(new Date(), 'yyyy-MM-dd')}
+                          onChange={(e) => {
+                            const date = e.target.value;
+                            const lateFee = calculateLateFee(paymentToEdit.tenantId, paymentToEdit.month, date, paymentToEdit.paymentType);
+                            setPaymentToEdit({ ...paymentToEdit, paymentDate: date, lateFee });
+                          }}
+                          className="w-full pl-11 pr-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                        />
+                        <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+                      </div>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
@@ -2148,42 +2298,94 @@ export const PaymentsPage = () => {
                 </button>
               </div>
               <form onSubmit={handleSavePolicies} className="p-6 space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Default Due Date</label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="31"
-                      value={policiesForm.defaultPaymentDueDate}
-                      onChange={(e) => setPoliciesForm({ ...policiesForm, defaultPaymentDueDate: parseInt(e.target.value) })}
-                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                    />
-                    <p className="text-[10px] text-gray-400">Day of month rent is due.</p>
+                {/* Rent Late Fee Section */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                    <h4 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-widest">Rent Late Fee</h4>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Grace Period (Days)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={policiesForm.defaultLateFeeDay}
-                      onChange={(e) => setPoliciesForm({ ...policiesForm, defaultLateFeeDay: parseInt(e.target.value) })}
-                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                    />
-                    <p className="text-[10px] text-gray-400">Days after due date before late fee.</p>
-                  </div>
-                  <div className="space-y-2 md:col-span-2">
-                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Late Fee Amount (₹ per day)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={policiesForm.lateFeeAmount}
-                      onChange={(e) => setPoliciesForm({ ...policiesForm, lateFeeAmount: parseInt(e.target.value) })}
-                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                    />
-                    <p className="text-[10px] text-gray-400">Amount charged per day past grace period.</p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pl-4 border-l-2 border-indigo-500/20">
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Due Date (Day)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="31"
+                        value={policiesForm.defaultPaymentDueDate}
+                        onChange={(e) => setPoliciesForm({ ...policiesForm, defaultPaymentDueDate: parseInt(e.target.value) })}
+                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                      />
+                      <p className="text-[10px] text-gray-400">Day of month rent is due.</p>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Grace Period (Days)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={policiesForm.defaultLateFeeDay}
+                        onChange={(e) => setPoliciesForm({ ...policiesForm, defaultLateFeeDay: parseInt(e.target.value) })}
+                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                      />
+                      <p className="text-[10px] text-gray-400">Days after due date before late fee kicks in.</p>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Late Fee (₹/day)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={policiesForm.lateFeeAmount}
+                        onChange={(e) => setPoliciesForm({ ...policiesForm, lateFeeAmount: parseInt(e.target.value) })}
+                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                      />
+                      <p className="text-[10px] text-gray-400">₹ charged per day past grace period for rent.</p>
+                    </div>
                   </div>
                 </div>
+
+                {/* Electricity Late Fee Section */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-amber-500" />
+                    <h4 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-widest">Electricity Late Fee</h4>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pl-4 border-l-2 border-amber-500/20">
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Due Date (Day)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="31"
+                        value={policiesForm.electricityDueDate}
+                        onChange={(e) => setPoliciesForm({ ...policiesForm, electricityDueDate: parseInt(e.target.value) })}
+                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-amber-500/20 text-gray-900 dark:text-white"
+                      />
+                      <p className="text-[10px] text-gray-400">Day of month electricity is due.</p>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Grace Period (Days)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={policiesForm.electricityLateFeeDay}
+                        onChange={(e) => setPoliciesForm({ ...policiesForm, electricityLateFeeDay: parseInt(e.target.value) })}
+                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-amber-500/20 text-gray-900 dark:text-white"
+                      />
+                      <p className="text-[10px] text-gray-400">Days after due date before electricity late fee kicks in.</p>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Late Fee (₹/day)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={policiesForm.electricityLateFeeAmount}
+                        onChange={(e) => setPoliciesForm({ ...policiesForm, electricityLateFeeAmount: parseInt(e.target.value) })}
+                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-amber-500/20 text-gray-900 dark:text-white"
+                      />
+                      <p className="text-[10px] text-gray-400">₹ charged per day past grace period for electricity.</p>
+                    </div>
+                  </div>
+                </div>
+
                 <button type="submit" className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all" style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}>
                   Save Policies
                 </button>

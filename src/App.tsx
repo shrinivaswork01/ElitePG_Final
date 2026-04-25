@@ -36,21 +36,19 @@ const RootRedirect = () => {
   if (isInitializing) return <LoadingScreen />;
   if (!user) return <Navigate to="/login" replace />;
   
-  // For super admin: land on first available branch dashboard
-  if (user.role === 'super') {
-    const defaultBranchId = user.branchId || user.branchIds?.[0];
-    if (defaultBranchId) {
-      return <Navigate to={`/branch/${defaultBranchId}/dashboard`} replace />;
+  // Try to find a valid branch ID
+  const defaultBranchId = user.branchId || user.branchIds?.[0];
+  
+  // For super admin, admin or partner: fall back to 'all' if no branch exists yet
+  if (['super', 'admin', 'partner'].includes(user.role)) {
+    if (!defaultBranchId) {
+      return <Navigate to="/branch/all/dashboard" replace />;
     }
-    // Super admin with no branches yet — still valid, send to first branch context
-    return <Navigate to="/unauthorized" replace />;
   }
 
-  // For admin/partner: MUST have a branch. AuthContext setActiveUser guarantees this,
-  // but as a safety net, try branchIds[0] as well.
-  const defaultBranchId = user.branchId || user.branchIds?.[0];
+  // For anyone else: MUST have a branch.
   if (!defaultBranchId) {
-    // Absolute fallback — should never happen after AuthContext fix
+    // Absolute fallback — if a tenant/employee legitimately has no branch, they are unauthorized.
     return <Navigate to="/unauthorized" replace />;
   }
   

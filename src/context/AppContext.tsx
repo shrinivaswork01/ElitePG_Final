@@ -360,6 +360,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           defaultPaymentDueDate: c.default_payment_due_date || 1,
           defaultLateFeeDay: c.default_late_fee_day || 5,
           lateFeeAmount: c.late_fee_amount || 50,
+          electricityLateFeeDay: c.electricity_late_fee_day || 5,
+          electricityLateFeeAmount: c.electricity_late_fee_amount || 50,
+          electricityDueDate: c.electricity_due_date || 1,
           razorpayKeyId: c.razorpay_key_id
         })),
         userInvites: (userInvites || []).map(i => ({
@@ -1451,6 +1454,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const addSalaryPayment = async (payment: Omit<SalaryPayment, 'id' | 'branchId'> & { branchId?: string }) => {
     const targetBranch = payment.branchId || filteredData.currentBranch?.id || user?.branchId;
     if (!targetBranch) { toast.error("No active branch selected."); return; }
+    
+    // Prevent duplicate salary for same employee and month
+    const isDuplicate = data.salaryPayments?.some((s: any) => s.employeeId === payment.employeeId && s.month === payment.month);
+    if (isDuplicate) {
+      toast.error('Salary payment already recorded for this employee for the selected month.');
+      return;
+    }
+
     applyOptimistic(prev => ({ ...prev, salaryPayments: [...prev.salaryPayments, { ...payment, id: `temp-${Date.now()}`, branchId: targetBranch }] }));
     await refetch(supabase.from('salary_payments').insert({
       employee_id: payment.employeeId, amount: payment.amount, month: payment.month, payment_date: payment.paymentDate,
@@ -1476,7 +1487,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const addTask = async (task: Omit<Task, 'id' | 'branchId'>) => {
-    const branchId = user?.branchId || data.branches[0]?.id;
+    const branchId = activeBranchId || user?.branchId || data.branches[0]?.id;
     if (!branchId) return;
     applyOptimistic(prev => ({
       ...prev,
@@ -1533,7 +1544,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // === Expenses Operations ===
 
   const addExpense = async (expense: Omit<Expense, 'id' | 'branchId' | 'createdAt' | 'editedAt'>) => {
-    const branchId = user?.branchId || data.branches[0]?.id;
+    const branchId = activeBranchId || user?.branchId || data.branches[0]?.id;
     if (!branchId) return;
 
     applyOptimistic(prev => ({
@@ -1614,6 +1625,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.defaultPaymentDueDate !== undefined) dbUpdates.default_payment_due_date = updates.defaultPaymentDueDate;
     if (updates.defaultLateFeeDay !== undefined) dbUpdates.default_late_fee_day = updates.defaultLateFeeDay;
     if (updates.lateFeeAmount !== undefined) dbUpdates.late_fee_amount = updates.lateFeeAmount;
+    if (updates.electricityLateFeeDay !== undefined) dbUpdates.electricity_late_fee_day = updates.electricityLateFeeDay;
+    if (updates.electricityLateFeeAmount !== undefined) dbUpdates.electricity_late_fee_amount = updates.electricityLateFeeAmount;
+    if (updates.electricityDueDate !== undefined) dbUpdates.electricity_due_date = updates.electricityDueDate;
     if (updates.razorpayKeyId !== undefined) dbUpdates.razorpay_key_id = updates.razorpayKeyId;
 
     // Optimistically update PG config to prevent UI lagging on changes
@@ -1640,6 +1654,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             defaultPaymentDueDate: updates.defaultPaymentDueDate,
             defaultLateFeeDay: updates.defaultLateFeeDay,
             lateFeeAmount: updates.lateFeeAmount,
+            electricityLateFeeDay: updates.electricityLateFeeDay,
+            electricityLateFeeAmount: updates.electricityLateFeeAmount,
+            electricityDueDate: updates.electricityDueDate,
             razorpayKeyId: updates.razorpayKeyId
           }]
         };

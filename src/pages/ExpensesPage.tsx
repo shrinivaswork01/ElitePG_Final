@@ -35,7 +35,7 @@ const CATEGORIES: ExpenseCategory[] = ['apex', 'capital', 'operational', 'mainte
 
 export const ExpensesPage = () => {
   const { user, users } = useAuth();
-  const { expenses, addExpense, updateExpense, deleteExpense, currentBranch, pgConfig } = useApp();
+  const { expenses, salaryPayments, addExpense, updateExpense, deleteExpense, currentBranch, pgConfig } = useApp();
   
   if (user?.role === 'tenant') {
     return <Navigate to="/" replace />;
@@ -67,11 +67,21 @@ export const ExpensesPage = () => {
     receiptUrl: ''
   });
 
-  const totalMonthlyExpenses = useMemo(() => {
-    return expenses
+  const { totalMonthlyExpenses, opsTotal, salaryTotal } = useMemo(() => {
+    const opsExpenses = expenses
       ?.filter(e => e.month === filterMonth && e.status !== 'rejected')
       .reduce((sum, e) => sum + e.amount, 0) || 0;
-  }, [expenses, filterMonth]);
+      
+    const salaryExpenses = (salaryPayments || [])
+      ?.filter(s => s.month === filterMonth && s.status === 'paid')
+      .reduce((sum, s) => sum + s.amount, 0) || 0;
+      
+    return {
+      totalMonthlyExpenses: opsExpenses + salaryExpenses,
+      opsTotal: opsExpenses,
+      salaryTotal: salaryExpenses
+    };
+  }, [expenses, salaryPayments, filterMonth]);
 
   const handleOpenAdd = () => {
     setFormData({
@@ -269,51 +279,61 @@ export const ExpensesPage = () => {
 
   return (
     <div className="space-y-6">
-      {/* Premium Header */}
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 bg-white dark:bg-[#111111] p-8 rounded-[2.5rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 rounded-full -mr-32 -mt-32 blur-3xl" />
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-600/20">
-              <Receipt className="w-6 h-6" />
-            </div>
-            <h1 className="text-2xl font-black text-gray-900 dark:text-white uppercase tracking-tight">Expense Tracker</h1>
-          </div>
-          <p className="text-gray-500 dark:text-gray-400 font-medium max-w-md">
-            Managing expenditures for <span className="text-indigo-600 dark:text-indigo-400 font-bold">{currentBranch?.branchName || 'your business'}</span>
-          </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Expenses</h2>
+          <p className="text-gray-500 dark:text-gray-400">Manage expenditures for {currentBranch?.branchName || 'your branch'}.</p>
         </div>
         
         {isAdmin && (
           <button
             onClick={handleOpenAdd}
             style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
-            className="w-full lg:w-auto px-8 py-4 text-white rounded-2xl font-black uppercase tracking-widest text-xs flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-xl shadow-indigo-600/20"
+            className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
           >
             <Plus className="w-5 h-5" />
-            Add New Expense
+            Add Expense
           </button>
         )}
       </div>
 
       {/* Modern Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-        <div className="bg-white dark:bg-[#111111] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 relative overflow-hidden group">
-          <div className="relative z-10">
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4">Monthly Spend</p>
-            <div className="flex items-end justify-between">
-              <h3 className="text-3xl font-black text-gray-900 dark:text-white tracking-tighter">₹{totalMonthlyExpenses.toLocaleString()}</h3>
-              <div className="flex items-center gap-1 text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded-lg">
-                <TrendingUp className="w-3 h-3" />
-                <span className="text-[10px] font-bold">Standard</span>
-              </div>
-            </div>
-            <div className="mt-4 pt-4 border-t border-gray-50 dark:border-white/5 flex items-center justify-between text-[10px] font-bold text-gray-400">
-              <span>{format(parseISO(`${filterMonth}-01`), 'MMMM yyyy')}</span>
-              <PieChart className="w-3 h-3 group-hover:rotate-12 transition-transform" />
-            </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Total Expenditure */}
+        <motion.div className="bg-indigo-600 p-6 rounded-[2rem] shadow-lg shadow-indigo-600/20 relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-all duration-700" />
+          <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center text-white mb-4">
+            <TrendingUp className="w-6 h-6" />
           </div>
-        </div>
+          <p className="text-[10px] font-black text-indigo-100 tracking-[0.05em] mb-1 uppercase">Total Expenditure</p>
+          <div className="flex items-baseline gap-2">
+            <h3 className="text-3xl font-black text-white tracking-tight font-display">₹{totalMonthlyExpenses.toLocaleString()}</h3>
+          </div>
+        </motion.div>
+
+        {/* Operational Expense */}
+        <motion.div className="bg-white dark:bg-[#0d0d0d] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-rose-500/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-all duration-500" />
+          <div className="w-12 h-12 bg-rose-50 dark:bg-rose-500/10 rounded-2xl flex items-center justify-center text-rose-600 mb-4">
+            <Receipt className="w-6 h-6" />
+          </div>
+          <p className="text-[10px] font-black text-gray-400 tracking-[0.05em] mb-1 uppercase">Operational Costs</p>
+          <div className="flex items-baseline gap-2">
+            <h3 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight font-display">₹{opsTotal.toLocaleString()}</h3>
+          </div>
+        </motion.div>
+
+        {/* Salary Expense */}
+        <motion.div className="bg-white dark:bg-[#0d0d0d] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-all duration-500" />
+          <div className="w-12 h-12 bg-amber-50 dark:bg-amber-500/10 rounded-2xl flex items-center justify-center text-amber-600 mb-4">
+            <PieChart className="w-6 h-6" />
+          </div>
+          <p className="text-[10px] font-black text-gray-400 tracking-[0.05em] mb-1 uppercase">Salary Expenditure</p>
+          <div className="flex items-baseline gap-2">
+            <h3 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight font-display">₹{salaryTotal.toLocaleString()}</h3>
+          </div>
+        </motion.div>
       </div>
 
       {/* Filter Bar */}

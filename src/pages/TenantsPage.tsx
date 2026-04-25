@@ -1085,7 +1085,7 @@ export const TenantsPage = () => {
                       className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                     />
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-4">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Move-in Date</label>
                     <input
                       required
@@ -1103,31 +1103,31 @@ export const TenantsPage = () => {
                         
                         setFormData({ ...formData, moveInDate: newDate, status: newStatus } as any);
                       }}
-                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white disabled:opacity-50"
+                      className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white disabled:opacity-50 transition-all font-medium"
                     />
                     <p className="text-[10px] text-gray-400 dark:text-gray-500 italic">Expected move-in date. Mandatory for both Onboarding and Active.</p>
                   </div>
                   {formData.status === 'vacating' && (
-                    <div className="space-y-2">
+                    <div className="space-y-4">
                       <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Vacating Date</label>
                       <input
                         required
                         type="date"
                         value={(formData as any).vacatingDate || ''}
                         onChange={(e) => setFormData({ ...formData, vacatingDate: e.target.value } as any)}
-                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                        className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white transition-all font-medium"
                       />
                       <p className="text-[10px] text-gray-400 dark:text-gray-500 italic">Expected date of vacating. Mandatory for Vacating status.</p>
                     </div>
                   )}
                   {checkFeatureAccess('kyc') && (
-                    <div className="space-y-2">
+                    <div className="space-y-4">
                       <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Identity Verification</label>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <select
                           value={kycDoc.type}
                           onChange={(e) => setKycDoc({ ...kycDoc, type: e.target.value })}
-                          className="px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                          className="px-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white transition-all"
                         >
                           <option value="Aadhar Card">Aadhar Card</option>
                           <option value="PAN Card">PAN Card</option>
@@ -1143,10 +1143,10 @@ export const TenantsPage = () => {
                           />
                           <label
                             htmlFor="kyc-upload"
-                            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-2 border-dashed border-gray-200 dark:border-white/10 rounded-xl cursor-pointer hover:bg-gray-100 dark:hover:bg-white/10 transition-all"
+                            className="flex items-center justify-center gap-2 px-4 py-3 bg-gray-50 dark:bg-white/5 border-2 border-dashed border-gray-200 dark:border-white/10 rounded-xl cursor-pointer hover:bg-gray-100 dark:hover:bg-white/10 transition-all"
                           >
                             <Upload className="w-4 h-4 text-gray-400" />
-                            <span className="text-sm text-gray-500 dark:text-gray-400 truncate max-w-[150px]">
+                            <span className="text-sm text-gray-500 dark:text-gray-400 truncate max-w-[150px] font-bold">
                               {kycDoc.fileName || (editingTenant?.kycStatus === 'verified' ? 'Update Document' : 'Upload Document')}
                             </span>
                           </label>

@@ -50,6 +50,8 @@ export const PartnerPayoutsPage = () => {
   const [payoutMonth, setPayoutMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [partnerToDelete, setPartnerToDelete] = useState<{ id: string, name: string } | null>(null);
   const [payoutToCancel, setPayoutToCancel] = useState<string | null>(null);
+  const [payoutToForcePay, setPayoutToForcePay] = useState<string | null>(null);
+  const [transactionToDelete, setTransactionToDelete] = useState<string | null>(null);
 
   // Month options (last 12 months)
   const monthOptions = Array.from({ length: 12 }, (_, i) => {
@@ -90,6 +92,13 @@ export const PartnerPayoutsPage = () => {
   // -- Payout Data --
   const rawPayouts = rawData.partnerPayouts || [];
   const monthPayouts = rawPayouts.filter((p: any) => p.month === payoutMonth && p.branchId === branchContextId);
+  
+  // Calculate total distributed/requested this month to find true remaining balance
+  const monthPaidTotal = monthPayouts
+    .filter((p: any) => p.status === 'PAID' || p.status === 'PARTNER_APPROVED' || p.status === 'REQUESTED')
+    .reduce((sum: number, p: any) => sum + p.amount, 0);
+
+  const remainingBalance = netProfit - monthPaidTotal;
 
   const isAdmin = user?.role === 'super' || user?.role === 'admin';
   const isPartner = user?.role === 'partner';
@@ -298,11 +307,7 @@ export const PartnerPayoutsPage = () => {
             )}
             {isAdmin && (
               <button
-                 onClick={() => {
-                   if (confirm('Skip partner peer-approval and instantly process final payment?')) {
-                     updatePartnerPayoutStatus(payoutInfo.id, 'PAID', 'admin_approved_by', user?.id || '');
-                   }
-                 }}
+                 onClick={() => setPayoutToForcePay(payoutInfo.id)}
                  className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/30"
               >
                  Force Pay
@@ -349,9 +354,8 @@ export const PartnerPayoutsPage = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 className="text-3xl font-black text-gray-900 dark:text-white flex items-center gap-3 tracking-tight font-display">
-            <Users className="w-8 h-8 text-indigo-500" />
-            Partners & Payouts
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+             Partners & Payouts
           </h2>
           <p className="text-sm font-bold text-gray-500 dark:text-gray-400 mt-1">
             {currentBranch?.name || 'Active Branch'} • Manage partners, ratios, and distributions
@@ -482,7 +486,7 @@ export const PartnerPayoutsPage = () => {
                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               <div className="p-6 bg-white dark:bg-[#0d0d0d] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden group hover:border-emerald-200 dark:hover:border-emerald-500/20 transition-all">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-50 dark:bg-emerald-500/5 rounded-full -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-500 pointer-events-none" />
                 <div className="flex items-center gap-3 mb-4 relative z-10">
@@ -519,6 +523,22 @@ export const PartnerPayoutsPage = () => {
                   <span className={cn("text-xs font-black uppercase tracking-widest", netProfit > 0 ? "text-indigo-100" : "text-gray-500 dark:text-gray-400")}>Net Profit</span>
                 </div>
                 <p className={cn("text-3xl font-black relative z-10", netProfit > 0 ? "text-white" : "text-gray-900 dark:text-white")}>₹{netProfit.toLocaleString()}</p>
+              </div>
+
+              <div className={cn(
+                "p-6 rounded-3xl border shadow-sm relative overflow-hidden group transition-all",
+                remainingBalance > 0
+                  ? "bg-emerald-600 border-emerald-500 hover:shadow-emerald-600/20 shadow-lg"
+                  : "bg-white dark:bg-[#0d0d0d] border-gray-100 dark:border-white/5"
+              )}>
+                {remainingBalance > 0 && <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full -mr-20 -mt-20 group-hover:scale-150 transition-transform duration-500 pointer-events-none" />}
+                <div className="flex items-center gap-3 mb-4 relative z-10">
+                  <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", remainingBalance > 0 ? "bg-white/20 text-white" : "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-500")}>
+                     <ShieldCheck className="w-5 h-5" />
+                  </div>
+                  <span className={cn("text-xs font-black uppercase tracking-widest", remainingBalance > 0 ? "text-emerald-100" : "text-gray-500 dark:text-gray-400")}>Remaining Balance</span>
+                </div>
+                <p className={cn("text-3xl font-black relative z-10", remainingBalance > 0 ? "text-white" : "text-gray-900 dark:text-white")}>₹{remainingBalance.toLocaleString()}</p>
               </div>
             </div>
 
@@ -659,11 +679,7 @@ export const PartnerPayoutsPage = () => {
                            {isAdmin && (
                              <td className="px-6 py-4 text-right">
                                <button 
-                                 onClick={() => {
-                                   if (confirm('Delete this transaction?')) {
-                                     deletePartnerPayout(p.id);
-                                   }
-                                 }}
+                                 onClick={() => setTransactionToDelete(p.id)}
                                  className="p-1.5 text-gray-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg transition-colors"
                                >
                                  <Trash2 className="w-4 h-4" />
@@ -838,6 +854,74 @@ export const PartnerPayoutsPage = () => {
                         className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-colors shadow-lg shadow-rose-600/20"
                      >
                         Yes, Cancel
+                     </button>
+                  </div>
+               </div>
+            </div>
+         </div>
+      )}
+
+      {/* Force Pay Confirmation Modal */}
+      {payoutToForcePay && (
+         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-[#111111] rounded-3xl w-full max-w-sm overflow-hidden border border-gray-100 dark:border-white/10 shadow-2xl">
+               <div className="p-6 text-center">
+                  <div className="w-16 h-16 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                     <Lock className="w-8 h-8" />
+                  </div>
+                  <h3 className="text-xl font-black text-gray-900 dark:text-white mb-2 font-display">Force Approval?</h3>
+                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-6">
+                     You are skipping the Partner peer-approval stage. This transaction will be marked as <strong>PAID</strong> and recorded in logs immediately.
+                  </p>
+                  <div className="flex gap-3">
+                     <button 
+                        onClick={() => setPayoutToForcePay(null)} 
+                        className="flex-1 py-3 bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-gray-300 rounded-xl font-bold hover:bg-gray-100 dark:hover:bg-white/10 transition-colors uppercase tracking-widest text-xs"
+                     >
+                        Cancel
+                     </button>
+                     <button 
+                        onClick={() => {
+                           updatePartnerPayoutStatus(payoutToForcePay, 'PAID', 'admin_approved_by', user?.id || '');
+                           setPayoutToForcePay(null);
+                        }} 
+                        className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-colors shadow-lg shadow-indigo-600/20"
+                     >
+                        Confirm & Pay
+                     </button>
+                  </div>
+               </div>
+            </div>
+         </div>
+      )}
+
+      {/* Delete Transaction Confirmation Modal */}
+      {transactionToDelete && (
+         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-[#111111] rounded-3xl w-full max-w-sm overflow-hidden border border-gray-100 dark:border-white/10 shadow-2xl">
+               <div className="p-6 text-center">
+                  <div className="w-16 h-16 bg-rose-50 dark:bg-rose-500/10 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                     <History className="w-8 h-8" />
+                  </div>
+                  <h3 className="text-xl font-black text-gray-900 dark:text-white mb-2 font-display">Delete Log?</h3>
+                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-6">
+                     Are you sure you want to delete this transaction record? This will permanently remove it from the global log.
+                  </p>
+                  <div className="flex gap-3">
+                     <button 
+                        onClick={() => setTransactionToDelete(null)} 
+                        className="flex-1 py-3 bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-gray-300 rounded-xl font-bold hover:bg-gray-100 dark:hover:bg-white/10 transition-colors uppercase tracking-widest text-xs"
+                     >
+                        Keep Log
+                     </button>
+                     <button 
+                        onClick={() => {
+                           deletePartnerPayout(transactionToDelete);
+                           setTransactionToDelete(null);
+                        }} 
+                        className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-colors shadow-lg shadow-rose-600/20"
+                     >
+                        Yes, Delete
                      </button>
                   </div>
                </div>

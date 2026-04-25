@@ -143,12 +143,12 @@ export const Dashboard = () => {
   if (isSuper) {
     const authUsers = useAuth().users || [];
     statCards = [
-      { label: 'Total Branches', value: branches.length, icon: Building2, color: 'bg-indigo-600', trend: `+${branchesThisMonth} this month`, trendIcon: TrendingUp, trendColor: 'emerald', link: '/branches' },
-      { label: 'Total Tenants', value: (tenants || []).length, icon: Users, color: 'bg-blue-500', trend: `${tenantTrend} growth`, trendIcon: TrendingUp, trendColor: 'emerald', link: '/tenants' },
-      { label: 'Total Revenue', value: `₹${(payments || []).filter(p => p.status === 'paid' && p.paymentType === 'rent').reduce((sum, p) => sum + p.totalAmount, 0).toLocaleString()}`, icon: TrendingUp, color: 'bg-emerald-500', trend: 'Lifetime', trendIcon: Star, trendColor: 'emerald', link: '/branches' },
-      { label: 'Active Subscriptions', value: activeSubscriptions, icon: CreditCard, color: 'bg-violet-600', trend: 'Paying', trendIcon: CheckCircle, trendColor: 'emerald', link: '/branches' },
-      { label: 'Pending Renewals', value: pendingRenewals, icon: Clock, color: 'bg-amber-500', trend: 'Next 15 Days', trendIcon: CalendarDays, trendColor: 'amber', link: '/branches' },
-      { label: 'System Health', value: '100%', icon: ShieldCheck, color: 'bg-emerald-600', trend: 'Operational', trendIcon: CheckCircle, trendColor: 'emerald', link: '/branches' },
+      { label: 'Total Branches', value: branches.length, icon: Building2, color: 'bg-indigo-600', trend: `+${branchesThisMonth} this month`, trendIcon: TrendingUp, trendColor: 'emerald', link: `/branch/${currentBranch?.id || 'all'}/platform-management` },
+      { label: 'Total Tenants', value: (tenants || []).length, icon: Users, color: 'bg-blue-500', trend: `${tenantTrend} growth`, trendIcon: TrendingUp, trendColor: 'emerald', link: `/branch/${currentBranch?.id || 'all'}/tenants` },
+      { label: 'Total Revenue', value: `₹${(payments || []).filter(p => p.status === 'paid' && p.paymentType === 'rent').reduce((sum, p) => sum + p.totalAmount, 0).toLocaleString()}`, icon: TrendingUp, color: 'bg-emerald-500', trend: 'Lifetime', trendIcon: Star, trendColor: 'emerald', link: `/branch/${currentBranch?.id || 'all'}/platform-management` },
+      { label: 'Active Subscriptions', value: activeSubscriptions, icon: CreditCard, color: 'bg-violet-600', trend: 'Paying', trendIcon: CheckCircle, trendColor: 'emerald', link: `/branch/${currentBranch?.id || 'all'}/platform-management` },
+      { label: 'Pending Renewals', value: pendingRenewals, icon: Clock, color: 'bg-amber-500', trend: 'Next 15 Days', trendIcon: CalendarDays, trendColor: 'amber', link: `/branch/${currentBranch?.id || 'all'}/platform-management` },
+      { label: 'System Health', value: '100%', icon: ShieldCheck, color: 'bg-emerald-600', trend: 'Operational', trendIcon: CheckCircle, trendColor: 'emerald', link: `/branch/${currentBranch?.id || 'all'}/platform-management` },
     ];
   } else if (isTenant) {
     const pendingElec = tenantPayments.filter(p => p.paymentType === 'electricity' && p.status === 'pending');
@@ -156,7 +156,7 @@ export const Dashboard = () => {
     const earliestElecDue = pendingElec.length > 0 ? pendingElec[0] : null;
 
     statCards = [
-      { label: 'My Rent', value: `₹${(tenantData?.rentAmount || 0).toLocaleString()}`, icon: CreditCard, color: 'bg-indigo-500', trend: 'Monthly', link: '/payments' },
+      { label: 'My Rent', value: `₹${(tenantData?.rentAmount || 0).toLocaleString()}`, icon: CreditCard, color: 'bg-indigo-500', trend: 'Monthly', link: `/branch/${currentBranch?.id || 'all'}/payments` },
       { 
         label: 'Electricity Due', 
         value: `₹${totalElecDue.toLocaleString()}`, 
@@ -169,25 +169,25 @@ export const Dashboard = () => {
           }
         }
       },
-      { label: 'My Complaints', value: tenantComplaints.filter(c => c.status !== 'resolved').length, icon: AlertCircle, color: 'bg-rose-500', trend: 'Active', link: '/complaints' },
-      { label: 'Total Paid', value: `₹${(tenantPayments || []).reduce((sum, p) => sum + (p.totalAmount || 0), 0).toLocaleString()}`, icon: TrendingUp, color: 'bg-violet-500', trend: 'Lifetime', link: '/payments' },
+      { label: 'My Complaints', value: tenantComplaints.filter(c => c.status !== 'resolved').length, icon: AlertCircle, color: 'bg-rose-500', trend: 'Active', link: `/branch/${currentBranch?.id || 'all'}/complaints` },
+      { label: 'Total Paid', value: `₹${(tenantPayments || []).reduce((sum, p) => sum + (p.totalAmount || 0), 0).toLocaleString()}`, icon: TrendingUp, color: 'bg-violet-500', trend: 'Lifetime', link: `/branch/${currentBranch?.id || 'all'}/payments` },
     ];
   } else if (isEmployee) {
     statCards = [
-      { label: 'Pending Tasks', value: employeeTasks.filter(t => t.status === 'pending').length, icon: ClipboardList, color: 'bg-amber-500', trend: 'Action Needed', link: '/tasks' },
+      { label: 'Pending Tasks', value: employeeTasks.filter(t => t.status === 'pending').length, icon: ClipboardList, color: 'bg-amber-500', trend: 'Action Needed', link: `/branch/${currentBranch?.id || 'all'}/tasks` },
       { label: 'KYC Status', value: employeeData?.kycStatus?.toUpperCase() || 'UNKNOWN', icon: ShieldCheck, color: employeeData?.kycStatus === 'verified' ? 'bg-emerald-500' : 'bg-amber-500', trend: 'Identity', link: '/profile' },
-      { label: 'Tasks Completed', value: employeeTasks.filter(t => t.status === 'completed').length, icon: CheckCircle, color: 'bg-emerald-500', trend: 'Lifetime', link: '/tasks' },
-      { label: 'Total Salary Received', value: `₹${employeeSalaries.reduce((sum, p) => sum + p.amount, 0).toLocaleString()}`, icon: DollarSign, color: 'bg-violet-500', trend: 'Earnings', link: '/employees' },
+      { label: 'Tasks Completed', value: employeeTasks.filter(t => t.status === 'completed').length, icon: CheckCircle, color: 'bg-emerald-500', trend: 'Lifetime', link: `/branch/${currentBranch?.id || 'all'}/tasks` },
+      { label: 'Total Salary Received', value: `₹${employeeSalaries.reduce((sum, p) => sum + p.amount, 0).toLocaleString()}`, icon: DollarSign, color: 'bg-violet-500', trend: 'Earnings', link: `/branch/${currentBranch?.id || 'all'}/employees` },
     ];
   } else {
     statCards = [
-      { label: 'Total Tenants', value: stats.totalTenants, icon: Users, color: 'bg-blue-500', trend: tenantTrend, link: '/tenants' },
-      { label: 'Pending Tasks', value: stats.pendingTasks, icon: ClipboardList, color: 'bg-amber-500', trend: 'Action', link: '/tasks' },
-      { label: 'Verified Tenants', value: stats.verifiedTenants, icon: ShieldCheck, color: 'bg-emerald-500', trend: 'KYC', link: '/tenants' },
-      { label: 'Pending KYC', value: stats.pendingKYC, icon: AlertCircle, color: 'bg-amber-500', trend: 'Action', link: '/kyc' },
-      { label: 'Vacant Beds', value: stats.vacantBeds, icon: DoorOpen, color: 'bg-indigo-500', trend: `${stats.vacantBeds} left`, link: '/rooms' },
-      { label: 'Monthly Revenue', value: `₹${(stats.monthlyRevenue || 0).toLocaleString()}`, icon: TrendingUp, color: 'bg-violet-500', trend: 'Current', link: '/payments' },
-      { label: 'Open Complaints', value: stats.openComplaints, icon: AlertCircle, color: 'bg-rose-500', trend: 'Active', link: '/complaints' },
+      { label: 'Total Tenants', value: stats.totalTenants, icon: Users, color: 'bg-blue-500', trend: tenantTrend, link: `/branch/${currentBranch?.id || 'all'}/tenants` },
+      { label: 'Pending Tasks', value: stats.pendingTasks, icon: ClipboardList, color: 'bg-amber-500', trend: 'Action', link: `/branch/${currentBranch?.id || 'all'}/tasks` },
+      { label: 'Verified Tenants', value: stats.verifiedTenants, icon: ShieldCheck, color: 'bg-emerald-500', trend: 'KYC', link: `/branch/${currentBranch?.id || 'all'}/tenants` },
+      { label: 'Pending KYC', value: stats.pendingKYC, icon: AlertCircle, color: 'bg-amber-500', trend: 'Action', link: `/branch/${currentBranch?.id || 'all'}/kyc` },
+      { label: 'Vacant Beds', value: stats.vacantBeds, icon: DoorOpen, color: 'bg-indigo-500', trend: `${stats.vacantBeds} left`, link: `/branch/${currentBranch?.id || 'all'}/rooms` },
+      { label: 'Monthly Revenue', value: `₹${(stats.monthlyRevenue || 0).toLocaleString()}`, icon: TrendingUp, color: 'bg-violet-500', trend: 'Current', link: `/branch/${currentBranch?.id || 'all'}/payments` },
+      { label: 'Open Complaints', value: stats.openComplaints, icon: AlertCircle, color: 'bg-rose-500', trend: 'Active', link: `/branch/${currentBranch?.id || 'all'}/complaints` },
     ];
 
     const branchInvite = userInvites?.find(i => i.branchId === user?.branchId && i.role === 'tenant' && i.status === 'pending');

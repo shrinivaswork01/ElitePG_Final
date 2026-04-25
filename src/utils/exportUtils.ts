@@ -1,7 +1,27 @@
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { format } from 'date-fns';
-import { Tenant, Room, Payment, ElectricityBill, PGBranch, MeterGroup } from '../types';
+import { Tenant, Room, Payment, ElectricityBill, PGBranch, MeterGroup, KYCData, Employee, User } from '../types';
+
+const applyHeaderStyle = (sheet: ExcelJS.Worksheet, endCol?: number) => {
+  const row = sheet.getRow(1);
+  row.font = { bold: true };
+  row.eachCell((cell, colNumber) => {
+    if (!endCol || colNumber <= endCol) {
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFB4C6E7' } // Light Blue from user reference
+      };
+      cell.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      };
+    }
+  });
+};
 
 export const exportToExcel = async (
   tenants: Tenant[],
@@ -30,7 +50,9 @@ export const exportToExcel = async (
   const totalBeds = rooms.reduce((sum, r) => sum + (r.totalBeds || (r as any).total_beds || 0), 0);
   const activeTenantsCount = tenants.filter(t => t.status === 'active').length;
   const occupancyPercentage = totalBeds > 0 ? (activeTenantsCount / totalBeds) * 100 : 0;
-  const totalRevenue = payments.filter(p => p.status === 'paid').reduce((sum, p) => sum + (p.totalAmount || (p as any).total_amount || 0), 0);
+  const totalRevenue = payments
+    .filter(p => p.status === 'paid' && ['rent', 'token'].includes((p.paymentType || (p as any).payment_type || 'rent').toLowerCase()))
+    .reduce((sum, p) => sum + (p.totalAmount || (p as any).total_amount || 0), 0);
   const totalExpenses = expenses.filter(e => e.status !== 'rejected').reduce((sum, e) => sum + (e.amount || 0), 0);
   const pendingPayments = payments.filter(p => p.status === 'pending').reduce((sum, p) => sum + (p.totalAmount || (p as any).total_amount || 0), 0);
 
@@ -41,14 +63,19 @@ export const exportToExcel = async (
     { metric: 'Total Rooms', value: rooms.length },
     { metric: 'Total Bed Capacity', value: totalBeds },
     { metric: 'Occupancy Percentage', value: `${occupancyPercentage.toFixed(2)}%` },
+    { metric: 'Vacant Beds', value: totalBeds - activeTenantsCount },
+    { metric: 'Vacant Rooms', value: stats.vacantRoomsList?.length || 0 },
+    { metric: 'Vacancy Percentage', value: `${(100 - occupancyPercentage).toFixed(2)}%` },
     { metric: 'Total Revenue Collected (INR)', value: totalRevenue },
     { metric: 'Total Expenses (INR)', value: totalExpenses },
     { metric: 'Net Profit (INR)', value: totalRevenue - totalExpenses },
+    { metric: 'Total Partner Payouts — Paid (INR)', value: stats.currentMonthPayouts || 0 },
+    { metric: 'Remaining Balance After Payouts (INR)', value: stats.remainingBalance || (totalRevenue - totalExpenses) },
     { metric: 'Total Pending Dues (INR)', value: pendingPayments },
   ]);
 
   // Format Summary
-  summarySheet.getRow(1).font = { bold: true };
+  applyHeaderStyle(summarySheet, 2);
   summarySheet.getColumn('value').numFmt = '#,##0.00';
   summarySheet.getCell('B6').numFmt = '0.00"%"'; // Occupancy %
   
@@ -88,7 +115,7 @@ export const exportToExcel = async (
     });
   });
 
-  tenantsSheet.getRow(1).font = { bold: true };
+  applyHeaderStyle(tenantsSheet, 12);
   tenantsSheet.getColumn('rent').numFmt = '"₹"#,##0.00';
   tenantsSheet.getColumn('deposit').numFmt = '"₹"#,##0.00';
 
@@ -125,7 +152,7 @@ export const exportToExcel = async (
     });
   });
 
-  roomsSheet.getRow(1).font = { bold: true };
+  applyHeaderStyle(roomsSheet, 9);
   roomsSheet.getColumn('price').numFmt = '"₹"#,##0.00';
 
   // --- 4. PAYMENTS SHEET ---
@@ -154,7 +181,7 @@ export const exportToExcel = async (
     });
   });
 
-  paymentsSheet.getRow(1).font = { bold: true };
+  applyHeaderStyle(paymentsSheet, 7);
   paymentsSheet.getColumn('amount').numFmt = '"₹"#,##0.00';
 
   // --- 5. COMPLAINTS SHEET ---
@@ -183,7 +210,7 @@ export const exportToExcel = async (
     });
   });
 
-  complaintsSheet.getRow(1).font = { bold: true };
+  applyHeaderStyle(complaintsSheet, 7);
 
   // --- 6. ELECTRICITY SHEET ---
   const electricitySheet = workbook.addWorksheet('Electricity');
@@ -223,7 +250,7 @@ export const exportToExcel = async (
     });
   });
 
-  electricitySheet.getRow(1).font = { bold: true };
+  applyHeaderStyle(electricitySheet, 10);
   ['base', 'ac', 'cpu', 'total'].forEach(key => {
     electricitySheet.getColumn(key).numFmt = '"₹"#,##0.00';
   });
@@ -253,8 +280,88 @@ export const exportToExcel = async (
      });
   });
 
-  expensesSheet.getRow(1).font = { bold: true };
+  applyHeaderStyle(expensesSheet, 7);
   expensesSheet.getColumn('amount').numFmt = '"₹"#,##0.00';
+
+  // --- 8. VACANCY SHEET ---
+  if (stats.vacantRoomsList && stats.vacantRoomsList.length > 0) {
+    const vacancySheet = workbook.addWorksheet('Vacant Rooms');
+    vacancySheet.columns = [
+      { header: 'Room Number', key: 'room', width: 15 },
+      { header: 'Flat / Meter Group', key: 'flat', width: 25 },
+      { header: 'Branch', key: 'branch', width: 25 },
+      { header: 'Total Beds', key: 'beds', width: 15 },
+      { header: 'Status', key: 'status', width: 15 },
+    ];
+
+    stats.vacantRoomsList.forEach((r: any) => {
+      const vBranch = branches.find(b => b.id === (r.branchId || (r as any).branch_id)) || branch;
+      const flat = meterGroups?.find(m => m.id === (r.meterGroupId || (r as any).meter_group_id));
+      
+      vacancySheet.addRow({
+        room: r.roomNumber || (r as any).room_number || '—',
+        flat: flat?.name || '—',
+        branch: vBranch?.name || 'Unknown',
+        beds: r.totalBeds || (r as any).total_beds || 0,
+        status: 'Vacant'
+      });
+    });
+
+    applyHeaderStyle(vacancySheet, 5);
+  }
+
+  // --- 9. BRANCH COMPARISON SHEET ---
+  if (stats.branchComparisonData && stats.branchComparisonData.length > 0) {
+    const branchComparisonSheet = workbook.addWorksheet('Branch Comparison');
+    branchComparisonSheet.columns = [
+      { header: 'Branch Name', key: 'name', width: 25 },
+      { header: 'Revenue', key: 'revenue', width: 15 },
+      { header: 'Expenses', key: 'expenses', width: 15 },
+      { header: 'Profit', key: 'profit', width: 15 },
+    ];
+
+    stats.branchComparisonData.forEach((b: any) => {
+      branchComparisonSheet.addRow({
+        name: b.name,
+        revenue: b.revenue,
+        expenses: b.expenses,
+        profit: b.profit
+      });
+    });
+
+    applyHeaderStyle(branchComparisonSheet, 4);
+    ['revenue', 'expenses', 'profit'].forEach(key => {
+      branchComparisonSheet.getColumn(key).numFmt = '"₹"#,##0.00';
+    });
+  }
+
+  // --- 10. PARTNER PAYOUTS SHEET ---
+  if (stats.partnerPayouts && stats.partnerPayouts.length > 0) {
+    const payoutsSheet = workbook.addWorksheet('Partner Payouts');
+    payoutsSheet.columns = [
+      { header: 'Partner', key: 'partner', width: 25 },
+      { header: 'Branch', key: 'branch', width: 25 },
+      { header: 'Month', key: 'month', width: 15 },
+      { header: 'Amount', key: 'amount', width: 15 },
+      { header: 'Status', key: 'status', width: 15 },
+      { header: 'Date', key: 'date', width: 15 },
+    ];
+
+    stats.partnerPayouts.forEach((p: any) => {
+      const pBranch = branches.find(b => b.id === (p.branchId || (p as any).branch_id)) || branch;
+      payoutsSheet.addRow({
+        partner: p.partnerName || 'Partner',
+        branch: pBranch?.name || 'Unknown',
+        month: p.month,
+        amount: p.amount,
+        status: p.status,
+        date: p.paymentDate || p.createdAt || '—'
+      });
+    });
+
+    applyHeaderStyle(payoutsSheet, 6);
+    payoutsSheet.getColumn('amount').numFmt = '"₹"#,##0.00';
+  }
 
   // --- FINALIZATION ---
   const buffer = await workbook.xlsx.writeBuffer();
@@ -286,12 +393,7 @@ export const exportExpensesExcel = async (
   ];
 
   // Formatting header
-  sheet.getRow(1).font = { bold: true };
-  sheet.getRow(1).fill = {
-    type: 'pattern',
-    pattern: 'solid',
-    fgColor: { argb: 'FFE0E7FF' } // Light Indigo
-  };
+  applyHeaderStyle(sheet, 7);
 
   expenses.forEach(e => {
     const branch = branches.find(b => b.id === (e.branchId || e.branch_id));
@@ -315,5 +417,81 @@ export const exportExpensesExcel = async (
   const fileName = `ElitePG_Expenses_${currentTimeRange.replace(/\s+/g, '_')}_${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
   const blob = new Blob([buffer], { type: fileType });
   saveAs(blob, fileName);
+};
+
+export const exportKYCToExcel = async (
+  kycs: KYCData[],
+  tenants: Tenant[],
+  employees: Employee[],
+  rooms: Room[],
+  branches: PGBranch[],
+  users: User[],
+  currentBranch?: PGBranch
+) => {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'ElitePG';
+  workbook.lastModifiedBy = 'ElitePG';
+  workbook.created = new Date();
+  
+  const sheet = workbook.addWorksheet('KYC Records');
+  sheet.columns = [
+    { header: 'Person Name', key: 'name', width: 25 },
+    { header: 'Role', key: 'role', width: 15 },
+    { header: 'Branch', key: 'branchName', width: 25 },
+    { header: 'Contact', key: 'contact', width: 20 },
+    { header: 'Room No (Tenants)', key: 'room', width: 15 },
+    { header: 'KYC Status', key: 'status', width: 15 },
+    { header: 'Document Type', key: 'docType', width: 20 },
+    { header: 'Submission Date', key: 'submittedAt', width: 20 },
+    { header: 'Verified By', key: 'verifiedBy', width: 20 },
+    { header: 'Verification Date', key: 'verifiedAt', width: 20 },
+    { header: 'Rejection Reason', key: 'rejectionReason', width: 30 }
+  ];
+
+  // Include people with pending/unsubmitted KYC that don't have records yet
+  const pendingTenants = tenants.filter(t => !kycs.some(k => k.tenantId === t.id));
+  const pendingEmployees = employees.filter(e => !kycs.some(k => k.employeeId === e.id));
+
+  const allRecords = [
+    ...kycs.map(k => ({ ...k, isRecord: true })),
+    ...pendingTenants.map(t => ({ tenantId: t.id, status: t.kycStatus || 'pending', docType: 'Unsubmitted', isRecord: false })),
+    ...pendingEmployees.map(e => ({ employeeId: e.id, status: e.kycStatus || 'pending', docType: 'Unsubmitted', isRecord: false }))
+  ];
+
+  allRecords.forEach((k: any) => {
+    const tenant = tenants.find(t => t.id === k.tenantId);
+    const employee = employees.find(e => e.id === k.employeeId);
+    const person = tenant || employee;
+    if (!person) return;
+
+    const role = tenant ? 'Tenant' : 'Employee';
+    const tBranch = branches.find(b => b.id === (person.branchId || (person as any).branch_id)) || currentBranch;
+    const room = tenant ? rooms.find(r => r.id === (tenant.roomId || (tenant as any).room_id)) : null;
+
+    sheet.addRow({
+      name: person.name,
+      role: role,
+      branchName: tBranch?.name || 'Unknown',
+      contact: person.phone || person.email || '—',
+      room: room ? (room.roomNumber || (room as any).room_number) : '—',
+      status: (k.status?.toUpperCase() || 'UNKNOWN'),
+      docType: k.documentType || k.docType || '—',
+      submittedAt: k.submittedAt || '—',
+      verifiedBy: users.find(u => u.id === k.verifiedBy)?.name || k.verifiedBy || '—',
+      verifiedAt: k.verifiedAt || '—',
+      rejectionReason: k.rejectionReason || '—'
+    });
+  });
+
+  applyHeaderStyle(sheet, 11);
+  sheet.autoFilter = {
+    from: { row: 1, column: 1 },
+    to: { row: 1, column: 11 }
+  };
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const fileType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8';
+  const blob = new Blob([buffer], { type: fileType });
+  saveAs(blob, `ElitePG_KYC_Export_${format(new Date(), 'dd-MM-yyyy')}.xlsx`);
 };
 

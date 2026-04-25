@@ -20,8 +20,12 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../utils';
 import { Navigate } from 'react-router-dom';
 
+import { exportKYCToExcel } from '../utils/exportUtils';
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
+
 export const KYCPage = () => {
-  const { kycs, tenants, employees, updateKYC, deleteKYC, updateTenant, updateEmployee } = useApp();
+  const { kycs, tenants, employees, rooms, branches, currentBranch, updateKYC, deleteKYC, updateTenant, updateEmployee } = useApp();
   const { user, authorizeUser } = useAuth();
 
   if (user?.role === 'tenant') {
@@ -32,6 +36,7 @@ export const KYCPage = () => {
   const [personFilter, setPersonFilter] = useState<'all' | 'tenant' | 'employee'>('all');
   const [selectedKYC, setSelectedKYC] = useState<KYCData | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
+  const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
 
   const filteredKYCs = kycs.filter(k => {
     const tenant = tenants.find(t => t.id === k.tenantId);
@@ -176,12 +181,69 @@ export const KYCPage = () => {
     }
   };
 
+  const handleDownloadSelected = async () => {
+    if (selectedDocs.length === 0) return;
+    try {
+      const zip = new JSZip();
+      const kycsToDownload = allDisplayKYCs.filter(k => selectedDocs.includes(k.id) && k.documentUrl);
+      if (kycsToDownload.length === 0) {
+         toast.error("No valid documents selected to download.");
+         return;
+      }
+      toast.loading("Zipping documents...", { id: "zip-toast" });
+
+      await Promise.all(kycsToDownload.map(async (kyc) => {
+        try {
+          const personName = tenants.find(t => t.id === kyc.tenantId)?.name || employees.find(e => e.id === kyc.employeeId)?.name || 'Unknown';
+          const res = await fetch(kyc.documentUrl);
+          const blob = await res.blob();
+          const ext = kyc.documentUrl.toLowerCase().endsWith('.pdf') || kyc.documentUrl.startsWith('data:application/pdf') ? 'pdf' : 'jpg';
+          zip.file(`${personName.replace(/[^a-z0-9]/gi, '_')}_${kyc.documentType?.replace(/[^a-z0-9]/gi, '_') || 'Doc'}.${ext}`, blob);
+        } catch (e) {
+          console.error(`Failed to fetch doc for ${kyc.id}`, e);
+        }
+      }));
+
+      const content = await zip.generateAsync({ type: 'blob' });
+      saveAs(content, `ElitePG_KYC_Docs_${new Date().getTime()}.zip`);
+      toast.success("Downloaded successfully", { id: "zip-toast" });
+      setSelectedDocs([]); // Clear selection after download
+    } catch (err) {
+      toast.error("Failed to create zip file.", { id: "zip-toast" });
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">KYC Verification</h2>
           <p className="text-gray-500 dark:text-gray-400">Review and verify resident identity documents.</p>
+        </div>
+        <div className="flex gap-2">
+          {selectedDocs.length > 0 && (
+            <button
+              onClick={handleDownloadSelected}
+              className="flex items-center gap-2 px-4 py-2.5 bg-gray-900 dark:bg-gray-800 text-white rounded-xl shadow-lg hover:bg-gray-800 transition-all font-bold text-sm"
+            >
+              <ExternalLink className="w-4 h-4" /> Download Selected ({selectedDocs.length})
+            </button>
+          )}
+          <button
+            onClick={() => {
+              try {
+                // Fetch the original users for Verified By mapping from the auth context (user context)
+                exportKYCToExcel(kycs, tenants, employees, rooms, branches, [user as any], currentBranch);
+                toast.success('KYC Export Generated Successfully');
+              } catch (err) {
+                console.error(err);
+                toast.error('Failed to generate export');
+              }
+            }}
+            className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all font-bold text-sm"
+          >
+            <FileText className="w-4 h-4" /> Export KYC Records (Excel)
+          </button>
         </div>
       </div>
 
@@ -248,6 +310,17 @@ export const KYCPage = () => {
               <div className="p-6">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
+                    {kyc.documentUrl && (
+                      <input 
+                        type="checkbox" 
+                        checked={selectedDocs.includes(kyc.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedDocs([...selectedDocs, kyc.id]);
+                          else setSelectedDocs(selectedDocs.filter(id => id !== kyc.id));
+                        }}
+                        className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300 dark:border-white/10 bg-gray-50 dark:bg-white/5 cursor-pointer"
+                      />
+                    )}
                     <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-white/5 flex items-center justify-center font-bold text-gray-600 dark:text-gray-400">
                       {person?.name?.charAt(0) || '?'}
                     </div>

@@ -48,6 +48,7 @@ export const ElectricityBillModal: React.FC<ElectricityBillModalProps> = ({
   const [existingBill, setExistingBill] = useState<ElectricityBill | null>(null);
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [acReadings, setAcReadings] = useState<AcReadingInput[]>([]);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   // Rooms in this flat
   const flatRooms = useMemo(() =>
@@ -131,6 +132,7 @@ export const ElectricityBillModal: React.FC<ElectricityBillModalProps> = ({
       setIsSaving(false);
       setIsLoading(false);
       setAcReadings([]);
+      setIsDeleteModalOpen(false);
     }
   }, [isOpen]);
 
@@ -257,7 +259,7 @@ export const ElectricityBillModal: React.FC<ElectricityBillModalProps> = ({
           const existing = (existingPmts || []).find(p => p.tenant_id === share.tenantId);
           
           return {
-            id: existing?.id, // If ID exists, Supabase performs an UPDATE
+            id: existing?.id || crypto.randomUUID(), // If ID exists, Supabase performs an UPDATE. Otherwise, issue a UUID to fix the constraint error!
             tenant_id: share.tenantId,
             month,
             payment_type: 'electricity',
@@ -337,21 +339,7 @@ export const ElectricityBillModal: React.FC<ElectricityBillModalProps> = ({
             {existingBill && !isLoading && (
               <div className="px-6 pb-0">
                 <button
-                  onClick={async () => {
-                    if (!existingBill) return;
-                    if (!window.confirm('Delete this electricity bill? This will also remove all associated electricity payment records for tenants. This cannot be undone.')) return;
-                    setIsDeleting(true);
-                    try {
-                      await deleteElectricityBill(existingBill.id);
-                      toast.success('Bill and associated electricity payments deleted');
-                      onSaved?.();
-                      onClose();
-                    } catch (err: any) {
-                      toast.error(err.message || 'Failed to delete bill');
-                    } finally {
-                      setIsDeleting(false);
-                    }
-                  }}
+                  onClick={() => setIsDeleteModalOpen(true)}
                   disabled={isDeleting}
                   className="w-full flex items-center justify-center gap-2 py-2.5 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-xl text-sm font-bold hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-all border border-rose-100 dark:border-rose-500/20"
                 >
@@ -360,6 +348,67 @@ export const ElectricityBillModal: React.FC<ElectricityBillModalProps> = ({
                 </button>
               </div>
             )}
+            
+            {/* Confirmation Modal */}
+            <AnimatePresence>
+              {isDeleteModalOpen && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                    onClick={() => setIsDeleteModalOpen(false)}
+                  />
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="relative bg-white dark:bg-[#111111] rounded-3xl shadow-2xl w-full max-w-sm p-8 border border-gray-100 dark:border-white/10"
+                  >
+                    <div className="flex flex-col items-center text-center gap-4">
+                      <div className="w-16 h-16 rounded-2xl bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center">
+                        <AlertCircle className="w-8 h-8 text-rose-500" />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-bold text-gray-900 dark:text-white">Delete Bill?</h3>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                          Are you sure you want to delete this electricity bill? This will also remove all associated electricity payment records for tenants.
+                        </p>
+                      </div>
+                      <div className="flex gap-3 w-full mt-2">
+                        <button
+                          onClick={() => setIsDeleteModalOpen(false)}
+                          className="flex-1 py-3 rounded-2xl bg-gray-100 dark:bg-white/5 text-gray-700 dark:text-gray-300 font-semibold hover:bg-gray-200 dark:hover:bg-white/10 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (!existingBill) return;
+                            setIsDeleting(true);
+                            setIsDeleteModalOpen(false);
+                            try {
+                              await deleteElectricityBill(existingBill.id);
+                              toast.success('Bill and electricity payments deleted');
+                              onSaved?.();
+                              onClose();
+                            } catch (err: any) {
+                              toast.error(err.message || 'Failed to delete bill');
+                            } finally {
+                              setIsDeleting(false);
+                            }
+                          }}
+                          className="flex-1 py-3 rounded-2xl bg-rose-600 text-white font-semibold hover:bg-rose-700 transition-colors"
+                        >
+                          Yes, Delete
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
 
             {/* Content */}
             <div className="p-6 space-y-5">

@@ -56,23 +56,34 @@ export const Layout = ({ children }: LayoutProps) => {
     return `/branch/${activeBranchId}${path === '/' ? '/dashboard' : path}`;
   };
 
-  const navigation = [
+  const navigation: any[] = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant', 'super'] },
-    { name: 'Platform Management', href: '/platform-management', icon: Building2, roles: ['super'] },
-    { name: 'Broadcast / WhatsApp', href: '/broadcast', icon: Megaphone, roles: ['admin', 'partner', 'super'] },
-    { name: 'Rooms', href: '/rooms', icon: DoorOpen, roles: ['admin', 'manager', 'receptionist', 'caretaker'] },
+    
+    { name: 'Operations', isSeparator: true, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant'] },
     { name: 'Tenants', href: '/tenants', icon: Users, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'security'] },
-    { name: ['admin', 'manager', 'partner'].includes(user?.role || '') ? 'Payments' : 'My Payments', href: '/payments', icon: CreditCard, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'tenant'] },
+    { name: 'Rooms', href: '/rooms', icon: DoorOpen, roles: ['admin', 'manager', 'receptionist', 'caretaker'] },
     { name: 'Complaints', href: '/complaints', icon: MessageSquare, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant'] },
     { name: 'KYC Verification', href: '/kyc', icon: ShieldCheck, roles: ['admin', 'manager', 'receptionist'] },
-    { name: 'Employees', href: '/employees', icon: UserCog, roles: ['admin', 'manager'] },
-    { name: 'Reports', href: '/reports', icon: BarChart3, roles: ['admin', 'partner', 'manager'] },
-    { name: 'Partners & Payouts', href: '/partner-payouts', icon: CreditCard, roles: ['admin', 'partner'] },
+
+    { name: 'Financials', isSeparator: true, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker', 'tenant'] },
+    { name: ['admin', 'manager', 'partner'].includes(user?.role || '') ? 'Payments' : 'My Payments', href: '/payments', icon: CreditCard, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'tenant'] },
     { name: 'Expenses', href: '/expenses', icon: Receipt, roles: ['admin', 'partner', 'manager'] },
+    { name: 'Partners & Payouts', href: '/partner-payouts', icon: CreditCard, roles: ['admin', 'partner'] },
+    { name: 'Reports', href: '/reports', icon: BarChart3, roles: ['admin', 'partner', 'manager'] },
+
+    { name: 'Management', isSeparator: true, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner'] },
+    { name: 'Employees', href: '/employees', icon: UserCog, roles: ['admin', 'manager'] },
     { name: 'Tasks', href: '/tasks', icon: ClipboardList, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner'] },
-    { name: 'Profile', href: '/profile', icon: User, roles: ['admin', 'partner', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant', 'super'] },
+
+    { name: 'Communication', isSeparator: true, roles: ['admin', 'partner', 'super'] },
+    { name: 'Broadcast / WhatsApp', href: '/broadcast', icon: Megaphone, roles: ['admin', 'partner', 'super'] },
+
+    { name: 'System', isSeparator: true, roles: ['admin', 'super'] },
     { name: 'Subscription Plan', href: '/subscription', icon: Zap, roles: ['admin'] },
+    { name: 'Platform Management', href: '/platform-management', icon: Building2, roles: ['super'] },
     { name: 'Settings', href: '/settings', icon: UserCog, roles: ['admin'] },
+
+    { name: 'Support', isSeparator: true, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant'] },
     { name: 'Help & Support', href: '/help', icon: LifeBuoy, roles: ['admin', 'manager', 'receptionist', 'caretaker', 'security', 'cleaner', 'tenant'] },
   ];
 
@@ -87,6 +98,8 @@ export const Layout = ({ children }: LayoutProps) => {
     // Role-based filtering
     const hasRole = item.roles.includes(user.role);
     if (!hasRole) return false;
+
+    if (item.isSeparator) return true;
 
     // Authorization check
     const isKycRequired = checkFeatureAccess('kyc');
@@ -138,7 +151,7 @@ export const Layout = ({ children }: LayoutProps) => {
     return true;
   }).map(item => ({
     ...item,
-    href: getBranchPath(item.href)
+    href: item.href ? getBranchPath(item.href) : undefined
   }));
 
   const handleLogout = async () => {
@@ -171,12 +184,21 @@ export const Layout = ({ children }: LayoutProps) => {
         )}
 
         <nav className="flex-1 px-4 space-y-1 mt-4 overflow-y-auto custom-scrollbar pb-4">
-          {filteredNavigation.map((item) => {
+          {filteredNavigation.map((item, idx) => {
+            if (item.isSeparator) {
+              return (
+                <div key={`sep-${idx}`} className="pt-6 pb-2 px-4 whitespace-nowrap">
+                  <p className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest pl-1">
+                    {item.name}
+                  </p>
+                </div>
+              );
+            }
             const isActive = location.pathname === item.href || (item.href === `/branch/${activeBranchId}/dashboard` && location.pathname === `/branch/${activeBranchId}/`);
             return (
               <Link
                 key={item.name}
-                to={item.href}
+                to={item.href!}
                 className={cn(
                   "flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200",
                   isActive
@@ -313,12 +335,22 @@ export const Layout = ({ children }: LayoutProps) => {
               )}
 
               <nav className="flex-1 px-4 space-y-1 mt-4 overflow-y-auto custom-scrollbar pb-4">
-                {filteredNavigation.map((item) => {
-                  const isActive = location.pathname === item.href || (item.href === `/branch/${activeBranchId}/dashboard` && location.pathname === `/branch/${activeBranchId}/`);
+                {filteredNavigation.map((item, idx) => {
+                if (item.isSeparator) {
                   return (
-                    <Link
-                      key={item.name}
-                      to={item.href}
+                    <div key={`mob-sep-${idx}`} className="pt-6 pb-2 px-4 whitespace-nowrap">
+                      <p className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest pl-1">
+                        {item.name}
+                      </p>
+                    </div>
+                  );
+                }
+                const isActive = location.pathname === item.href || (item.href === `/branch/${activeBranchId}/dashboard` && location.pathname === `/branch/${activeBranchId}/`);
+                
+                return (
+                  <Link
+                    key={item.name}
+                    to={item.href!}
                       onClick={() => setIsMobileMenuOpen(false)}
                       className={cn(
                         "flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200",

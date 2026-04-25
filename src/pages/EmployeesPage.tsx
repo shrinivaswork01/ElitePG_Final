@@ -221,6 +221,13 @@ export const EmployeesPage = () => {
 
     const employee = employees.find(emp => emp.id === salaryFormData.employeeId);
 
+    // Duplicate check: Same employee cannot be paid twice in the same month
+    const existingSalary = salaryPayments.find(s => s.employeeId === salaryFormData.employeeId && s.month === salaryFormData.month && s.status === 'paid');
+    if (existingSalary) {
+      toast.error(`Salary for ${employee?.name || 'this employee'} has already been paid for ${salaryFormData.month}`);
+      return;
+    }
+
     // For cash payments, record directly
     if (salaryFormData.method === 'Cash') {
       addSalaryPayment({
@@ -1434,25 +1441,31 @@ export const EmployeesPage = () => {
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Month</label>
-                    <input
-                      required
-                      type="month"
-                      value={salaryFormData.month}
-                      onChange={(e) => setSalaryFormData({ ...salaryFormData, month: e.target.value })}
-                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                    />
+                    <div className="relative">
+                      <input
+                        required
+                        type="month"
+                        value={salaryFormData.month}
+                        onChange={(e) => setSalaryFormData({ ...salaryFormData, month: e.target.value })}
+                        className="w-full pl-11 pr-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                      />
+                      <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+                    </div>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Payment Date</label>
-                    <input
-                      required
-                      type="date"
-                      value={salaryFormData.paymentDate}
-                      onChange={(e) => setSalaryFormData({ ...salaryFormData, paymentDate: e.target.value })}
-                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                    />
+                    <div className="relative">
+                      <input
+                        required
+                        type="date"
+                        value={salaryFormData.paymentDate}
+                        onChange={(e) => setSalaryFormData({ ...salaryFormData, paymentDate: e.target.value })}
+                        className="w-full pl-11 pr-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+                      />
+                      <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Method</label>
@@ -1468,7 +1481,7 @@ export const EmployeesPage = () => {
                   </div>
                 </div>
                 <button type="submit" className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all mt-4">
-                  {salaryFormData.method === 'Cash' ? 'Record Cash Payment' : 'Pay via UPI →'}
+                  {salaryFormData.method === 'Cash' ? 'Record Cash Payment' : 'Record Payment →'}
                 </button>
               </form>
             </motion.div>

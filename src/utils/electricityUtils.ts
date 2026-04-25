@@ -361,6 +361,8 @@ export async function saveElectricityBill(params: {
     if (error) throw error;
     savedBill = mapBillFromDb(data);
   } else {
+    // Inject UUID manually to prevent null constraint db errors
+    payload.id = crypto.randomUUID();
     const { data, error } = await supabase
       .from('electricity_bills')
       .insert(payload)

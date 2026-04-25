@@ -21,7 +21,7 @@ const TOTAL_STEPS = 4;
 export const RentAgreementGeneratorModal: React.FC<RentAgreementGeneratorModalProps> = ({
   isOpen, onClose, tenant, user, branch, pgConfig
 }) => {
-  const { updateTenant } = useApp();
+  const { updateTenant, rooms } = useApp();
   const [step, setStep] = useState(1);
   const [idFile, setIdFile] = useState<File | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -59,8 +59,15 @@ export const RentAgreementGeneratorModal: React.FC<RentAgreementGeneratorModalPr
       const signatureDataUrl = signatureFile ? await toBase64(signatureFile) : undefined;
       const fname = `PG_Agreement_${(tenant.name || 'Tenant').replace(/\s+/g, '_')}_${format(new Date(), 'yyyy-MM-dd')}.pdf`;
       
+      // Resolve the room number statically for the PDF generator
+      const tenantRoom = rooms?.find((r: any) => r.id === tenant?.roomId || r.id === tenant?.room_id);
+      const enhancedTenant = { 
+        ...tenant, 
+        room_number: tenantRoom?.roomNumber || tenantRoom?.room_number || tenant?.room_number || tenant?.rooms?.room_number 
+      };
+
       // Generate the PDF — it will auto-download AND return a Blob
-      const pdfBlob = await generateAgreementPDF(tenant, user, branch, pgConfig, photoDataUrl, fname, signatureDataUrl);
+      const pdfBlob = await generateAgreementPDF(enhancedTenant, user, branch, pgConfig, photoDataUrl, fname, signatureDataUrl);
       
       if (!pdfBlob) {
         throw new Error('PDF Generation failed');

@@ -121,32 +121,54 @@ export const RulesManager: React.FC<RulesManagerProps> = ({ rules, onUpdate, isA
             ))}
           </AnimatePresence>
 
-          {isEditing && (
-            <motion.div
-              layout
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-50/50 dark:bg-indigo-500/5 rounded-2xl border-2 border-indigo-500"
+          {isEditing ? (
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="group flex items-center justify-between gap-4 p-2 bg-indigo-600/5 dark:bg-indigo-500/10 rounded-2xl border-2 border-indigo-500/30 shadow-indigo-500/10 shadow-2xl transition-all"
             >
-              <input
-                autoFocus
-                type="text"
-                placeholder="Ex: Gate closes at 11PM"
-                value={newRule}
-                onChange={(e) => setNewRule(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleAdd();
-                  if (e.key === 'Escape') setIsEditing(false);
-                }}
-                className="bg-transparent border-none text-xs font-bold text-indigo-600 dark:text-indigo-400 placeholder:text-indigo-600/30 p-0 focus:ring-0 min-w-[200px]"
-              />
-              <button onClick={handleAdd}>
-                <CheckCircle2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-              </button>
-              <button onClick={() => setIsEditing(false)}>
-                <X className="w-4 h-4 text-gray-400 hover:text-rose-500" />
-              </button>
+              <div className="flex-1 flex items-center gap-3 pl-3">
+                <Plus className="w-5 h-5 text-indigo-500 animate-pulse" />
+                <input
+                  autoFocus
+                  type="text"
+                  placeholder="Ex: Gate closes at 11PM..."
+                  value={newRule}
+                  onChange={(e) => setNewRule(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleAdd();
+                    if (e.key === 'Escape') setIsEditing(false);
+                  }}
+                  className="flex-1 bg-transparent border-none text-sm font-bold text-gray-900 dark:text-gray-100 placeholder:text-gray-400 p-0 focus:ring-0 outline-none"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={handleAdd}
+                  className="px-6 py-2.5 bg-indigo-600 text-white text-[10px] font-black rounded-xl uppercase tracking-widest shadow-lg shadow-indigo-600/30 hover:bg-indigo-700 active:scale-95 transition-all"
+                >
+                  Confirm
+                </button>
+                <button 
+                  onClick={() => setIsEditing(false)}
+                  className="p-2.5 text-gray-400 hover:text-rose-500 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </motion.div>
+          ) : isAdmin && (
+            <motion.button
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.99 }}
+              onClick={() => setIsEditing(true)}
+              className="w-full flex items-center justify-center gap-2.5 py-5 bg-white dark:bg-white/[0.03] border-2 border-dashed border-gray-200 dark:border-white/10 rounded-2xl text-gray-400 hover:text-indigo-500 hover:border-indigo-500/50 hover:bg-indigo-50/50 dark:hover:bg-indigo-500/5 transition-all group"
+            >
+              <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-white/5 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm">
+                <Plus className="w-5 h-5" />
+              </div>
+              <span className="text-sm font-black uppercase tracking-widest">Add New PG Rule</span>
+            </motion.button>
           )}
 
           {!isEditing && rules.length === 0 && (
