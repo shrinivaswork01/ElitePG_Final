@@ -165,7 +165,7 @@ export interface Payment {
   paymentType: 'rent' | 'electricity' | 'token' | 'deposit' | 'adjust';
   paymentDate: string;
   month: string; // e.g., "2024-03"
-  status: 'paid' | 'pending';
+  status: 'paid' | 'pending' | 'refunded';
   method: 'Online' | 'Cash' | 'Offline';
   transactionId?: string;
   receiptUrl?: string;
@@ -386,7 +386,7 @@ export interface PartnerPayout {
   month: string;
   branchId?: string | null;
   amount: number;
-  status: 'REQUESTED' | 'PARTNER_APPROVED' | 'PAID';
+  status: 'REQUESTED' | 'PARTNER_APPROVED' | 'PAID' | 'REJECTED';
   requestedBy?: string;
   partnerApprovedBy?: string;
   adminApprovedBy?: string;

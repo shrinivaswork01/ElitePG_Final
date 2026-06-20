@@ -181,14 +181,72 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const isTenant = userRole === 'tenant';
       const branchId = activeBranchId;
 
-      if (!branchId && !isSuper) {
-        console.warn("No branchId found for non-super user");
-        return;
-      }
-
       // Multi-branch support: get all branch IDs this user owns
       const userBranchIds: string[] = user?.branchIds || (branchId ? [branchId] : []);
       const isMultiBranch = userBranchIds.length > 1;
+
+      if (!branchId && !isSuper) {
+        // Fetch only branches, plans, superUserSignature, and tabPermissions
+        const [
+          { data: branches },
+          { data: plans },
+          { data: superUserSignature }
+        ] = await Promise.all([
+          supabase.from('pg_branches').select('*').in('id', userBranchIds),
+          supabase.from('subscription_plans').select('*'),
+          supabase.from('users').select('signature_url').eq('role', 'super').maybeSingle()
+        ]);
+
+        let tabPermissions: any[] = [];
+        try {
+          const permQuery = supabase.from('branch_tab_permissions').select('*').in('branch_id', userBranchIds);
+          const { data: permData } = await permQuery;
+          tabPermissions = permData || [];
+        } catch (err) {
+          console.error(err);
+        }
+
+        const newData = {
+          branches: (branches || []).map(b => ({
+            id: b.id, name: b.name, branchName: b.branch_name, address: b.address, phone: b.phone,
+            planId: b.plan_id, subscriptionStatus: b.subscription_status, subscriptionEndDate: b.subscription_end_date, createdAt: b.created_at,
+            razorpayCustomerId: b.razorpay_customer_id,
+            razorpaySubscriptionId: b.razorpay_subscription_id,
+            officialSignatureUrl: b.official_signature_url
+          })),
+          subscriptionPlans: (plans || []).map(p => ({
+            id: p.id, name: p.name, price: p.price, annualPrice: p.annual_price || 0, features: p.features,
+            maxTenants: p.max_tenants, maxRooms: p.max_rooms, maxBranches: p.max_branches || 1,
+            razorpayMonthlyPlanId: p.razorpay_plan_id, razorpayAnnualPlanId: p.razorpay_annual_plan_id
+          })),
+          tenants: [],
+          rooms: [],
+          meterGroups: [],
+          payments: [],
+          complaints: [],
+          employees: [],
+          kycs: [],
+          announcements: [],
+          salaryPayments: [],
+          tasks: [],
+          pgConfigs: [],
+          userInvites: [],
+          superSignatureUrl: superUserSignature?.signature_url || null,
+          expenses: [],
+          tenantDepositLogs: [],
+          partnerShares: [],
+          profitDistributions: [],
+          branchTabPermissions: tabPermissions.map(tp => ({
+            id: tp.id, branchId: tp.branch_id, moduleName: tp.module_name as any, isEnabled: tp.is_enabled
+          })),
+          partnerPayouts: []
+        };
+
+        setData(newData);
+        localStorage.setItem('elite_pg_cached_data', JSON.stringify(newData));
+        setIsAppLoading(false);
+        return;
+      }
 
       // Helper: applies correct branch filter to a Supabase query
       const branchQuery = (query: any) => {

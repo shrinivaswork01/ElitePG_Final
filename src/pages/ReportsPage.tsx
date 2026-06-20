@@ -164,10 +164,15 @@ export const ReportsPage = () => {
   const [vacancyFilterBranch, setVacancyFilterBranch] = useState('all');
 
   const vacantRoomsList = useMemo(() => {
-    let filtered = currentRooms.filter(room => {
+    let filtered = currentRooms.map(room => {
       const activeTenantsInRoom = currentTenants.filter(t => (t.roomId === room.id || t.room_id === room.id) && t.status === 'active');
-      return activeTenantsInRoom.length === 0;
-    });
+      const vacantBedsCount = Math.max(0, (room.totalBeds || (room as any).total_beds || 0) - activeTenantsInRoom.length);
+      return {
+        ...room,
+        activeCount: activeTenantsInRoom.length,
+        vacantBedsCount
+      };
+    }).filter(room => room.vacantBedsCount > 0);
 
     if (vacancyFilterBranch !== 'all') {
       filtered = filtered.filter(r => (r.branchId || r.branch_id) === vacancyFilterBranch);
@@ -175,6 +180,10 @@ export const ReportsPage = () => {
     
     return filtered;
   }, [currentRooms, currentTenants, vacancyFilterBranch]);
+
+  const totalVacantBedsCount = useMemo(() => {
+    return vacantRoomsList.reduce((sum, r) => sum + (r.vacantBedsCount || 0), 0);
+  }, [vacantRoomsList]);
 
   const paginatedVacantRooms = useMemo(() => {
     return vacantRoomsList.slice((vacancyPage - 1) * VACANCY_PER_PAGE, vacancyPage * VACANCY_PER_PAGE);
@@ -203,11 +212,27 @@ export const ReportsPage = () => {
     },
     {
       header: 'Total Beds',
-      cell: (r) => <span className="font-bold">{r.totalBeds || r.total_beds || 0} Beds</span>
+      cell: (r) => <span className="font-bold text-gray-700 dark:text-gray-300">{r.totalBeds || r.total_beds || 0} Beds</span>
+    },
+    {
+      header: 'Vacant Beds',
+      cell: (r) => <span className="font-bold text-indigo-600 dark:text-indigo-400">{r.vacantBedsCount || 0} Beds Vacant</span>
     },
     {
       header: 'Status',
-      cell: () => <span className="px-2 py-1 bg-amber-50 dark:bg-amber-500/10 text-amber-600 font-black uppercase text-[10px] tracking-widest rounded">Vacant</span>
+      cell: (r) => {
+        const isFullyVacant = r.activeCount === 0;
+        return (
+          <span className={cn(
+            "px-2 py-1 font-black uppercase text-[10px] tracking-widest rounded",
+            isFullyVacant 
+              ? "bg-amber-50 dark:bg-amber-500/10 text-amber-600" 
+              : "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600"
+          )}>
+            {isFullyVacant ? 'Fully Vacant' : 'Partially Vacant'}
+          </span>
+        );
+      }
     }
   ], [currentMeterGroups, branches]);
 
@@ -543,8 +568,8 @@ export const ReportsPage = () => {
       <div className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm p-6 overflow-hidden">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
           <div>
-            <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight font-display">Vacant Rooms Overview</h3>
-             <p className="text-[10px] font-bold text-gray-400 mt-1 uppercase tracking-widest italic">Total {vacantRoomsList.length} Units Currently Empty</p>
+            <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight font-display">Vacant Beds Overview</h3>
+             <p className="text-[10px] font-bold text-gray-400 mt-1 uppercase tracking-widest italic">Total {totalVacantBedsCount} Vacant Beds Across {vacantRoomsList.length} Rooms</p>
           </div>
           {shouldRenderCombined && (
             <select value={vacancyFilterBranch} onChange={(e) => setVacancyFilterBranch(e.target.value)} className="px-4 py-2 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500/20">
@@ -553,7 +578,7 @@ export const ReportsPage = () => {
             </select>
           )}
         </div>
-        <DataGrid columns={vacancyColumns} data={paginatedVacantRooms} isLoading={false} keyExtractor={(r) => r.id} page={vacancyPage} limit={VACANCY_PER_PAGE} totalCount={vacantRoomsList.length} onPageChange={setVacancyPage} emptyStateMessage="No vacant rooms currently" compact />
+        <DataGrid columns={vacancyColumns} data={paginatedVacantRooms} isLoading={false} keyExtractor={(r) => r.id} page={vacancyPage} limit={VACANCY_PER_PAGE} totalCount={vacantRoomsList.length} onPageChange={setVacancyPage} emptyStateMessage="No vacant beds currently" compact />
       </div>
 
       {/* 4. VACANCY STATS CARDS */}
@@ -615,9 +640,36 @@ export const ReportsPage = () => {
                     <tr key={`${currentPage}-${i}`} className="border-b border-gray-50 dark:border-white/5 hover:bg-gray-50/50 dark:hover:bg-white/[0.02] transition-colors group">
                         <td className="px-6 py-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-gray-100 dark:bg-white/5 flex items-center justify-center text-sm font-black text-gray-500 group-hover:bg-indigo-600 group-hover:text-white transition-all">{log.branch_name.charAt(0)}</div><span className="font-bold text-gray-900 dark:text-white">{log.branch_name}</span></div></td>
                         <td className="px-6 py-4 text-xs font-bold text-gray-400 uppercase">{log.date ? format(new Date(log.date), 'dd MMM yyyy') : 'N/A'}</td>
-                        <td className="px-6 py-4"><span className={cn("px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest", log.type === 'revenue' || log.type === 'other' ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10" : "bg-rose-50 text-rose-600 dark:bg-rose-500/10")}>{log.category}</span></td>
+                        <td className="px-6 py-4">
+                          <span className={cn(
+                            "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest",
+                            (() => {
+                              const cat = (log.category || '').toLowerCase();
+                              if (cat === 'token' || cat === 'deposit') {
+                                return "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400";
+                              }
+                              if (cat === 'rent') {
+                                return "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
+                              }
+                              return "bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400";
+                            })()
+                          )}>
+                            {log.category}
+                          </span>
+                        </td>
                         <td className="px-6 py-4 text-xs text-gray-500 dark:text-gray-400 italic max-w-[200px] truncate">{log.description}</td>
-                        <td className={cn("px-6 py-4 font-black text-right font-display text-base", log.amount >= 0 ? "text-emerald-600" : "text-rose-600")}>{log.amount >= 0 ? '+' : ''}₹{Math.abs(log.amount).toLocaleString()}</td>
+                        <td className={cn(
+                          "px-6 py-4 font-black text-right font-display text-base",
+                          (() => {
+                            const cat = (log.category || '').toLowerCase();
+                            if (cat === 'token' || cat === 'deposit') {
+                              return "text-indigo-600 dark:text-indigo-400";
+                            }
+                            return log.amount >= 0 ? "text-emerald-600" : "text-rose-600";
+                          })()
+                        )}>
+                          {log.amount >= 0 ? '+' : ''}₹{Math.abs(log.amount).toLocaleString()}
+                        </td>
                     </tr>
                 ))}</tbody>
             </table>

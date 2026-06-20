@@ -63,7 +63,7 @@ export const RentAgreementGeneratorModal: React.FC<RentAgreementGeneratorModalPr
       const tenantRoom = rooms?.find((r: any) => r.id === tenant?.roomId || r.id === tenant?.room_id);
       const enhancedTenant = { 
         ...tenant, 
-        room_number: tenantRoom?.roomNumber || tenantRoom?.room_number || tenant?.room_number || tenant?.rooms?.room_number 
+        room_number: tenantRoom?.roomNumber || (tenantRoom as any)?.room_number || tenant?.room_number || tenant?.rooms?.room_number 
       };
 
       // Generate the PDF — it will auto-download AND return a Blob

@@ -411,7 +411,9 @@ export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
                         <div className="flex items-center gap-3">
                           <div className={cn(
                             "w-8 h-8 rounded-lg flex items-center justify-center",
-                            log.type === 'token' ? "bg-purple-100 dark:bg-purple-500/10 text-purple-600" : "bg-indigo-100 dark:bg-indigo-500/10 text-indigo-600"
+                            log.type === 'token'
+                              ? "bg-purple-100 dark:bg-purple-500/10 text-purple-600"
+                              : "bg-indigo-100 dark:bg-indigo-500/10 text-indigo-600"
                           )}>
                             {log.type === 'token' ? <FileText className="w-4 h-4" /> : <Shield className="w-4 h-4" />}
                           </div>

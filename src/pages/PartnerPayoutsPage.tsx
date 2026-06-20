@@ -51,6 +51,7 @@ export const PartnerPayoutsPage = () => {
   const [partnerToDelete, setPartnerToDelete] = useState<{ id: string, name: string } | null>(null);
   const [payoutToCancel, setPayoutToCancel] = useState<string | null>(null);
   const [payoutToForcePay, setPayoutToForcePay] = useState<string | null>(null);
+  const [payoutToReject, setPayoutToReject] = useState<string | null>(null);
   const [transactionToDelete, setTransactionToDelete] = useState<string | null>(null);
 
   // Month options (last 12 months)
@@ -66,7 +67,7 @@ export const PartnerPayoutsPage = () => {
     p.branchId === branchContextId &&
     p.month === payoutMonth &&
     p.status === 'paid' &&
-    (['rent', 'token'].includes((p.paymentType || (p as any).payment_type || 'rent').toLowerCase()))
+    (p.paymentType || (p as any).payment_type || 'rent').toLowerCase() === 'rent'
   );
   const monthRentRevenue = monthRentPayments.reduce((sum, p) => sum + (p.totalAmount || (p as any).total_amount || 0), 0);
 
@@ -95,7 +96,7 @@ export const PartnerPayoutsPage = () => {
   
   // Calculate total distributed/requested this month to find true remaining balance
   const monthPaidTotal = monthPayouts
-    .filter((p: any) => p.status === 'PAID' || p.status === 'PARTNER_APPROVED' || p.status === 'REQUESTED')
+    .filter((p: any) => p.status === 'PAID')
     .reduce((sum: number, p: any) => sum + p.amount, 0);
 
   const remainingBalance = netProfit - monthPaidTotal;
@@ -257,10 +258,20 @@ export const PartnerPayoutsPage = () => {
          return <span className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-gray-100 dark:bg-white/5 text-gray-400">Not Requested</span>;
        }
 
+       const canRequest = remainingBalance > 0 && totalRatio === 100 && shareAmount <= remainingBalance;
+       let requestLabel = 'Request Payout';
+       if (remainingBalance <= 0) {
+         requestLabel = 'No Balance';
+       } else if (totalRatio !== 100) {
+         requestLabel = 'Fix Ratios';
+       } else if (shareAmount > remainingBalance) {
+         requestLabel = 'Exceeds Balance';
+       }
+
        return (
          <button
             onClick={() => {
-              if (netProfit <= 0 || totalRatio !== 100) return;
+              if (!canRequest) return;
               processPartnerPayoutBatch([{
                 partnerId,
                 month: payoutMonth,
@@ -270,15 +281,15 @@ export const PartnerPayoutsPage = () => {
                 requestedBy: user?.id
               }]);
             }}
-            disabled={netProfit <= 0 || totalRatio !== 100}
+            disabled={!canRequest}
             className={cn(
               "px-5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all",
-              netProfit > 0 && totalRatio === 100
+              canRequest
                 ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/30"
                 : "bg-gray-200 dark:bg-white/10 text-gray-500 cursor-not-allowed"
             )}
          >
-           {netProfit <= 0 ? 'No Profit' : (totalRatio !== 100 ? 'Fix Ratios' : 'Request Payout')}
+           {requestLabel}
          </button>
        );
     }
@@ -286,6 +297,9 @@ export const PartnerPayoutsPage = () => {
     if (payoutInfo.status === 'REQUESTED') {
        // Status: REQUESTED => Needs PARTNER_APPROVED
        // Any OTHER partner or admin can approve. The requester cannot.
+       const canPeerApprove = payoutInfo.amount <= remainingBalance;
+       const canForcePay = payoutInfo.amount <= remainingBalance;
+
        return (
          <div className="flex items-center gap-2">
             <span className="text-[10px] font-black px-2 py-1 bg-amber-50 dark:bg-amber-500/10 text-amber-600 rounded uppercase tracking-wider">Requested</span>
@@ -298,19 +312,51 @@ export const PartnerPayoutsPage = () => {
               </button>
             )}
             {(isAdmin || (isPartner && !isOwnerOfRow)) && (
-              <button
-                 onClick={() => updatePartnerPayoutStatus(payoutInfo.id, 'PARTNER_APPROVED', 'partner_approved_by', user?.id || '')}
-                 className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/30"
-              >
-                 Peer Approve
-              </button>
+              <>
+                <button
+                   onClick={() => {
+                     if (!canPeerApprove) {
+                       toast.error("Approval exceeds remaining balance!");
+                       return;
+                     }
+                     updatePartnerPayoutStatus(payoutInfo.id, 'PARTNER_APPROVED', 'partner_approved_by', user?.id || '');
+                   }}
+                   disabled={!canPeerApprove}
+                   className={cn(
+                     "px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                     canPeerApprove
+                       ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/30"
+                       : "bg-gray-200 dark:bg-white/10 text-gray-500 cursor-not-allowed"
+                   )}
+                >
+                   {canPeerApprove ? 'Peer Approve' : 'No Balance'}
+                </button>
+                <button
+                   onClick={() => setPayoutToReject(payoutInfo.id)}
+                   className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-600/30"
+                >
+                   Reject
+                </button>
+              </>
             )}
             {isAdmin && (
               <button
-                 onClick={() => setPayoutToForcePay(payoutInfo.id)}
-                 className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/30"
+                 onClick={() => {
+                   if (!canForcePay) {
+                     toast.error("Payment exceeds remaining balance!");
+                     return;
+                   }
+                   setPayoutToForcePay(payoutInfo.id);
+                 }}
+                 disabled={!canForcePay}
+                 className={cn(
+                   "px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                   canForcePay
+                     ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/30"
+                     : "bg-gray-200 dark:bg-white/10 text-gray-500 cursor-not-allowed"
+                 )}
               >
-                 Force Pay
+                 {canForcePay ? 'Force Pay' : 'No Balance'}
               </button>
             )}
          </div>
@@ -324,15 +370,65 @@ export const PartnerPayoutsPage = () => {
           return <span className="text-[10px] font-black px-2 py-1 bg-blue-50 dark:bg-blue-500/10 text-blue-600 rounded uppercase tracking-wider">Partner Approved</span>;
        }
 
+       const canFinalPay = payoutInfo.amount <= remainingBalance;
+
        return (
          <div className="flex items-center gap-3">
             <span className="text-[10px] font-black px-2 py-1 bg-blue-50 dark:bg-blue-500/10 text-blue-600 rounded uppercase tracking-wider">Partner Approved</span>
             <button
-               onClick={() => updatePartnerPayoutStatus(payoutInfo.id, 'PAID', 'admin_approved_by', user?.id || '')}
-               className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/30"
+               onClick={() => {
+                 if (!canFinalPay) {
+                   toast.error("Payment exceeds remaining balance!");
+                   return;
+                 }
+                 updatePartnerPayoutStatus(payoutInfo.id, 'PAID', 'admin_approved_by', user?.id || '');
+               }}
+               disabled={!canFinalPay}
+               className={cn(
+                 "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                 canFinalPay
+                   ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/30"
+                   : "bg-gray-200 dark:bg-white/10 text-gray-500 cursor-not-allowed"
+               )}
             >
-               Approve & Pay
+               {canFinalPay ? 'Approve & Pay' : 'No Balance'}
             </button>
+            <button
+               onClick={() => setPayoutToReject(payoutInfo.id)}
+               className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-600/30"
+            >
+               Reject
+            </button>
+         </div>
+       );
+    }
+
+    if (payoutInfo.status === 'REJECTED') {
+       return (
+         <div className="flex items-center gap-2">
+            <span className="text-[10px] font-black px-2 py-1 bg-rose-50 dark:bg-rose-500/10 text-rose-600 rounded uppercase tracking-wider">Rejected</span>
+            {isOwnerOfRow && (
+              <button
+                 onClick={async () => {
+                   try {
+                     await deletePartnerPayout(payoutInfo.id);
+                     processPartnerPayoutBatch([{
+                       partnerId,
+                       month: payoutMonth,
+                       branchId: currentBranch?.id || null,
+                       amount: shareAmount,
+                       status: 'REQUESTED',
+                       requestedBy: user?.id
+                     }]);
+                   } catch (err) {
+                     toast.error("Failed to re-request payout");
+                   }
+                 }}
+                 className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/30"
+              >
+                 Re-request
+              </button>
+            )}
          </div>
        );
     }
@@ -564,7 +660,7 @@ export const PartnerPayoutsPage = () => {
                    {activeShares
                      .filter((s: any) => users.some(u => u.id === s.userId && u.role === 'partner'))
                      .map((s: any) => {
-                       const shareAmount = netProfit > 0 ? Math.round((netProfit * s.ratio) / 100) : 0;
+                       const shareAmount = remainingBalance > 0 ? Math.round((remainingBalance * s.ratio) / 100) : 0;
                        const payoutInfo = monthPayouts.find((p: any) => p.partnerId === s.userId);
                        const displayAmount = payoutInfo?.amount || shareAmount;
 
@@ -665,6 +761,7 @@ export const PartnerPayoutsPage = () => {
                                 "px-2 py-1 text-[10px] font-black rounded uppercase tracking-wider",
                                 p.status === 'PAID' ? "bg-emerald-50 text-emerald-600" :
                                 p.status === 'PARTNER_APPROVED' ? "bg-blue-50 text-blue-600" :
+                                p.status === 'REJECTED' ? "bg-rose-50 text-rose-600" :
                                 "bg-amber-50 text-amber-600"
                               )}>
                                 {p.status.replace('_', ' ')}
@@ -882,12 +979,52 @@ export const PartnerPayoutsPage = () => {
                      </button>
                      <button 
                         onClick={() => {
+                           const forcePayPayoutObj = rawPayouts.find((p: any) => p.id === payoutToForcePay);
+                           if (forcePayPayoutObj && forcePayPayoutObj.amount > remainingBalance) {
+                              toast.error("Payment exceeds remaining balance!");
+                              setPayoutToForcePay(null);
+                              return;
+                           }
                            updatePartnerPayoutStatus(payoutToForcePay, 'PAID', 'admin_approved_by', user?.id || '');
                            setPayoutToForcePay(null);
                         }} 
                         className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-colors shadow-lg shadow-indigo-600/20"
                      >
                         Confirm & Pay
+                     </button>
+                  </div>
+               </div>
+            </div>
+         </div>
+      )}
+
+      {/* Reject Confirmation Modal */}
+      {payoutToReject && (
+         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-[#111111] rounded-3xl w-full max-w-sm overflow-hidden border border-gray-100 dark:border-white/10 shadow-2xl">
+               <div className="p-6 text-center">
+                  <div className="w-16 h-16 bg-rose-50 dark:bg-rose-500/10 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                     <Lock className="w-8 h-8" />
+                  </div>
+                  <h3 className="text-xl font-black text-gray-900 dark:text-white mb-2 font-display">Reject Payout?</h3>
+                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-6">
+                     Are you sure you want to reject this partner payout request? The status will be set to <strong>REJECTED</strong>.
+                  </p>
+                  <div className="flex gap-3">
+                     <button 
+                        onClick={() => setPayoutToReject(null)} 
+                        className="flex-1 py-3 bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-gray-300 rounded-xl font-bold hover:bg-gray-100 dark:hover:bg-white/10 transition-colors uppercase tracking-widest text-xs"
+                     >
+                        Cancel
+                     </button>
+                     <button 
+                        onClick={() => {
+                           updatePartnerPayoutStatus(payoutToReject, 'REJECTED', 'admin_approved_by', user?.id || '');
+                           setPayoutToReject(null);
+                        }} 
+                        className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-colors shadow-lg shadow-rose-600/20"
+                     >
+                        Confirm Reject
                      </button>
                   </div>
                </div>

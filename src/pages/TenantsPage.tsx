@@ -485,11 +485,22 @@ export const TenantsPage = () => {
     }
 
     if (formData.roomId && formData.bedNumber) {
+      // Determine the editing tenant's original room+bed (to safely exclude them from occupancy checks)
+      const editingTenantOriginalRoomId = editingTenant?.roomId || (editingTenant as any)?.room_id;
+      const editingTenantOriginalBed = editingTenant?.bedNumber ?? (editingTenant as any)?.bed_number;
+
+      // A tenant is considered "self" if their ID matches OR if they occupy the same room+bed as the editing tenant's original assignment.
+      const isSelf = (t: any) =>
+        (editingTenant && t.id === editingTenant.id) ||
+        (editingTenant &&
+          t.roomId === editingTenantOriginalRoomId &&
+          Number(t.bedNumber) === Number(editingTenantOriginalBed));
+
       const existingAssignment = tenants.find(t => 
         t.roomId === formData.roomId && 
         Number(t.bedNumber) === Number(formData.bedNumber) && 
-        ['active', 'onboarding'].includes(t.status) &&
-        t.id !== editingTenant?.id
+        ['active', 'onboarding', 'vacating'].includes(t.status) &&
+        !isSelf(t)
       );
 
       if (existingAssignment) {
@@ -497,18 +508,25 @@ export const TenantsPage = () => {
         return;
       }
       
-      // Check for overlap with vacating tenants
-      const vacatingTenant = tenants.find(t => 
-        t.roomId === formData.roomId && 
-        Number(t.bedNumber) === Number(formData.bedNumber) && 
-        t.status === 'vacating' &&
-        t.id !== editingTenant?.id
+      // Check for overlap with vacating tenants (only for NEW tenants or when changing to a different bed)
+      const isChangingBed = editingTenant && (
+        editingTenantOriginalRoomId !== formData.roomId ||
+        Number(editingTenantOriginalBed) !== Number(formData.bedNumber)
       );
 
-      if (vacatingTenant && vacatingTenant.vacatingDate && formData.moveInDate) {
-        if (formData.moveInDate < vacatingTenant.vacatingDate) {
-          toast.error(`Move-in date cannot be before bed vacating date (${vacatingTenant.vacatingDate}).`);
-          return;
+      if (!editingTenant || isChangingBed) {
+        const vacatingTenant = tenants.find(t => 
+          t.roomId === formData.roomId && 
+          Number(t.bedNumber) === Number(formData.bedNumber) && 
+          t.status === 'vacating' &&
+          !isSelf(t)
+        );
+
+        if (vacatingTenant && vacatingTenant.vacatingDate && formData.moveInDate) {
+          if (formData.moveInDate < vacatingTenant.vacatingDate) {
+            toast.error(`Move-in date cannot be before bed vacating date (${vacatingTenant.vacatingDate}).`);
+            return;
+          }
         }
       }
     }
@@ -1012,7 +1030,7 @@ export const TenantsPage = () => {
                           const isFull = occupiedCount >= room.totalBeds;
                           return (
                             <option key={room.id} value={room.id} disabled={isFull}>
-                              {room.roomNumber} ({room.type}) - {room.totalBeds - occupiedCount} left
+                              {room.roomNumber} ({room.type}){editingTenant ? '' : ` - ${room.totalBeds - occupiedCount} left`}
                             </option>
                           );
                         })
@@ -1068,7 +1086,7 @@ export const TenantsPage = () => {
 
                           return (
                             <option key={bed} value={bed}>
-                              Bed {bed} {vacatingTenant ? '(Vacating Soon)' : '(Vacant)'}
+                              Bed {bed}{editingTenant ? '' : ` ${vacatingTenant ? '(Vacating Soon)' : '(Vacant)'}`}
                             </option>
                           );
                         });
@@ -1251,8 +1269,12 @@ export const TenantsPage = () => {
                           <div className="flex items-center gap-4">
                             <div className={cn(
                               "w-10 h-10 rounded-xl flex items-center justify-center",
-                              payment.paymentType === 'electricity' 
-                                ? "bg-amber-50 dark:bg-amber-500/10 text-amber-600" 
+                              payment.paymentType === 'electricity'
+                                ? "bg-amber-50 dark:bg-amber-500/10 text-amber-600"
+                                : payment.paymentType === 'token'
+                                ? "bg-purple-50 dark:bg-purple-500/10 text-purple-600"
+                                : payment.paymentType === 'deposit'
+                                ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600"
                                 : "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600"
                             )}>
                               {payment.paymentType === 'electricity' ? <Zap className="w-5 h-5" /> : <CreditCard className="w-5 h-5" />}
@@ -1264,11 +1286,18 @@ export const TenantsPage = () => {
                                 </p>
                                 <span className={cn(
                                   "text-[9px] font-black px-1.5 py-0.5 rounded-lg uppercase tracking-wider",
-                                  payment.paymentType === 'electricity' 
+                                  payment.paymentType === 'electricity'
                                     ? "bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400"
+                                    : payment.paymentType === 'token'
+                                    ? "bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400"
+                                    : payment.paymentType === 'deposit'
+                                    ? "bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400"
                                     : "bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400"
                                 )}>
-                                  {payment.paymentType === 'electricity' ? 'Electricity' : 'Rent'}
+                                  {payment.paymentType === 'electricity' ? 'Electricity'
+                                    : payment.paymentType === 'token' ? 'Token'
+                                    : payment.paymentType === 'deposit' ? 'Deposit'
+                                    : 'Rent'}
                                 </span>
                               </div>
                               <p className="text-xs text-gray-500 dark:text-gray-400">Paid on {payment.paymentDate}</p>

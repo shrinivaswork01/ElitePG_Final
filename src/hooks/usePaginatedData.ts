@@ -47,12 +47,19 @@ export function usePaginatedData<T>(options: UsePaginatedDataOptions) {
 
   const fetchData = useCallback(async () => {
     if (!user) return;
+
+    const isSuper = user.role === 'super';
+    if (!isSuper && !activeBranchId) {
+      setData([]);
+      setTotalCount(0);
+      setIsLoading(false);
+      return;
+    }
     
     setIsLoading(true);
     setError(null);
     try {
       const offset = (page - 1) * fetchLimit;
-      const isSuper = user.role === 'super';
       
       let query = supabase
         .from(options.table)

@@ -125,6 +125,12 @@ export const ExpensesPage = () => {
     };
 
     if (editingExpense) {
+      const isPartner = user?.role === 'partner';
+      const isCreator = (editingExpense.createdBy || (editingExpense as any).created_by) === user?.id;
+      if (isPartner && !isCreator) {
+        toast.error('You are not authorized to edit this expense.');
+        return;
+      }
       await updateExpense(editingExpense.id, payload);
     } else {
       await addExpense({ ...payload, status: 'saved' });
@@ -244,7 +250,14 @@ export const ExpensesPage = () => {
       header: '',
       cell: (e) => {
         const canApprove = ['super', 'admin'].includes(user?.role || '');
-        const canEdit = e.status !== 'approved' || canApprove;
+        const isPartner = user?.role === 'partner';
+        const isCreator = (e.createdBy || e.created_by) === user?.id;
+        
+        const canEdit = (e.status !== 'approved' || canApprove) && (!isPartner || isCreator);
+        const canSubmit = !canApprove && e.status === 'saved' && (!isPartner || isCreator);
+        
+        const hasOptions = canEdit || (canApprove && e.status === 'pending') || canSubmit;
+        if (!hasOptions) return null;
         
         return (
           <div className="flex justify-end pr-2">
@@ -258,7 +271,7 @@ export const ExpensesPage = () => {
                   <DropdownItem onClick={() => handleReject(e.id)} icon={<XCircle className="w-4 h-4 text-rose-500" />} label="Reject" />
                 </>
               )}
-              {!canApprove && e.status === 'saved' && (
+              {canSubmit && (
                 <DropdownItem 
                   onClick={() => updateExpense(e.id, { status: 'pending' }).then(refetch)} 
                   icon={<Clock className="w-4 h-4 text-amber-500" />} 
