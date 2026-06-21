@@ -192,10 +192,20 @@ export const ReportsPage = () => {
   const vacancyColumns: ColumnDef<any>[] = useMemo(() => [
     {
       header: 'Room',
+      accessorKey: 'roomNumber',
+      sortable: true,
       cell: (r) => <span className="font-bold text-gray-900 dark:text-white">Room {r.roomNumber || r.room_number || '—'}</span>
     },
     {
       header: 'Flat',
+      sortable: true,
+      sortFn: (a, b, direction) => {
+        const mgIdA = a.meterGroupId || a.meter_group_id;
+        const mgIdB = b.meterGroupId || b.meter_group_id;
+        const flatA = currentMeterGroups.find(m => m.id === mgIdA)?.name || '';
+        const flatB = currentMeterGroups.find(m => m.id === mgIdB)?.name || '';
+        return direction === 'asc' ? flatA.localeCompare(flatB) : flatB.localeCompare(flatA);
+      },
       cell: (r) => {
         const mgId = r.meterGroupId || r.meter_group_id;
         const flat = currentMeterGroups.find(m => m.id === mgId);
@@ -204,6 +214,14 @@ export const ReportsPage = () => {
     },
     {
       header: 'Branch',
+      sortable: true,
+      sortFn: (a, b, direction) => {
+        const bIdA = a.branchId || a.branch_id;
+        const bIdB = b.branchId || b.branch_id;
+        const nameA = branches.find(b => b.id === bIdA)?.name || '';
+        const nameB = branches.find(b => b.id === bIdB)?.name || '';
+        return direction === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+      },
       cell: (r) => {
         const bId = r.branchId || r.branch_id;
         const b = branches.find(b => b.id === bId);
@@ -212,14 +230,24 @@ export const ReportsPage = () => {
     },
     {
       header: 'Total Beds',
+      accessorKey: 'totalBeds',
+      sortable: true,
       cell: (r) => <span className="font-bold text-gray-700 dark:text-gray-300">{r.totalBeds || r.total_beds || 0} Beds</span>
     },
     {
       header: 'Vacant Beds',
+      accessorKey: 'vacantBedsCount',
+      sortable: true,
       cell: (r) => <span className="font-bold text-indigo-600 dark:text-indigo-400">{r.vacantBedsCount || 0} Beds Vacant</span>
     },
     {
       header: 'Status',
+      sortable: true,
+      sortFn: (a, b, direction) => {
+        const activeCountA = a.activeCount || 0;
+        const activeCountB = b.activeCount || 0;
+        return direction === 'asc' ? activeCountA - activeCountB : activeCountB - activeCountA;
+      },
       cell: (r) => {
         const isFullyVacant = r.activeCount === 0;
         return (
@@ -260,10 +288,10 @@ export const ReportsPage = () => {
   }, [branches, selectedBranchIds, currentPayments, currentExpenses, currentSalaries, currentMonthStr, shouldRenderCombined]);
 
   const branchColumns: ColumnDef<any>[] = useMemo(() => [
-    { header: 'Branch', cell: (b) => <span className="font-bold text-gray-900 dark:text-white">{b.name}</span> },
-    { header: 'Revenue', cell: (b) => <span className="text-emerald-600 dark:text-emerald-400 font-bold">₹{b.revenue.toLocaleString()}</span> },
-    { header: 'Expenses', cell: (b) => <span className="text-rose-600 dark:text-rose-400 font-bold">₹{b.expenses.toLocaleString()}</span> },
-    { header: 'Profit', cell: (b) => <span className={cn("font-bold font-display", b.profit >= 0 ? "text-indigo-600 dark:text-indigo-400" : "text-rose-600 dark:text-rose-400")}>₹{b.profit.toLocaleString()}</span> }
+    { header: 'Branch', accessorKey: 'name', sortable: true, cell: (b) => <span className="font-bold text-gray-900 dark:text-white">{b.name}</span> },
+    { header: 'Revenue', accessorKey: 'revenue', sortable: true, cell: (b) => <span className="text-emerald-600 dark:text-emerald-400 font-bold">₹{b.revenue.toLocaleString()}</span> },
+    { header: 'Expenses', accessorKey: 'expenses', sortable: true, cell: (b) => <span className="text-rose-600 dark:text-rose-400 font-bold">₹{b.expenses.toLocaleString()}</span> },
+    { header: 'Profit', accessorKey: 'profit', sortable: true, cell: (b) => <span className={cn("font-bold font-display", b.profit >= 0 ? "text-indigo-600 dark:text-indigo-400" : "text-rose-600 dark:text-rose-400")}>₹{b.profit.toLocaleString()}</span> }
   ], []);
 
   // Stats for Vacancy Section

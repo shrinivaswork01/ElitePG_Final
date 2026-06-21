@@ -98,6 +98,7 @@ export const TenantsPage = () => {
     {
       header: 'Tenant',
       accessorKey: 'name',
+      sortable: true,
       cell: (t) => (
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-black text-base shadow-lg shadow-indigo-500/20 uppercase shrink-0">
@@ -126,6 +127,7 @@ export const TenantsPage = () => {
     {
       header: 'KYC',
       accessorKey: 'kyc_status',
+      sortable: true,
       className: 'hidden sm:table-cell',
       cell: (t) => {
         const s = t.kyc_status;
@@ -146,6 +148,7 @@ export const TenantsPage = () => {
     {
       header: 'Rent',
       accessorKey: 'rent_amount',
+      sortable: true,
       className: 'hidden md:table-cell',
       cell: (t) => (
         <div>
@@ -157,6 +160,7 @@ export const TenantsPage = () => {
     {
       header: 'Status',
       accessorKey: 'status',
+      sortable: true,
       cell: (t) => {
         const map: Record<string, string> = {
           active: 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400',

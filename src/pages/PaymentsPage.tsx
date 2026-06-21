@@ -70,6 +70,8 @@ export const PaymentsPage = () => {
   // Deposit adjustment state for Record Payment modal
   const [adjustFromDeposit, setAdjustFromDeposit] = useState(false);
   const [depositAdjustAmount, setDepositAdjustAmount] = useState(0);
+  // Late fee inclusion toggle for Record Payment modal
+  const [excludeLateFee, setExcludeLateFee] = useState(false);
 
   const [isPoliciesModalOpen, setIsPoliciesModalOpen] = useState(false);
   const [policiesForm, setPoliciesForm] = useState({
@@ -133,11 +135,16 @@ export const PaymentsPage = () => {
   });
 
   const isAdmin = ['super', 'admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '');
-
   const paymentColumns: ColumnDef<any>[] = React.useMemo(() => [
     {
       header: 'Tenant',
       accessorKey: 'tenant_id',
+      sortable: true,
+      sortFn: (a, b, direction) => {
+        const nameA = a.tenants?.name || '';
+        const nameB = b.tenants?.name || '';
+        return direction === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+      },
       cell: (p) => (
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500 font-bold flex items-center justify-center shrink-0">
@@ -153,6 +160,7 @@ export const PaymentsPage = () => {
     {
       header: 'Month',
       accessorKey: 'month',
+      sortable: true,
       cell: (p) => (
         <span className="text-sm font-semibold text-gray-900 dark:text-white">
           {format(parseISO(p.month + '-01'), 'MMM yyyy')}
@@ -162,6 +170,7 @@ export const PaymentsPage = () => {
     {
       header: 'Amount',
       accessorKey: 'total_amount',
+      sortable: true,
       cell: (p) => (
         <div>
           <p className="text-sm font-bold text-gray-900 dark:text-white">₹{Number(p.total_amount).toLocaleString()}</p>
@@ -189,6 +198,7 @@ export const PaymentsPage = () => {
     {
       header: 'Date',
       accessorKey: 'payment_date',
+      sortable: true,
       cell: (p) => (
         <div>
           <p className="text-sm text-gray-900 dark:text-white">{p.payment_date ? format(parseISO(p.payment_date), 'dd MMM yy') : '—'}</p>
@@ -199,6 +209,7 @@ export const PaymentsPage = () => {
     {
       header: 'Status',
       accessorKey: 'status',
+      sortable: true,
       cell: (p) => (
         <span className={cn(
           'px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider',
@@ -561,6 +572,14 @@ export const PaymentsPage = () => {
   useEffect(() => {
     if (isAddModalOpen) {
       if (newPayment.tenantId) {
+        // If user has excluded late fee, force it to 0
+        if (excludeLateFee) {
+          if (newPayment.lateFee !== 0) {
+            setNewPayment(prev => ({ ...prev, lateFee: 0, totalAmount: prev.amount || 0 }));
+          }
+          return;
+        }
+
         const calculatedLateFee = calculateLateFee(
           newPayment.tenantId, 
           newPayment.month, 
@@ -587,6 +606,7 @@ export const PaymentsPage = () => {
     newPayment.paymentType, 
     newPayment.amount, // Also react to manual amount changes
     isAddModalOpen, 
+    excludeLateFee, // React when user toggles late fee inclusion
     pgConfig // CRITICAL: Updates when Payment Policies are saved
   ]);
 
@@ -786,6 +806,7 @@ export const PaymentsPage = () => {
         setIsAddModalOpen(false);
         setAdjustFromDeposit(false);
         setDepositAdjustAmount(0);
+        setExcludeLateFee(false);
         setNewPayment({
           tenantId: '',
           amount: 0,
@@ -1961,8 +1982,32 @@ export const PaymentsPage = () => {
                         readOnly
                         type="number"
                         value={newPayment.lateFee}
-                        className="w-full px-4 py-2.5 bg-gray-100 dark:bg-white/5 border-none rounded-xl text-rose-500 font-bold"
+                        className={cn(
+                          "w-full px-4 py-2.5 bg-gray-100 dark:bg-white/5 border-none rounded-xl font-bold",
+                          excludeLateFee ? "text-gray-400 line-through" : "text-rose-500"
+                        )}
                       />
+                      {/* Include/Exclude Late Fee Toggle */}
+                      {calculateLateFee(newPayment.tenantId, newPayment.month || '', newPayment.paymentDate, newPayment.paymentType || 'rent') > 0 && (
+                        <label className="flex items-center gap-2 cursor-pointer mt-1 group">
+                          <div className="relative">
+                            <input
+                              type="checkbox"
+                              checked={!excludeLateFee}
+                              onChange={(e) => setExcludeLateFee(!e.target.checked)}
+                              className="sr-only peer"
+                            />
+                            <div className="w-9 h-5 bg-gray-300 dark:bg-white/10 rounded-full peer peer-checked:bg-rose-500 transition-colors"></div>
+                            <div className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-sm peer-checked:translate-x-4 transition-transform"></div>
+                          </div>
+                          <span className={cn(
+                            "text-[11px] font-bold uppercase tracking-wider transition-colors",
+                            excludeLateFee ? "text-gray-400" : "text-rose-500"
+                          )}>
+                            {excludeLateFee ? 'Late Fee Excluded' : 'Late Fee Included'}
+                          </span>
+                        </label>
+                      )}
                     </div>
                   </div>
                   <div className="space-y-2">

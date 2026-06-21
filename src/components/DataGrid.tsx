@@ -1,5 +1,5 @@
-import React from 'react';
-import { ChevronLeft, ChevronRight, Hash } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { ChevronLeft, ChevronRight, Hash, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { cn } from '../utils';
 
 // Core component types
@@ -8,6 +8,13 @@ export interface ColumnDef<T> {
   accessorKey?: keyof T;
   cell?: (item: T) => React.ReactNode;
   className?: string;
+  sortable?: boolean; // Enable sorting on this column
+  sortFn?: (a: T, b: T, direction: 'asc' | 'desc') => number; // Custom sort function
+}
+
+export interface SortState {
+  column: string | null;
+  direction: 'asc' | 'desc';
 }
 
 export interface DataGridProps<T> {
@@ -43,6 +50,68 @@ const DataGridComponent = <T,>({
 }: DataGridProps<T>) => {
   const totalPages = Math.ceil(totalCount / limit) || 1;
 
+  // --- Sorting State ---
+  const [sort, setSort] = useState<SortState>({ column: null, direction: 'asc' });
+
+  const handleSort = (col: ColumnDef<T>) => {
+    if (!col.sortable) return;
+    const key = String(col.accessorKey || col.header);
+    setSort(prev => ({
+      column: key,
+      direction: prev.column === key && prev.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
+
+  // Client-side sort the current page data
+  const sortedData = useMemo(() => {
+    if (!sort.column) return data;
+
+    const activeCol = columns.find(
+      c => String(c.accessorKey || c.header) === sort.column
+    );
+    if (!activeCol) return data;
+
+    return [...data].sort((a, b) => {
+      // Use custom sort function if provided
+      if (activeCol.sortFn) return activeCol.sortFn(a, b, sort.direction);
+
+      const key = activeCol.accessorKey;
+      if (!key) return 0;
+
+      const valA = a[key];
+      const valB = b[key];
+
+      // Handle null/undefined
+      if (valA == null && valB == null) return 0;
+      if (valA == null) return sort.direction === 'asc' ? -1 : 1;
+      if (valB == null) return sort.direction === 'asc' ? 1 : -1;
+
+      // Numeric comparison
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return sort.direction === 'asc' ? valA - valB : valB - valA;
+      }
+
+      // String comparison (case-insensitive)
+      const strA = String(valA).toLowerCase();
+      const strB = String(valB).toLowerCase();
+      const cmp = strA.localeCompare(strB);
+      return sort.direction === 'asc' ? cmp : -cmp;
+    });
+  }, [data, sort, columns]);
+
+  const renderSortIcon = (col: ColumnDef<T>) => {
+    if (!col.sortable) return null;
+    const key = String(col.accessorKey || col.header);
+    const isActive = sort.column === key;
+
+    if (!isActive) {
+      return <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60 transition-opacity" />;
+    }
+    return sort.direction === 'asc'
+      ? <ArrowUp className="w-3 h-3 text-indigo-500" />
+      : <ArrowDown className="w-3 h-3 text-indigo-500" />;
+  };
+
   // Render Skeletons when loading
   const renderSkeletons = () => {
     return Array.from({ length: Math.min(limit, 5) }).map((_, i) => (
@@ -63,12 +132,20 @@ const DataGridComponent = <T,>({
           <thead>
             <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-100 dark:border-white/5">
               {columns.map((col, i) => (
-                <th key={i} className={cn(
-                  "px-4 sm:px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider",
-                  compact && "py-3",
-                  col.className
-                )}>
-                  {col.header}
+                <th
+                  key={i}
+                  onClick={() => handleSort(col)}
+                  className={cn(
+                    "px-4 sm:px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider",
+                    compact && "py-3",
+                    col.sortable && "cursor-pointer select-none group hover:text-gray-700 dark:hover:text-gray-200 transition-colors",
+                    col.className
+                  )}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>{col.header}</span>
+                    {renderSortIcon(col)}
+                  </div>
                 </th>
               ))}
             </tr>
@@ -76,8 +153,8 @@ const DataGridComponent = <T,>({
           <tbody className="divide-y divide-gray-50 dark:divide-white/5">
             {isLoading ? (
               renderSkeletons()
-            ) : data.length > 0 ? (
-              data.map((row) => (
+            ) : sortedData.length > 0 ? (
+              sortedData.map((row) => (
                 <tr 
                   key={keyExtractor(row)} 
                   onClick={() => onRowClick && onRowClick(row)}
@@ -140,4 +217,3 @@ const DataGridComponent = <T,>({
 };
 
 export const DataGrid = React.memo(DataGridComponent) as <T>(props: DataGridProps<T>) => React.ReactElement;
-

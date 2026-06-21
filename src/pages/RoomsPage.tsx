@@ -116,11 +116,11 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
       }
     }
   }, [meterGroups, detailFlat]);
-
   const roomColumns: ColumnDef<any>[] = React.useMemo(() => [
     {
       header: 'Room',
       accessorKey: 'room_number',
+      sortable: true,
       className: 'w-[35%] min-w-[160px]',
       cell: (r) => (
         <div className="flex items-center gap-3">
@@ -137,6 +137,13 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
     {
       header: 'Occupancy',
       accessorKey: 'occupied_beds',
+      sortable: true,
+      sortFn: (a, b, direction) => {
+        // Live occupied beds calculation
+        const liveA = tenants.filter(t => t.roomId === a.id && t.status === 'active').length;
+        const liveB = tenants.filter(t => t.roomId === b.id && t.status === 'active').length;
+        return direction === 'asc' ? liveA - liveB : liveB - liveA;
+      },
       className: 'w-[28%] min-w-[150px]',
       cell: (r) => {
         // Compute live from tenants (DB occupied_beds column is not auto-synced)
@@ -160,6 +167,7 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
     {
       header: 'Type',
       accessorKey: 'type',
+      sortable: true,
       className: 'w-[15%]',
       cell: (r) => (
         <span className={cn(
@@ -173,6 +181,7 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
     {
       header: 'Price',
       accessorKey: 'price',
+      sortable: true,
       className: 'w-[17%]',
       cell: (r) => (
         <span className="text-sm font-bold text-gray-900 dark:text-white">₹{Number(r.price).toLocaleString()}<span className="text-xs text-gray-500 font-normal">/mo</span></span>
@@ -201,6 +210,7 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
     {
       header: 'Flat / Group',
       accessorKey: 'name',
+      sortable: true,
       className: 'w-[40%] min-w-[200px]',
       cell: (f) => (
         <div className="flex items-center gap-3">
@@ -217,6 +227,12 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
     {
       header: 'Linked Rooms',
       accessorKey: 'id',
+      sortable: true,
+      sortFn: (a, b, direction) => {
+        const countA = rooms.filter(r => r.meterGroupId === a.id).length;
+        const countB = rooms.filter(r => r.meterGroupId === b.id).length;
+        return direction === 'asc' ? countA - countB : countB - countA;
+      },
       className: 'w-[25%]',
       cell: (f) => {
         const linkedCount = rooms.filter(r => r.meterGroupId === f.id).length;
@@ -231,6 +247,14 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
     {
       header: 'Occupancy',
       accessorKey: 'id',
+      sortable: true,
+      sortFn: (a, b, direction) => {
+        const linkedRoomsA = rooms.filter(r => r.meterGroupId === a.id);
+        const occupiedA = tenants.filter(t => linkedRoomsA.some(r => r.id === t.roomId) && t.status === 'active').length;
+        const linkedRoomsB = rooms.filter(r => r.meterGroupId === b.id);
+        const occupiedB = tenants.filter(t => linkedRoomsB.some(r => r.id === t.roomId) && t.status === 'active').length;
+        return direction === 'asc' ? occupiedA - occupiedB : occupiedB - occupiedA;
+      },
       className: 'w-[25%]',
       cell: (f) => {
         const linkedRooms = rooms.filter(r => r.meterGroupId === f.id);

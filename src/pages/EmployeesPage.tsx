@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { Employee, Task, SalaryPayment, KYCData, User, UserRole } from '../types';
@@ -32,7 +32,10 @@ import {
   Building2,
   Check,
   AlertTriangle,
-  TrendingUp
+  TrendingUp,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { EmployeeMobileList } from '../components/EmployeeMobileList';
@@ -78,6 +81,8 @@ export const EmployeesPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [salarySearchTerm, setSalarySearchTerm] = useState('');
   const [kycToReject, setKycToReject] = useState<string | null>(null);
+  const [salarySortColumn, setSalarySortColumn] = useState<string | null>(null);
+  const [salarySortDirection, setSalarySortDirection] = useState<'asc' | 'desc'>('desc');
   const [rejectionReason, setRejectionReason] = useState('');
   const [employeeToDelete, setEmployeeToDelete] = useState<Employee | null>(null);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
@@ -365,15 +370,69 @@ export const EmployeesPage = () => {
     return matchesSearch && (e.userId === user?.id || e.email === user?.email);
   });
 
-  const filteredSalaries = salaryPayments
-    .filter(p => {
+  const sortedSalaries = useMemo(() => {
+    const filtered = salaryPayments.filter(p => {
       const employee = employees.find(e => e.id === p.employeeId);
       const matchesSearch = (employee?.name || '').toLowerCase().includes(salarySearchTerm.toLowerCase()) ||
         (p.month || '').toLowerCase().includes(salarySearchTerm.toLowerCase()) ||
         (p.method || '').toLowerCase().includes(salarySearchTerm.toLowerCase());
       return matchesSearch;
-    })
-    .sort((a, b) => (b.paymentDate || '').localeCompare(a.paymentDate || ''));
+    });
+
+    if (!salarySortColumn) {
+      return [...filtered].sort((a, b) => (b.paymentDate || '').localeCompare(a.paymentDate || ''));
+    }
+
+    return [...filtered].sort((a, b) => {
+      let valA: any = a[salarySortColumn as keyof typeof a];
+      let valB: any = b[salarySortColumn as keyof typeof b];
+
+      if (salarySortColumn === 'employee') {
+        valA = employees.find(e => e.id === a.employeeId)?.name || '';
+        valB = employees.find(e => e.id === b.employeeId)?.name || '';
+      }
+
+      if (valA == null && valB == null) return 0;
+      if (valA == null) return salarySortDirection === 'asc' ? -1 : 1;
+      if (valB == null) return salarySortDirection === 'asc' ? 1 : -1;
+
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return salarySortDirection === 'asc' ? valA - valB : valB - valA;
+      }
+      const strA = String(valA).toLowerCase();
+      const strB = String(valB).toLowerCase();
+      const cmp = strA.localeCompare(strB);
+      return salarySortDirection === 'asc' ? cmp : -cmp;
+    });
+  }, [salaryPayments, employees, salarySearchTerm, salarySortColumn, salarySortDirection]);
+
+  const toggleSalarySort = (columnKey: string) => {
+    if (salarySortColumn === columnKey) {
+      setSalarySortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSalarySortColumn(columnKey);
+      setSalarySortDirection('asc');
+    }
+  };
+
+  const renderSalaryHeader = (label: string, columnKey: string) => {
+    const isSorted = salarySortColumn === columnKey;
+    return (
+      <th 
+        onClick={() => toggleSalarySort(columnKey)}
+        className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+      >
+        <div className="flex items-center gap-1">
+          {label}
+          {isSorted ? (
+            salarySortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-indigo-500" /> : <ArrowDown className="w-3.5 h-3.5 text-indigo-500" />
+          ) : (
+            <ArrowUpDown className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600" />
+          )}
+        </div>
+      </th>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -608,17 +667,17 @@ export const EmployeesPage = () => {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-100 dark:border-white/5">
-                  <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Employee</th>
-                  <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Month</th>
-                  <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Amount</th>
-                  <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
-                  <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Method</th>
-                  <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                  {renderSalaryHeader('Employee', 'employee')}
+                  {renderSalaryHeader('Month', 'month')}
+                  {renderSalaryHeader('Amount', 'amount')}
+                  {renderSalaryHeader('Date', 'paymentDate')}
+                  {renderSalaryHeader('Method', 'method')}
+                  {renderSalaryHeader('Status', 'status')}
                   <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50 dark:divide-white/5">
-                {filteredSalaries.map((payment) => {
+                {sortedSalaries.map((payment) => {
                   const employee = employees.find(e => e.id === payment.employeeId);
                   return (
                     <tr key={payment.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
@@ -660,7 +719,7 @@ export const EmployeesPage = () => {
             </table>
           </div>
           <div className="flex flex-col md:hidden border-t border-gray-100 dark:border-white/5 divide-y divide-gray-50 dark:divide-white/5">
-            {filteredSalaries.map((payment) => {
+            {sortedSalaries.map((payment) => {
               const employee = employees.find(e => e.id === payment.employeeId);
               return (
                 <div key={payment.id} className="p-4 flex flex-col gap-3">

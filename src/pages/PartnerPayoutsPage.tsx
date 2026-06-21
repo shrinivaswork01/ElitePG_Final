@@ -4,7 +4,8 @@ import { useApp } from '../context/AppContext';
 import { 
   TrendingUp, Calendar, ChevronDown, Wallet, Receipt, DollarSign, 
   Users, Lock, CreditCard, ShieldCheck, UserPlus, FileText, 
-  CheckCircle, History, Filter, Search, Edit2, Trash2, Download
+  CheckCircle, History, Filter, Search, Edit2, Trash2, Download,
+  ArrowUp, ArrowDown, ArrowUpDown
 } from 'lucide-react';
 import { format, subMonths, parseISO, isAfter } from 'date-fns';
 import { cn } from '../utils';
@@ -53,6 +54,8 @@ export const PartnerPayoutsPage = () => {
   const [payoutToForcePay, setPayoutToForcePay] = useState<string | null>(null);
   const [payoutToReject, setPayoutToReject] = useState<string | null>(null);
   const [transactionToDelete, setTransactionToDelete] = useState<string | null>(null);
+  const [sortColumn, setSortColumn] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Month options (last 12 months)
   const monthOptions = Array.from({ length: 12 }, (_, i) => {
@@ -113,7 +116,71 @@ export const PartnerPayoutsPage = () => {
     const u = users.find((u: any) => u.id === userId);
     return u?.email || '';
   };
-  
+
+  const sortedPayouts = useMemo(() => {
+    if (!sortColumn) {
+      return [...rawPayouts].sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }
+    return [...rawPayouts].sort((a: any, b: any) => {
+      let valA: any = a[sortColumn];
+      let valB: any = b[sortColumn];
+
+      if (sortColumn === 'branch') {
+        valA = branches.find(br => br.id === a.branchId)?.name || 'Global';
+        valB = branches.find(br => br.id === b.branchId)?.name || 'Global';
+      } else if (sortColumn === 'partner') {
+        valA = resolvePartnerName(a.partnerId);
+        valB = resolvePartnerName(b.partnerId);
+      } else if (sortColumn === 'requestedBy') {
+        valA = resolvePartnerName(a.requestedBy);
+        valB = resolvePartnerName(b.requestedBy);
+      } else if (sortColumn === 'date') {
+        valA = new Date(a.createdAt).getTime();
+        valB = new Date(b.createdAt).getTime();
+      }
+
+      if (valA == null && valB == null) return 0;
+      if (valA == null) return sortDirection === 'asc' ? -1 : 1;
+      if (valB == null) return sortDirection === 'asc' ? 1 : -1;
+
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return sortDirection === 'asc' ? valA - valB : valB - valA;
+      }
+      const strA = String(valA).toLowerCase();
+      const strB = String(valB).toLowerCase();
+      const cmp = strA.localeCompare(strB);
+      return sortDirection === 'asc' ? cmp : -cmp;
+    });
+  }, [rawPayouts, sortColumn, sortDirection, branches]);
+
+  const toggleSort = (columnKey: string) => {
+    if (sortColumn === columnKey) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(columnKey);
+      setSortDirection('asc');
+    }
+  };
+
+  const renderHeader = (label: string, columnKey: string) => {
+    const isSorted = sortColumn === columnKey;
+    return (
+      <th 
+        onClick={() => toggleSort(columnKey)}
+        className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest cursor-pointer select-none hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+      >
+        <div className="flex items-center gap-1">
+          {label}
+          {isSorted ? (
+            sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-indigo-500" /> : <ArrowDown className="w-3.5 h-3.5 text-indigo-500" />
+          ) : (
+            <ArrowUpDown className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600" />
+          )}
+        </div>
+      </th>
+    );
+  };
+
   const branchPartners = users.filter(u => u.role === 'partner' && u.branchIds?.includes(currentBranch?.id));
 
   // --- Handlers for Ratio & Partner CRUD ---
@@ -731,25 +798,24 @@ export const PartnerPayoutsPage = () => {
                <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-gray-50 dark:bg-white/[0.02] border-b border-gray-100 dark:border-white/5">
-                      <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Month</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Branch</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Partner</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Amount</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Status</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Req By</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Partner Appr</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Admin Appr</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Date</th>
+                      {renderHeader('Month', 'month')}
+                      {renderHeader('Branch', 'branch')}
+                      {renderHeader('Partner', 'partner')}
+                      {renderHeader('Amount', 'amount')}
+                      {renderHeader('Status', 'status')}
+                      {renderHeader('Req By', 'requestedBy')}
+                      {renderHeader('Partner Appr', 'partnerApprovedBy')}
+                      {renderHeader('Admin Appr', 'adminApprovedBy')}
+                      {renderHeader('Date', 'date')}
                       {isAdmin && <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Actions</th>}
                     </tr>
                   </thead>
                   <tbody>
-                     {rawPayouts.length === 0 ? (
+                     {sortedPayouts.length === 0 ? (
                         <tr>
                           <td colSpan={isAdmin ? 10 : 9} className="px-6 py-12 text-center text-sm font-bold text-gray-400">No transactions recorded.</td>
                         </tr>
-                     ) : rawPayouts
-                       .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                     ) : sortedPayouts
                        .map((p: any) => (
                         <tr key={p.id} className="border-b border-gray-50 dark:border-white/5 hover:bg-gray-50/50 dark:hover:bg-white/[0.02] transition-colors">
                            <td className="px-6 py-4 text-xs font-bold text-gray-600 dark:text-gray-400">{p.month}</td>

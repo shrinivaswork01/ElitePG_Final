@@ -188,6 +188,7 @@ export const ExpensesPage = () => {
     {
       header: 'Expense Details',
       accessorKey: 'title',
+      sortable: true,
       cell: (e) => (
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-100 dark:border-indigo-500/20">
@@ -202,7 +203,8 @@ export const ExpensesPage = () => {
     },
     {
       header: 'Amount',
-      // accessorKey: 'amount', // Removing accessorKey to avoid conflict with manual cell rendering
+      accessorKey: 'amount',
+      sortable: true,
       cell: (e) => (
         <div className="flex flex-col">
           <span className="text-sm font-black text-gray-900 dark:text-white">₹{e.amount.toLocaleString()}</span>
@@ -213,10 +215,17 @@ export const ExpensesPage = () => {
     {
       header: 'Status',
       accessorKey: 'status',
+      sortable: true,
       cell: (e) => getStatusBadge(e.status)
     },
     {
       header: 'Created By',
+      sortable: true,
+      sortFn: (a, b, direction) => {
+        const creatorA = users?.find((u: any) => u.id === (a.createdBy || a.created_by))?.name || '';
+        const creatorB = users?.find((u: any) => u.id === (b.createdBy || b.created_by))?.name || '';
+        return direction === 'asc' ? creatorA.localeCompare(creatorB) : creatorB.localeCompare(creatorA);
+      },
       cell: (e) => {
         const creator = users?.find((u: any) => u.id === (e.createdBy || e.created_by));
         const roleLabel = creator?.role === 'partner' ? 'Partner' : (creator?.role || 'Admin');
@@ -231,6 +240,7 @@ export const ExpensesPage = () => {
     {
       header: 'Notes',
       accessorKey: 'description',
+      sortable: true,
       cell: (e) => (
         <div className="max-w-[150px] text-xs text-gray-500 truncate" title={e.description || ''}>
           {e.description || '—'}
@@ -240,6 +250,7 @@ export const ExpensesPage = () => {
     {
       header: 'Created At',
       accessorKey: 'created_at',
+      sortable: true,
       cell: (e) => (
         <div className="text-xs text-gray-500 font-medium">
           {e.created_at ? format(parseISO(e.created_at), 'dd MMM yy') : '—'}
