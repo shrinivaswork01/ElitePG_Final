@@ -366,6 +366,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           depositStatus: t.deposit_status || 'pending',
           depositBalance: t.deposit_balance ?? 0,
           moveInDate: t.move_in_date || null,
+          roomSwitchDate: t.room_switch_date || null,
           isAuthorized: t.users?.is_authorized ?? true,
           vacatingDate: t.vacating_date,
           exitDate: t.exit_date,
@@ -829,6 +830,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.depositStatus !== undefined) dbUpdates.deposit_status = updates.depositStatus;
     if (updates.depositBalance !== undefined) dbUpdates.deposit_balance = updates.depositBalance;
     if ((updates as any).moveInDate !== undefined) dbUpdates.move_in_date = (updates as any).moveInDate;
+    if ((updates as any).roomSwitchDate !== undefined) dbUpdates.room_switch_date = (updates as any).roomSwitchDate;
     if (updates.joiningDate !== undefined) dbUpdates.joining_date = updates.joiningDate;
     if (updates.paymentDueDate !== undefined) dbUpdates.payment_due_date = updates.paymentDueDate;
     if (updates.status !== undefined) dbUpdates.status = updates.status;
@@ -1731,6 +1733,18 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         const { error } = await supabase.from('pg_configs').insert({ ...dbUpdates, branch_id: targetBranch });
         if (error) throw error;
       }
+
+      // Keep pg_branches.name in sync with pgName so BranchSwitcher & sidebar always show the same name
+      if (updates.pgName !== undefined) {
+        await supabase.from('pg_branches').update({ name: updates.pgName }).eq('id', targetBranch);
+        applyOptimistic(prev => ({
+          ...prev,
+          branches: prev.branches.map((b: any) =>
+            b.id === targetBranch ? { ...b, name: updates.pgName } : b
+          )
+        }));
+      }
+
       toast.success('Settings saved successfully');
       setTimeout(() => fetchData(), 500);
     } catch (error: any) {
@@ -1774,6 +1788,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.phone !== undefined) dbUpdates.phone = updates.phone;
     if (updates.officialSignatureUrl !== undefined) dbUpdates.official_signature_url = updates.officialSignatureUrl;
     await refetch(supabase.from('pg_branches').update(dbUpdates).eq('id', id), 'Branch updated');
+
+    // Keep pg_configs.pg_name in sync when branch name is changed via SuperAdmin
+    if (updates.name !== undefined) {
+      await supabase.from('pg_configs').update({ pg_name: updates.name }).eq('branch_id', id);
+      applyOptimistic(prev => ({
+        ...prev,
+        pgConfigs: prev.pgConfigs.map((c: any) =>
+          c.branchId === id ? { ...c, pgName: updates.name } : c
+        )
+      }));
+    }
   };
 
   const deleteBranch = async (id: string) => { await refetch(supabase.from('pg_branches').delete().eq('id', id), 'Branch removed'); };

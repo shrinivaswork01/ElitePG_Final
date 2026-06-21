@@ -89,7 +89,7 @@ export const TenantsPage = () => {
   // Server-side paginated hook — fetches ONLY 10 records at a time
   const { data: paginatedTenants, totalCount, isLoading, page, setPage, limit, refetch } = usePaginatedData<any>({
     table: 'tenants',
-    select: '*, rooms!tenants_room_id_fkey(room_number), kyc_documents!kyc_documents_tenant_id_fkey(document_url, status)',
+    select: '*, rooms!tenants_room_id_fkey(room_number, type), kyc_documents!kyc_documents_tenant_id_fkey(document_url, status)',
     ilikeFilters: searchTerm ? { name: searchTerm, email: searchTerm } : undefined,
     filters: filterStatus !== 'all' ? { status: filterStatus } : undefined
   });
@@ -116,9 +116,10 @@ export const TenantsPage = () => {
       accessorKey: 'room_id',
       cell: (t) => {
         const roomNumber = t.rooms?.room_number;
+        const roomType = t.rooms?.type ? ` (${t.rooms.type})` : '';
         return (
           <div className="flex flex-col">
-            <span className="text-sm font-semibold text-gray-900 dark:text-white">Room {roomNumber || 'N/A'}</span>
+            <span className="text-sm font-semibold text-gray-900 dark:text-white">Room {roomNumber || 'N/A'}{roomType}</span>
             <span className="text-xs text-gray-500 dark:text-gray-400">Bed {t.bed_number}</span>
           </div>
         );
@@ -1309,7 +1310,7 @@ export const TenantsPage = () => {
                           </div>
                           <div className="text-right">
                             <p className="text-sm font-bold text-gray-900 dark:text-white">₹{payment.totalAmount.toLocaleString()}</p>
-                            <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium uppercase tracking-tighter">{payment.method}</p>
+                            <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium uppercase tracking-tighter">{(payment.method || '').toUpperCase() === 'OFFLINE' ? 'CASH' : (payment.method || '').toUpperCase()}</p>
                           </div>
                         </div>
 

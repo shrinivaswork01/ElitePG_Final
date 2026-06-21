@@ -196,7 +196,7 @@ export const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
                 <div className="bg-gray-50 dark:bg-white/3 rounded-2xl p-4 grid grid-cols-2 gap-4">
                   <p className="col-span-2 text-xs font-black uppercase tracking-widest text-gray-400">Transaction Info</p>
                   <Field label="Paid On" value={payment.paymentDate ? format(parseISO(payment.paymentDate), 'dd MMM yyyy') : '—'} />
-                  <Field label="Method" value={<div className="flex items-center gap-1.5"><CreditCard className="w-3 h-3"/>{payment.method}</div>} />
+                  <Field label="Method" value={<div className="flex items-center gap-1.5"><CreditCard className="w-3 h-3"/>{(payment.method || '').toUpperCase() === 'OFFLINE' ? 'CASH' : (payment.method || '').toUpperCase()}</div>} />
                   {payment.transactionId && (
                     <Field label="Txn ID" className="col-span-2" value={<span className="font-mono text-xs">{payment.transactionId}</span>} />
                   )}
@@ -242,7 +242,7 @@ export const PaymentDetailPanel: React.FC<PaymentDetailPanelProps> = ({
                               id: undefined,
                               status: 'pending',
                               proofUrl: url,
-                              method: 'Offline',
+                              method: 'Cash',
                               createdBy: paymentData.tenantId
                             } as any);
                             toast.success('Payment notification sent with proof!');

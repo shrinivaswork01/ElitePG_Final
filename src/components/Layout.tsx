@@ -119,7 +119,8 @@ export const Layout = ({ children }: LayoutProps) => {
       '/tasks': 'tasks',
       '/broadcast': 'broadcast',
       '/kyc': 'kyc',
-      '/employees': 'employees'
+      '/employees': 'employees',
+      '/subscription': 'subscription'
     };
 
     const feature = featureMap[item.href];
@@ -135,7 +136,7 @@ export const Layout = ({ children }: LayoutProps) => {
     if (user.role !== 'admin' && user.role !== 'partner' && user.permissions !== undefined) {
       const key = item.href.replace(/^\//, '');
       // These structural tabs (branches, settings, subscription) are always available to admin/partner
-      const structuralTabs = ['branches', 'settings', 'subscription', 'platform-management'];
+      const structuralTabs = ['branches', 'settings', 'platform-management'];
       if (structuralTabs.includes(key)) return true;
       return user.permissions.includes(key);
     }

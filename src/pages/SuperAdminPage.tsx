@@ -1098,7 +1098,7 @@ export const SuperAdminPage = () => {
               const plan = subscriptionPlans.find(p => p.id === liveBranch.planId);
               const planFeatures = plan?.features || [];
               // Merge plan features with core features so super admin can toggle everything
-              const coreFeatures = ['tenants', 'rooms', 'payments', 'complaints'];
+              const coreFeatures = ['tenants', 'rooms', 'payments', 'complaints', 'subscription'];
               const features = [...new Set([...coreFeatures, ...planFeatures])];
 
               const featureLabels: Record<string, string> = {
@@ -1114,7 +1114,8 @@ export const SuperAdminPage = () => {
                 reports: 'Financial Reports',
                 'multi-branch': 'Multi-Branch Support',
                 expenses: 'Expense Tracker',
-                tasks: 'Task Management'
+                tasks: 'Task Management',
+                subscription: 'Subscription Plan'
               };
 
               return (

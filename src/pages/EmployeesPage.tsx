@@ -251,7 +251,7 @@ export const EmployeesPage = () => {
     const uUrl = `upi://pay?pa=${upiId}&pn=${encodedName}&am=${salaryFormData.amount}&cu=INR&tn=Salary Payment - ${salaryFormData.month}`;
     
     // Attempt to open the UPI app natively on the user's mobile device
-    navigate(uUrl);
+    window.location.href = uUrl;
 
     // Record the payment
     addSalaryPayment({
@@ -692,7 +692,7 @@ export const EmployeesPage = () => {
                       <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">{format(parseISO(payment.month + '-01'), 'MMMM yyyy')}</td>
                       <td className="px-6 py-4 text-sm font-bold text-gray-900 dark:text-white">₹{payment.amount.toLocaleString()}</td>
                       <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{payment.paymentDate}</td>
-                      <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{payment.method}</td>
+                      <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{(payment.method || '').toUpperCase()}</td>
                       <td className="px-6 py-4">
                         <span className="px-2.5 py-1 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 rounded-lg text-[10px] font-bold uppercase tracking-wider">
                           {payment.status}
@@ -739,7 +739,7 @@ export const EmployeesPage = () => {
                     </div>
                   </div>
                   <div className="flex items-center justify-between pt-3 mt-1 border-t border-dashed border-gray-100 dark:border-white/10">
-                     <span className="text-xs text-gray-500 font-medium capitalize">Method: {payment.method}</span>
+                     <span className="text-xs text-gray-500 font-medium capitalize">Method: {(payment.method || '').toUpperCase()}</span>
                      <button
                        onClick={() => setSalaryToDelete(payment)}
                        className="p-1.5 rounded-lg text-red-400 hover:text-red-600 bg-red-50 dark:bg-red-500/10 transition-colors"
@@ -1209,7 +1209,7 @@ export const EmployeesPage = () => {
                         <div key={payment.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/5">
                           <div>
                             <p className="text-sm font-bold text-gray-900 dark:text-white">{format(parseISO(payment.month + '-01'), 'MMMM yyyy')}</p>
-                            <p className="text-[10px] text-gray-500 dark:text-gray-400 uppercase font-bold">Paid on {payment.paymentDate} via {payment.method}</p>
+                            <p className="text-[10px] text-gray-500 dark:text-gray-400 uppercase font-bold">Paid on {payment.paymentDate} via {(payment.method || '').toUpperCase()}</p>
                           </div>
                           <p className="text-lg font-bold text-gray-900 dark:text-white">₹{payment.amount.toLocaleString()}</p>
                         </div>

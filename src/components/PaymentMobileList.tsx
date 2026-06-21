@@ -134,7 +134,7 @@ const PaymentMobileCard = memo(({
           <div className="flex items-center gap-1.5 min-w-0">
             <CreditCard className="w-3 h-3 text-indigo-500 shrink-0" />
             <p className="text-xs font-semibold text-gray-900 dark:text-white truncate">
-              {payment.method || '—'}
+              {((payment.method || '').toUpperCase() === 'OFFLINE' ? 'CASH' : (payment.method || '').toUpperCase()) || '—'}
             </p>
           </div>
         </div>

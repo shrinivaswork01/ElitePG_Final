@@ -264,7 +264,7 @@ export const ElectricityBillModal: React.FC<ElectricityBillModalProps> = ({
             month,
             payment_type: 'electricity',
             status: existing ? undefined : 'pending', // Don't overwrite status on update, default to pending on insert
-            method: existing ? undefined : 'Offline',
+            method: existing ? undefined : 'Cash',
             electricity_bill_id: savedBill.id,
             branch_id: branchId,
             payment_date: existing ? undefined : new Date().toISOString().split('T')[0],

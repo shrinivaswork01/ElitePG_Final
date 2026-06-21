@@ -202,7 +202,7 @@ export const PaymentsPage = () => {
       cell: (p) => (
         <div>
           <p className="text-sm text-gray-900 dark:text-white">{p.payment_date ? format(parseISO(p.payment_date), 'dd MMM yy') : '—'}</p>
-          <p className="text-xs text-gray-500">{p.method}</p>
+          <p className="text-xs text-gray-500">{(p.method || '').toUpperCase() === 'OFFLINE' ? 'CASH' : (p.method || '').toUpperCase()}</p>
         </div>
       )
     },
@@ -256,7 +256,7 @@ export const PaymentsPage = () => {
                   paymentDate: p.payment_date || p.paymentDate || '',
                   month: p.month || '',
                   status: p.status || 'paid',
-                  method: p.method || 'Offline',
+                  method: p.method || 'Cash',
                   transactionId: p.transaction_id || p.transactionId,
                   receiptUrl: p.receipt_url || p.receiptUrl,
                   electricityAmount: p.electricity_amount || p.electricityAmount || 0,
@@ -368,7 +368,7 @@ export const PaymentsPage = () => {
 
 
   const [payingDue, setPayingDue] = useState<any | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<'Online' | 'Offline'>('Online');
+  const [paymentMethod, setPaymentMethod] = useState<'Online' | 'Cash'>('Online');
 
   const currentMonth = React.useMemo(() => format(new Date(), 'yyyy-MM'), []);
 
@@ -465,14 +465,14 @@ export const PaymentsPage = () => {
         }
       }
 
-      const isOffline = paymentMethod === 'Offline';
+      const isOffline = paymentMethod === 'Cash';
       const totalAmount = due.amount + due.lateFee;
 
-      const recordPaymentSuccess = async (method: 'Offline' | 'Online', transactionId?: string) => {
+      const recordPaymentSuccess = async (method: 'Cash' | 'Online', transactionId?: string) => {
         if (due.type === 'electricity' && due.paymentId) {
           // Update the existing pending electricity record
           await updatePayment(due.paymentId, {
-            status: method === 'Offline' ? 'pending' : 'paid',
+            status: method === 'Cash' ? 'pending' : 'paid',
             method,
             transactionId: transactionId || null,
             paymentDate: format(new Date(), 'yyyy-MM-dd')
@@ -492,7 +492,7 @@ export const PaymentsPage = () => {
             electricityAmount: 0, // No longer merged
             paymentDate: format(new Date(), 'yyyy-MM-dd'),
             month: due.month,
-            status: method === 'Offline' ? 'pending' : 'paid',
+            status: method === 'Cash' ? 'pending' : 'paid',
             method,
             transactionId: transactionId || undefined
           };
@@ -506,15 +506,15 @@ export const PaymentsPage = () => {
 
         refetchPayments();
         setPayingDue(null);
-        if (method === 'Offline') {
-          toast.success(`Offline payment request submitted for ₹${totalAmount.toLocaleString()}. Please pay at the desk.`);
+        if (method === 'Cash') {
+          toast.success(`Cash payment request submitted for ₹${totalAmount.toLocaleString()}. Please pay at the desk.`);
         } else {
           toast.success(`Payment successful! Transaction ID: ${transactionId}`);
         }
       };
 
       if (isOffline) {
-        await recordPaymentSuccess('Offline');
+        await recordPaymentSuccess('Cash');
       } else {
         const branchRazorpayKey = pgConfig?.razorpayKeyId;
 
@@ -642,9 +642,17 @@ export const PaymentsPage = () => {
     const tenant = tenants.find(t => t.id === newPayment.tenantId);
     if (!tenant) return false;
     if ((tenant.tokenAmount || 0) <= 0 || tenant.tokenStatus !== 'paid') return false;
+    
+    // Switched tenants are not first month joiners
+    if (tenant.roomSwitchDate || tenant.room_switch_date) return false;
+
     // Check there is no existing rent payment for this month already
     const existingRent = payments.find(p => p.tenantId === tenant.id && p.month === newPayment.month && p.status === 'paid' && p.paymentType === 'rent');
-    return !existingRent;
+    if (existingRent) return false;
+
+    // First month joiner only: verify they have never paid rent in the history
+    const hasAnyPriorRent = payments.some(p => p.tenantId === tenant.id && p.paymentType === 'rent' && p.status === 'paid');
+    return !hasAnyPriorRent;
   }, [newPayment.tenantId, newPayment.paymentType, newPayment.month, tenants, payments]);
 
   // The remaining amount tenant needs to pay now (rent - token)
@@ -706,15 +714,19 @@ export const PaymentsPage = () => {
         }
 
         // Amount > 0 validation
-        if (newPayment.amount <= 0 && (!adjustFromDeposit || depositAdjustAmount <= 0)) {
+        if (!adjustFromDeposit && newPayment.amount <= 0) {
           toast.error('Amount must be greater than zero.');
           return;
         }
 
         // Validate deposit adjustment
-        if (adjustFromDeposit && depositAdjustAmount > 0) {
+        if (adjustFromDeposit) {
+          if (depositAdjustAmount <= 0) {
+            toast.error('Adjustment amount must be greater than zero.');
+            return;
+          }
           if (depositAdjustAmount > selectedTenantDepositBalance) {
-            toast.error(`Adjustment ₹${depositAdjustAmount} exceeds deposit balance ₹${selectedTenantDepositBalance}.`);
+            toast.error(`Adjustment amount ₹${depositAdjustAmount} exceeds available deposit balance ₹${selectedTenantDepositBalance}.`);
             return;
           }
         }
@@ -795,12 +807,16 @@ export const PaymentsPage = () => {
             paymentDate: newPayment.paymentDate,
             month: newPayment.month,
             status: 'paid',
-            method: 'Offline',
+            method: 'Cash',
             branchId: tenant?.branchId || user?.branchId || '',
           } as any);
           // Update deposit balance on tenant
           const newBalance = selectedTenantDepositBalance - depositAdjustAmount;
-          await updateTenant(newPayment.tenantId, { depositBalance: newBalance });
+          const tenantUpdates: any = { depositBalance: newBalance };
+          if (newBalance === 0 && selectedTenantDepositBalance > 0) {
+            tenantUpdates.depositStatus = 'refunded';
+          }
+          await updateTenant(newPayment.tenantId, tenantUpdates);
         }
         
         setIsAddModalOpen(false);
@@ -878,12 +894,16 @@ export const PaymentsPage = () => {
         ...paymentToEdit,
         paymentDate: new Date().toISOString().split('T')[0],
         status: 'paid',
-        method: 'Offline',
+        method: 'Cash',
       });
 
       // 2. Adjust deposit
       const newBalance = tenant.depositBalance - totalToPay;
-      await updateTenant(tenant.id, { depositBalance: newBalance });
+      const tenantUpdates: any = { depositBalance: newBalance };
+      if (newBalance === 0 && tenant.depositBalance > 0) {
+        tenantUpdates.depositStatus = 'refunded';
+      }
+      await updateTenant(tenant.id, tenantUpdates);
 
       // 3. Create ADJUST payment record
       await addPayment({
@@ -894,7 +914,7 @@ export const PaymentsPage = () => {
         totalAmount: -totalToPay,
         paymentDate: new Date().toISOString().split('T')[0],
         status: 'paid',
-        method: 'Offline',
+        method: 'Cash',
         paymentType: 'adjustment' as any
       });
 
@@ -1729,7 +1749,7 @@ export const PaymentsPage = () => {
                     <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-2">Payment Details</p>
                     <p className="text-xs sm:text-sm text-gray-900 dark:text-white font-bold">Date: {selectedPayment.paymentDate}</p>
                     <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Month: {format(parseISO(`${selectedPayment.month}-01`), 'MMMM yyyy')}</p>
-                    <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Method: {selectedPayment.method}</p>
+                    <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Method: {(selectedPayment.method || '').toUpperCase() === 'OFFLINE' ? 'CASH' : (selectedPayment.method || '').toUpperCase()}</p>
                   </div>
                 </div>
 
@@ -2293,7 +2313,6 @@ export const PaymentsPage = () => {
                       >
                         <option value="Online">Online</option>
                         <option value="Cash">Cash</option>
-                        <option value="Offline">Offline</option>
                       </select>
                     </div>
                   </div>

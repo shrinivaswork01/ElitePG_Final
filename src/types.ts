@@ -5,7 +5,7 @@
 
 export type UserRole = 'super' | 'admin' | 'partner' | 'manager' | 'caretaker' | 'tenant' | 'cleaner' | 'security' | 'none' | (string & {});
 
-export type AppFeature = 'tenants' | 'rooms' | 'payments' | 'complaints' | 'kyc' | 'employees' | 'broadcast' | 'analytics' | 'whatsapp' | 'reports' | 'partner-payouts' | 'multi-branch' | 'expenses' | 'tasks';
+export type AppFeature = 'tenants' | 'rooms' | 'payments' | 'complaints' | 'kyc' | 'employees' | 'broadcast' | 'analytics' | 'whatsapp' | 'reports' | 'partner-payouts' | 'multi-branch' | 'expenses' | 'tasks' | 'subscription';
 
 export interface SubscriptionPlan {
   id: string;
@@ -123,6 +123,8 @@ export interface Tenant {
   vacatingStatus: 'active' | 'notice_given' | 'vacated';
   depositBalance?: number; // Running deposit balance (decreases with adjustments)
   moveInDate?: string; // Physical move-in date (vs joiningDate = booking date)
+  roomSwitchDate?: string; // Date of room switch
+  room_switch_date?: string; // Snake-case representation
   depositLogs?: {
     id: string;
     type: 'deposit' | 'token';
