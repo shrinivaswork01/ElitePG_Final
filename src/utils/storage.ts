@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import imageCompression from 'browser-image-compression';
 
 /**
  * Uploads a file to Supabase Storage and returns the public URL.
@@ -7,9 +8,24 @@ import { supabase } from '../lib/supabase';
  * @param file - The file object to upload
  */
 export const uploadToSupabase = async (bucket: string, path: string, file: File): Promise<string> => {
+  let fileToUpload: File | Blob = file;
+
+  if (file.type && file.type.startsWith('image/')) {
+    try {
+      const options = {
+        maxSizeMB: 1,
+        maxWidthOrHeight: 1920,
+        useWebWorker: true
+      };
+      fileToUpload = await imageCompression(file, options);
+    } catch (compressionError) {
+      console.error('Image compression failed, uploading raw file:', compressionError);
+    }
+  }
+
   const { error: uploadError } = await supabase.storage
     .from(bucket)
-    .upload(path, file, { upsert: true });
+    .upload(path, fileToUpload, { upsert: true });
 
   if (uploadError) {
     throw uploadError;

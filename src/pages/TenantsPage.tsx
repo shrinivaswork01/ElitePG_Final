@@ -1144,19 +1144,19 @@ export const TenantsPage = () => {
                     </div>
                   )}
                   {checkFeatureAccess('kyc') && (
-                    <div className="space-y-4">
+                    <div className="space-y-2 md:col-span-2">
                       <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Identity Verification</label>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-2 gap-6">
                         <select
                           value={kycDoc.type}
                           onChange={(e) => setKycDoc({ ...kycDoc, type: e.target.value })}
-                          className="px-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white transition-all"
+                          className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white transition-all font-medium min-h-[46px] box-border"
                         >
                           <option value="Aadhar Card">Aadhar Card</option>
                           <option value="PAN Card">PAN Card</option>
                           <option value="Voter ID">Voter ID</option>
                         </select>
-                        <div className="relative">
+                        <div className="w-full relative">
                           <input
                             type="file"
                             accept="image/*,.pdf"
@@ -1166,11 +1166,11 @@ export const TenantsPage = () => {
                           />
                           <label
                             htmlFor="kyc-upload"
-                            className="flex items-center justify-center gap-2 px-4 py-3 bg-gray-50 dark:bg-white/5 border-2 border-dashed border-gray-200 dark:border-white/10 rounded-xl cursor-pointer hover:bg-gray-100 dark:hover:bg-white/10 transition-all"
+                            className="flex items-center justify-center gap-2 px-4 py-3 bg-gray-50 dark:bg-white/5 border-2 border-dashed border-gray-200 dark:border-white/10 rounded-xl cursor-pointer hover:bg-gray-100 dark:hover:bg-white/10 transition-all w-full h-full min-h-[46px] text-center box-border"
                           >
-                            <Upload className="w-4 h-4 text-gray-400" />
-                            <span className="text-sm text-gray-500 dark:text-gray-400 truncate max-w-[150px] font-bold">
-                              {kycDoc.fileName || (editingTenant?.kycStatus === 'verified' ? 'Update Document' : 'Upload Document')}
+                            <Upload className="w-4 h-4 text-gray-400 shrink-0" />
+                            <span className="text-sm text-gray-500 dark:text-gray-400 truncate font-semibold">
+                              {kycDoc.fileName || (editingTenant?.kycStatus === 'verified' ? 'Update Verified Document' : 'Upload Document')}
                             </span>
                           </label>
                         </div>
@@ -1178,10 +1178,10 @@ export const TenantsPage = () => {
                     </div>
                   )}
 
-                  <div className="space-y-2">
+                  <div className="space-y-2 md:col-span-2">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Rent Agreement</label>
-                    <div className="flex gap-2 relative">
-                      <div className="flex-1">
+                    <div className="grid grid-cols-2 gap-6">
+                      <div className="w-full relative">
                         <input
                           type="file"
                           accept=".pdf,image/*"
@@ -1191,23 +1191,25 @@ export const TenantsPage = () => {
                         />
                         <label
                           htmlFor="agreement-upload"
-                          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-2 border-dashed border-gray-200 dark:border-white/10 rounded-xl cursor-pointer hover:bg-gray-100 dark:hover:bg-white/10 transition-all"
+                          className="flex items-center justify-center gap-2 px-4 py-3 bg-gray-50 dark:bg-white/5 border-2 border-dashed border-gray-200 dark:border-white/10 rounded-xl cursor-pointer hover:bg-gray-100 dark:hover:bg-white/10 transition-all w-full h-full min-h-[46px] text-center box-border"
                         >
-                          <FileText className="w-4 h-4 text-gray-400" />
-                          <span className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                          <FileText className="w-4 h-4 text-gray-400 shrink-0" />
+                          <span className="text-sm text-gray-500 dark:text-gray-400 truncate font-semibold">
                             {rentAgreement.fileName || (editingTenant?.rentAgreementUrl ? 'Update Agreement' : 'Upload Agreement')}
                           </span>
                         </label>
                       </div>
-                      {editingTenant && (
+                      {editingTenant ? (
                         <button
                           type="button"
                           onClick={() => setIsAgreementGeneratorOpen(true)}
-                          className="px-4 py-2.5 bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-purple-100 dark:hover:bg-purple-500/20 transition-colors shrink-0"
+                          className="px-6 py-3 bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-purple-100 dark:hover:bg-purple-500/20 transition-colors w-full h-full min-h-[46px] box-border"
                         >
                           <FileText className="w-4 h-4" />
                           Generate
                         </button>
+                      ) : (
+                        <div />
                       )}
                     </div>
                   </div>
