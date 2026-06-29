@@ -394,3 +394,16 @@ export interface PartnerPayout {
   adminApprovedBy?: string;
   createdAt: string;
 }
+
+export type WhatsAppTemplateCategory = 'reminder' | 'notice' | 'greeting' | 'custom';
+
+export interface WhatsAppTemplate {
+  id: string;
+  branchId: string;
+  name: string;
+  content: string;
+  category: WhatsAppTemplateCategory;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}

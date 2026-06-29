@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useMemo, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { format } from 'date-fns';
-import { Tenant, Room, Payment, Complaint, Employee, KYCData, Announcement, SalaryPayment, Task, PGConfig, PGBranch, RolePermissions, SubscriptionPlan, AppFeature, KYCStatus, UserInvite, MeterGroup, Expense, ExpenseStatus, PartnerShare, ProfitDistribution, BranchTabPermission } from '../types';
+import { Tenant, Room, Payment, Complaint, Employee, KYCData, Announcement, SalaryPayment, Task, PGConfig, PGBranch, RolePermissions, SubscriptionPlan, AppFeature, KYCStatus, UserInvite, MeterGroup, Expense, ExpenseStatus, PartnerShare, ProfitDistribution, BranchTabPermission, WhatsAppTemplate } from '../types';
 import { uploadToSupabase, deleteFromSupabase } from '../utils/storage';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
@@ -29,6 +29,7 @@ interface AppContextType {
   partnerShares: PartnerShare[];
   profitDistributions: ProfitDistribution[];
   branchTabPermissions: BranchTabPermission[];
+  whatsappTemplates: WhatsAppTemplate[];
 
   // Actions
   addTenant: (tenant: Omit<Tenant, 'id' | 'branchId'> & { branchId?: string }, kycDoc?: { type: string, file?: File, url?: string }, rentAgreementDoc?: { file?: File, url?: string }) => Promise<void>;
@@ -75,6 +76,10 @@ interface AppContextType {
   addExpense: (expense: Omit<Expense, 'id' | 'branchId' | 'createdAt' | 'editedAt'>) => Promise<void>;
   updateExpense: (id: string, updates: Partial<Expense>) => Promise<void>;
   deleteExpense: (id: string) => Promise<void>;
+
+  addWhatsAppTemplate: (template: Omit<WhatsAppTemplate, 'id' | 'branchId' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+  updateWhatsAppTemplate: (id: string, updates: Partial<WhatsAppTemplate>) => Promise<void>;
+  deleteWhatsAppTemplate: (id: string) => Promise<void>;
 
   updatePGConfig: (updates: Partial<PGConfig>, branchId?: string) => Promise<void>;
 
@@ -144,7 +149,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       partnerShares: [],
       profitDistributions: [],
       branchTabPermissions: [],
-      partnerPayouts: []
+      partnerPayouts: [],
+      whatsappTemplates: []
     };
 
     if (cached) {
@@ -169,7 +175,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const fetchData = useCallback(async () => {
     // We only fetch data if user is logged in
     if (!userId) {
-      setData({ tenants: [], rooms: [], payments: [], complaints: [], employees: [], kycs: [], announcements: [], salaryPayments: [], tasks: [], pgConfigs: [], branches: [], subscriptionPlans: [], userInvites: [], superSignatureUrl: null, expenses: [], tenantDepositLogs: [], partnerShares: [], profitDistributions: [], branchTabPermissions: [], partnerPayouts: [] });
+      setData({ tenants: [], rooms: [], payments: [], complaints: [], employees: [], kycs: [], announcements: [], salaryPayments: [], tasks: [], pgConfigs: [], branches: [], subscriptionPlans: [], userInvites: [], superSignatureUrl: null, expenses: [], tenantDepositLogs: [], partnerShares: [], profitDistributions: [], branchTabPermissions: [], partnerPayouts: [], whatsappTemplates: [] });
       setIsAppLoading(false);
       localStorage.removeItem('elite_pg_cached_data');
       return;
@@ -239,7 +245,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           branchTabPermissions: tabPermissions.map(tp => ({
             id: tp.id, branchId: tp.branch_id, moduleName: tp.module_name as any, isEnabled: tp.is_enabled
           })),
-          partnerPayouts: []
+          partnerPayouts: [],
+          whatsappTemplates: []
         };
 
         setData(newData);
@@ -283,7 +290,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         { data: expenses },
         { data: depositLogs },
         { data: shares },
-        { data: distributions }
+        { data: distributions },
+        { data: waTemplates }
       ] = await Promise.all([
         // Branches: super gets all, admin gets their owned branches, others get their single branch
         isSuper
@@ -312,7 +320,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         branchQuery(supabase.from('expenses').select('*')),
         branchQuery(supabase.from('tenant_deposit_logs').select('*')),
         branchQuery(supabase.from('partner_shares').select('*')),
-        branchQuery(supabase.from('profit_distributions').select('*'))
+        branchQuery(supabase.from('profit_distributions').select('*')),
+        branchQuery(supabase.from('whatsapp_templates').select('*'))
       ]);
 
       // Fetch branch_tab_permissions and partner_payouts SEPARATELY so they can never crash the main data load
@@ -453,6 +462,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           partnerApprovedBy: p.partner_approved_by, adminApprovedBy: p.admin_approved_by,
           createdAt: p.created_at
         })),
+        whatsappTemplates: (waTemplates || []).map(t => ({
+          id: t.id, branchId: t.branch_id, name: t.name, content: t.content,
+          category: t.category, createdBy: t.created_by, createdAt: t.created_at, updatedAt: t.updated_at
+        })),
         superSignatureUrl: superUserSignature?.signature_url || null
       };
 
@@ -487,7 +500,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // Filtered data based on branchId
   const filteredData = useMemo(() => {
     if (!user) return {
-      tenants: [], rooms: [], meterGroups: [], payments: [], complaints: [], employees: [], kycs: [], announcements: [], salaryPayments: [], tasks: [], expenses: [], pgConfig: null, subscriptionPlans: [], branches: [], userInvites: []
+      tenants: [], rooms: [], meterGroups: [], payments: [], complaints: [], employees: [], kycs: [], announcements: [], salaryPayments: [], tasks: [], expenses: [], pgConfig: null, subscriptionPlans: [], branches: [], userInvites: [], whatsappTemplates: []
     };
 
     if (user.role === 'super') return {
@@ -530,6 +543,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       partnerShares: (data.partnerShares || []).filter((s: any) => s.branchId === branchId),
       profitDistributions: (data.profitDistributions || []).filter((d: any) => d.branchId === branchId),
       branchTabPermissions: (data.branchTabPermissions || []).filter((tp: any) => tp.branchId === branchId),
+      whatsappTemplates: (data.whatsappTemplates || []).filter((t: WhatsAppTemplate) => t.branchId === branchId),
       pgConfig: (data.pgConfigs || []).find((c: PGConfig) => c.branchId === branchId) || null,
       subscriptionPlans: data.subscriptionPlans || [],
       branches: data.branches || [],
@@ -1670,6 +1684,49 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  // === WhatsApp Template Operations ===
+
+  const addWhatsAppTemplate = async (template: Omit<WhatsAppTemplate, 'id' | 'branchId' | 'createdAt' | 'updatedAt'>) => {
+    const branchId = activeBranchId || user?.branchId || data.branches[0]?.id;
+    if (!branchId) return;
+
+    applyOptimistic(prev => ({
+      ...prev,
+      whatsappTemplates: [...(prev.whatsappTemplates || []), { ...template, id: `temp-${Date.now()}`, branchId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }]
+    }));
+
+    await refetch(supabase.from('whatsapp_templates').insert({
+      branch_id: branchId,
+      name: template.name,
+      content: template.content,
+      category: template.category,
+      created_by: template.createdBy
+    }), 'Template saved successfully');
+  };
+
+  const updateWhatsAppTemplate = async (id: string, updates: Partial<WhatsAppTemplate>) => {
+    applyOptimistic(prev => ({
+      ...prev,
+      whatsappTemplates: (prev.whatsappTemplates || []).map((t: any) => t.id === id ? { ...t, ...updates, updatedAt: new Date().toISOString() } : t)
+    }));
+
+    const dbUpdates: any = { updated_at: new Date().toISOString() };
+    if (updates.name !== undefined) dbUpdates.name = updates.name;
+    if (updates.content !== undefined) dbUpdates.content = updates.content;
+    if (updates.category !== undefined) dbUpdates.category = updates.category;
+
+    await refetch(supabase.from('whatsapp_templates').update(dbUpdates).eq('id', id), 'Template updated');
+  };
+
+  const deleteWhatsAppTemplate = async (id: string) => {
+    applyOptimistic(prev => ({
+      ...prev,
+      whatsappTemplates: (prev.whatsappTemplates || []).filter((t: any) => t.id !== id)
+    }));
+
+    await refetch(supabase.from('whatsapp_templates').delete().eq('id', id), 'Template deleted');
+  };
+
   const updatePGConfig = async (updates: Partial<PGConfig>, branchId?: string) => {
     const targetBranch = branchId || filteredData.currentBranch?.id || user?.branchId;
     if (!targetBranch) { toast.error("No active branch selected."); return; }
@@ -2076,6 +2133,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       deleteSalaryPayment,
       addTask, updateTask, deleteTask,
       addExpense, updateExpense, deleteExpense,
+      addWhatsAppTemplate, updateWhatsAppTemplate, deleteWhatsAppTemplate,
       updatePGConfig,
       addBranch, updateBranch, deleteBranch,
       addSubscriptionPlan, updateSubscriptionPlan, deleteSubscriptionPlan,
