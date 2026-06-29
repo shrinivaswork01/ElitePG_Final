@@ -72,6 +72,7 @@ export const TenantsPage = () => {
   const [kycUploadTenant, setKycUploadTenant] = useState<Tenant | null>(null);
   const [menuTenant, setMenuTenant] = useState<Tenant | null>(null);
   const [checkoutConfirmModal, setCheckoutConfirmModal] = useState<{ isOpen: boolean, tenantId: string, tenantName: string } | null>(null);
+  const [vacateConfirmModal, setVacateConfirmModal] = useState<{ isOpen: boolean, tenantId: string, tenantName: string } | null>(null);
   const [adminKycFile, setAdminKycFile] = useState<{ type: string; file?: File; url?: string; fileName: string } | null>(null);
   const [adminKycType, setAdminKycType] = useState('Aadhar Card');
   const [detailTenant, setDetailTenant] = useState<any | null>(null);
@@ -201,12 +202,7 @@ export const TenantsPage = () => {
               <DropdownItem 
                 icon={<LogOut className="w-4 h-4" />} 
                 label="Request Vacate" 
-                onClick={() => {
-                  if (window.confirm(`Start 30-day notice for ${t.name}?`)) {
-                    requestVacating(t.id);
-                    refetch();
-                  }
-                }} 
+                onClick={() => setVacateConfirmModal({ isOpen: true, tenantId: t.id, tenantName: t.name })} 
               />
             )}
             {['admin', 'manager'].includes(user?.role || '') && t.status === 'vacating' && (
@@ -1663,6 +1659,51 @@ export const TenantsPage = () => {
                   className="flex-1 px-4 py-2.5 bg-rose-600 text-white font-bold rounded-xl shadow-lg shadow-rose-600/20 hover:bg-rose-700 transition-all"
                 >
                   Finalize
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+        {vacateConfirmModal?.isOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setVacateConfirmModal(null)}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-sm bg-white dark:bg-[#111111] rounded-3xl shadow-2xl overflow-hidden border border-white/5 p-6 text-center"
+            >
+              <div className="w-16 h-16 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <LogOut className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2 tracking-tight">
+                Request to Vacate?
+              </h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 leading-relaxed">
+                Are you sure you want to request to vacate for <span className="font-bold text-gray-900 dark:text-white">{vacateConfirmModal.tenantName}</span>? This will start the 30-day notice period.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setVacateConfirmModal(null)}
+                  className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-gray-400 font-bold rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    await requestVacating(vacateConfirmModal.tenantId);
+                    setVacateConfirmModal(null);
+                    refetch();
+                  }}
+                  className="flex-1 px-4 py-2.5 bg-rose-600 text-white font-bold rounded-xl shadow-lg shadow-rose-600/20 hover:bg-rose-700 transition-all"
+                >
+                  Confirm
                 </button>
               </div>
             </motion.div>
