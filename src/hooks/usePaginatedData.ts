@@ -30,7 +30,7 @@ export function usePaginatedData<T>(options: UsePaginatedDataOptions) {
   const isMounted = useRef(true);
 
   const fetchLimit = options.limit || 10;
-  
+
   // Create stable signature for fetch request
   const fetchSignature = JSON.stringify({
     branchId: activeBranchId,
@@ -55,12 +55,12 @@ export function usePaginatedData<T>(options: UsePaginatedDataOptions) {
       setIsLoading(false);
       return;
     }
-    
+
     setIsLoading(true);
     setError(null);
     try {
       const offset = (page - 1) * fetchLimit;
-      
+
       let query = supabase
         .from(options.table)
         .select(options.select || '*', { count: 'exact' });

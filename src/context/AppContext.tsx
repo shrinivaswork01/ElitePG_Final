@@ -503,15 +503,19 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       tenants: [], rooms: [], meterGroups: [], payments: [], complaints: [], employees: [], kycs: [], announcements: [], salaryPayments: [], tasks: [], expenses: [], pgConfig: null, subscriptionPlans: [], branches: [], userInvites: [], whatsappTemplates: []
     };
 
-    if (user.role === 'super') return {
-      ...data,
-      pgConfig: (data.pgConfigs || [])[0] || null,
-      subscriptionPlans: data.subscriptionPlans || [],
-      branches: data.branches || [],
-      expenses: data.expenses || []
-    };
-
     const branchId = activeBranchId;
+    const shouldFilter = user.role !== 'super' || !!branchId;
+
+    if (!shouldFilter) {
+      return {
+        ...data,
+        pgConfig: (data.pgConfigs || [])[0] || null,
+        subscriptionPlans: data.subscriptionPlans || [],
+        branches: data.branches || [],
+        expenses: data.expenses || []
+      };
+    }
+
     const branch = (data.branches || []).find((b: PGBranch) => b.id === branchId);
     const plan = (data.subscriptionPlans || []).find((p: SubscriptionPlan) => p.id === branch?.planId);
 
@@ -1317,7 +1321,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       if (finalKycUrl) {
         await supabase.from('kyc_documents').insert({
           employee_id: createdEm.id, document_type: kycDoc.type, document_url: finalKycUrl, status: kycStatus, branch_id: targetBranch,
-          ...(isAdmin ? { verified_by: user?.name, verified_at: new Date().toISOString().split('T')[0] } : {})
+          ...(isAdmin ? { verified_by: user?.id, verified_at: new Date().toISOString().split('T')[0] } : {})
         });
       }
     }
@@ -1393,7 +1397,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       }
       const { error: kycError } = await supabase.from('kyc_documents').insert({
         employee_id: id, document_type: kycDoc.type, document_url: finalKycUrl, status: newKycStatus, branch_id: eObj?.branchId || user?.branchId,
-        ...(isAdmin ? { verified_by: user?.name, verified_at: new Date().toISOString().split('T')[0] } : {})
+        ...(isAdmin ? { verified_by: user?.id, verified_at: new Date().toISOString().split('T')[0] } : {})
       });
       if (kycError) { toast.error(kycError.message); }
       else { toast.success(isAdmin ? 'KYC verified and uploaded!' : 'KYC submitted for verification!'); }
@@ -1913,7 +1917,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const complaints = filteredData.complaints || [];
 
     const monthlyRevenue = (payments || [])
-      .filter((p: Payment) => p && p.month === currentMonth && p.status === 'paid')
+      .filter((p: Payment) => p && p.month === currentMonth && p.status === 'paid' && (p.paymentType || 'rent').toLowerCase() === 'rent')
       .reduce((sum: number, p: Payment) => sum + (p.totalAmount || 0), 0);
 
     const totalActiveTenants = (tenants || []).filter((t: Tenant) => t && t.status === 'active').length;

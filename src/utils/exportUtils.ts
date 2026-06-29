@@ -495,3 +495,158 @@ export const exportKYCToExcel = async (
   saveAs(blob, `ElitePG_KYC_Export_${format(new Date(), 'dd-MM-yyyy')}.xlsx`);
 };
 
+export const exportRoomsToExcel = async (
+  rooms: Room[],
+  tenants: Tenant[],
+  branches: PGBranch[],
+  meterGroups: MeterGroup[],
+  currentBranch?: PGBranch
+) => {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'ElitePG';
+  workbook.lastModifiedBy = 'ElitePG';
+  workbook.created = new Date();
+  
+  const sheet = workbook.addWorksheet('Rooms');
+  sheet.columns = [
+    { header: 'Room Number', key: 'roomNumber', width: 15 },
+    { header: 'Branch', key: 'branchName', width: 25 },
+    { header: 'Flat / Group', key: 'flatName', width: 20 },
+    { header: 'Floor', key: 'floor', width: 10 },
+    { header: 'Total Beds', key: 'totalBeds', width: 12 },
+    { header: 'Occupied Beds', key: 'occupiedBeds', width: 15 },
+    { header: 'Vacant Beds', key: 'vacantBeds', width: 12 },
+    { header: 'Type', key: 'type', width: 12 },
+    { header: 'Price (Rent)', key: 'price', width: 15 },
+    { header: 'Occupancy %', key: 'occupancy', width: 15 },
+  ];
+
+  rooms.forEach(r => {
+    const occupied = tenants.filter(t => (t.roomId || (t as any).room_id) === r.id && t.status === 'active').length;
+    const tBeds = r.totalBeds || (r as any).total_beds || 0;
+    const vacant = tBeds - occupied;
+    const occupancy = tBeds > 0 ? (occupied / tBeds) * 100 : 0;
+    const rBranch = branches.find(b => b.id === (r.branchId || (r as any).branch_id)) || currentBranch;
+    const flat = meterGroups.find(m => m.id === (r.meterGroupId || (r as any).meter_group_id));
+
+    sheet.addRow({
+      roomNumber: r.roomNumber || (r as any).room_number,
+      branchName: rBranch?.name || 'Unknown',
+      flatName: flat?.name || '—',
+      floor: r.floor,
+      totalBeds: tBeds,
+      occupiedBeds: occupied,
+      vacantBeds: vacant,
+      type: r.type,
+      price: r.price,
+      occupancy: `${occupancy.toFixed(2)}%`,
+    });
+  });
+
+  applyHeaderStyle(sheet, 10);
+  sheet.getColumn('price').numFmt = '"₹"#,##0.00';
+  sheet.autoFilter = {
+    from: { row: 1, column: 1 },
+    to: { row: 1, column: 10 }
+  };
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const fileType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8';
+  const blob = new Blob([buffer], { type: fileType });
+  saveAs(blob, `ElitePG_Rooms_Export_${format(new Date(), 'dd-MM-yyyy')}.xlsx`);
+};
+
+export const exportFlatsToExcel = async (
+  meterGroups: MeterGroup[],
+  rooms: Room[],
+  tenants: Tenant[],
+  branches: PGBranch[],
+  currentBranch?: PGBranch
+) => {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'ElitePG';
+  workbook.lastModifiedBy = 'ElitePG';
+  workbook.created = new Date();
+  
+  const sheet = workbook.addWorksheet('Flats');
+  sheet.columns = [
+    { header: 'Flat / Group Name', key: 'name', width: 25 },
+    { header: 'Branch', key: 'branchName', width: 25 },
+    { header: 'Floor', key: 'floor', width: 10 },
+    { header: 'Linked Rooms', key: 'linkedRooms', width: 15 },
+    { header: 'Occupied Beds', key: 'occupiedBeds', width: 15 },
+    { header: 'Total Beds', key: 'totalBeds', width: 15 },
+    { header: 'Occupancy %', key: 'occupancy', width: 15 },
+  ];
+
+  meterGroups.forEach(f => {
+    const linkedRooms = rooms.filter(r => (r.meterGroupId || (r as any).meter_group_id) === f.id);
+    const linkedCount = linkedRooms.length;
+    const totalBeds = linkedRooms.reduce((sum, r) => sum + (r.totalBeds || (r as any).total_beds || 0), 0);
+    const occupied = tenants.filter(t => linkedRooms.some(r => r.id === (t.roomId || (t as any).room_id)) && t.status === 'active').length;
+    const occupancy = totalBeds > 0 ? (occupied / totalBeds) * 100 : 0;
+    const fBranch = branches.find(b => b.id === (f.branchId || (f as any).branch_id)) || currentBranch;
+
+    sheet.addRow({
+      name: f.name,
+      branchName: fBranch?.name || 'Unknown',
+      floor: f.floor,
+      linkedRooms: linkedCount,
+      occupiedBeds: occupied,
+      totalBeds: totalBeds,
+      occupancy: `${occupancy.toFixed(2)}%`,
+    });
+  });
+
+  applyHeaderStyle(sheet, 7);
+  sheet.autoFilter = {
+    from: { row: 1, column: 1 },
+    to: { row: 1, column: 7 }
+  };
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const fileType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8';
+  const blob = new Blob([buffer], { type: fileType });
+  saveAs(blob, `ElitePG_Flats_Export_${format(new Date(), 'dd-MM-yyyy')}.xlsx`);
+};
+
+export const exportTransactionLogsToExcel = async (
+  logs: any[]
+) => {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'ElitePG';
+  workbook.lastModifiedBy = 'ElitePG';
+  workbook.created = new Date();
+  
+  const sheet = workbook.addWorksheet('Transaction Logs');
+  sheet.columns = [
+    { header: 'Branch Name', key: 'branchName', width: 25 },
+    { header: 'Date', key: 'date', width: 15 },
+    { header: 'Category', key: 'category', width: 15 },
+    { header: 'Description', key: 'description', width: 35 },
+    { header: 'Amount (INR)', key: 'amount', width: 15 },
+  ];
+
+  logs.forEach(log => {
+    sheet.addRow({
+      branchName: log.branch_name || 'Unknown',
+      date: log.date ? format(new Date(log.date), 'yyyy-MM-dd') : 'N/A',
+      category: log.category || '—',
+      description: log.description || '—',
+      amount: log.amount || 0,
+    });
+  });
+
+  applyHeaderStyle(sheet, 5);
+  sheet.getColumn('amount').numFmt = '"₹"#,##0.00';
+  sheet.autoFilter = {
+    from: { row: 1, column: 1 },
+    to: { row: 1, column: 5 }
+  };
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const fileType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8';
+  const blob = new Blob([buffer], { type: fileType });
+  saveAs(blob, `ElitePG_Transaction_Logs_Export_${format(new Date(), 'dd-MM-yyyy')}.xlsx`);
+};
+

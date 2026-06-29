@@ -1102,9 +1102,9 @@ export const PaymentsPage = () => {
   // Dashboard stats should be independent of the current search term to match Dashboard expectations
   const totalRevenue = React.useMemo(() => {
     return (isTenant ? payments.filter(p => p.tenantId === tenantData?.id) : payments)
-      .filter(p => p.status === 'paid' && (p.paymentType || 'rent').toLowerCase() === 'rent')
+      .filter(p => p.status === 'paid' && p.month === currentMonth && (p.paymentType || 'rent').toLowerCase() === 'rent')
       .reduce((sum, p) => sum + p.totalAmount, 0);
-  }, [isTenant, payments, tenantData?.id]);
+  }, [isTenant, payments, tenantData?.id, currentMonth]);
 
   const myPaymentsThisMonth = React.useMemo(() => {
     return isTenant ? payments.filter(p => p.tenantId === tenantData?.id && p.month === currentMonth) : [];
@@ -1297,7 +1297,7 @@ export const PaymentsPage = () => {
               <TrendingUp className="w-6 h-6" />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{isTenant ? 'Total Paid to Date' : 'Total Rent Revenue'}</p>
+              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{isTenant ? 'Total Paid to Date' : 'Rent Revenue (This Month)'}</p>
               <h3 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">₹{totalRevenue.toLocaleString()}</h3>
             </div>
           </div>

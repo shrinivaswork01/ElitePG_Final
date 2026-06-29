@@ -16,7 +16,8 @@ import {
   Layers,
   MapPin,
   LayoutDashboard,
-  Zap
+  Zap,
+  Download
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePaginatedData } from '../hooks/usePaginatedData';
@@ -29,11 +30,12 @@ import { FlatMobileList } from '../components/FlatMobileList';
 import { ElectricityBillModal } from '../components/ElectricityBillModal';
 import { cn } from '../utils';
 import toast from 'react-hot-toast';
+import { exportRoomsToExcel, exportFlatsToExcel } from '../utils/exportUtils';
 
 export const RoomsPage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroups, addMeterGroup, updateMeterGroup, deleteMeterGroup, pgConfig } = useApp();
+  const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroups, addMeterGroup, updateMeterGroup, deleteMeterGroup, pgConfig, branches, currentBranch } = useApp();
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [roomToDelete, setRoomToDelete] = useState<Room | null>(null);
   const [electricityFlat, setElectricityFlat] = useState<MeterGroup | null>(null);
@@ -410,6 +412,31 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
     setFlatFormData({ name: '', floor: 1 });
   };
 
+  const availableFloors = React.useMemo(() => {
+    const roomFloors = (rooms || []).map(r => r.floor);
+    const flatFloors = (meterGroups || []).map(m => m.floor);
+    const allFloors = Array.from(new Set([...roomFloors, ...flatFloors]))
+      .filter(f => f !== undefined && f !== null)
+      .sort((a, b) => a - b);
+    return allFloors.length > 0 ? allFloors : Array.from({ length: 6 }, (_, i) => i);
+  }, [rooms, meterGroups]);
+
+  const filteredMeterGroups = React.useMemo(() => {
+    return (meterGroups || []).filter(mg => {
+      const matchesSearch = searchTerm === '' || mg.name.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesFloor = filterFloor === 'all' || mg.floor === Number(filterFloor);
+      return matchesSearch && matchesFloor;
+    });
+  }, [meterGroups, searchTerm, filterFloor]);
+
+  const roomsToExport = React.useMemo(() => {
+    return (rooms || []).filter(r => {
+      const matchesSearch = searchTerm === '' || String(r.roomNumber || (r as any).room_number || '').toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesFloor = filterFloor === 'all' || r.floor === Number(filterFloor);
+      return matchesSearch && matchesFloor;
+    });
+  }, [rooms, searchTerm, filterFloor]);
+
   const roomsData: Room[] = (paginatedRooms || []).map((r: any) => {
     const liveOccupied = tenants.filter(t => t.roomId === r.id && t.status === 'active').length;
     return {
@@ -496,40 +523,63 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
         </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-          <div className="relative w-full sm:w-80">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search room..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-[#111111] border border-gray-100 dark:border-white/5 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none shadow-sm"
-            />
-          </div>
-          
-          <div className="relative w-full sm:w-48">
+      <div className="bg-white dark:bg-[#111111] p-4 rounded-2xl border border-gray-100 dark:border-white/5 shadow-sm flex flex-col sm:flex-row gap-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search room..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+          />
+        </div>
+        
+        <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0">
+          <div className="relative w-48">
             <Layers className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <select
               value={filterFloor}
               onChange={(e) => setFilterFloor(e.target.value === 'all' ? 'all' : Number(e.target.value))}
-              className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-[#111111] border border-gray-100 dark:border-white/5 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none shadow-sm appearance-none cursor-pointer"
+              className="w-full pl-10 pr-8 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white appearance-none cursor-pointer"
             >
               <option value="all">All Floors</option>
-              {Array.from({ length: 10 }, (_, i) => i).map(f => (
+              {availableFloors.map(f => (
                 <option key={f} value={f}>Floor {f}</option>
               ))}
             </select>
           </div>
-        </div>
 
-        {isNearLimit && !isAtLimit && (
+          <button
+            onClick={() => {
+              try {
+                if (activeTab === 'rooms') {
+                  exportRoomsToExcel(roomsToExport, tenants, branches, meterGroups, currentBranch);
+                  toast.success('Rooms Export Generated Successfully');
+                } else {
+                  exportFlatsToExcel(filteredMeterGroups, rooms, tenants, branches, currentBranch);
+                  toast.success('Flats Export Generated Successfully');
+                }
+              } catch (err) {
+                console.error(err);
+                toast.error('Failed to generate export');
+              }
+            }}
+            className="p-2.5 bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors shrink-0 flex items-center justify-center"
+            title="Export to Excel"
+          >
+            <Download className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+
+      {isNearLimit && !isAtLimit && (
+        <div className="flex justify-end">
           <div className="px-4 py-2 bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-xl text-xs font-bold border border-amber-100 dark:border-amber-500/20">
             {currentPlan?.maxRooms! - currentRoomsCount} rooms left on your plan
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {isNearLimit && (
         <motion.div
@@ -581,13 +631,13 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
         ) : (
           <DataGrid
             columns={flatColumns}
-            data={meterGroups}
+            data={filteredMeterGroups}
             isLoading={false}
             keyExtractor={(f: any) => f.id}
             onRowClick={(f: any) => setDetailFlat(f)}
             page={1}
             limit={100}
-            totalCount={meterGroups.length}
+            totalCount={filteredMeterGroups.length}
             onPageChange={() => {}}
           />
         )}
@@ -612,7 +662,7 @@ const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroup
           />
         ) : (
           <FlatMobileList
-            meterGroups={meterGroups}
+            meterGroups={filteredMeterGroups}
             rooms={rooms}
             tenants={tenants}
             onAdd={() => setIsAddFlatModalOpen(true)}

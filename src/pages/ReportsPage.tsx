@@ -16,13 +16,14 @@ import {
   Wallet,
   DollarSign,
   ShieldCheck,
+  Download,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { MultiSelect } from '../components/MultiSelect';
 import { DataGrid, ColumnDef } from '../components/DataGrid';
-import { exportToExcel } from '../utils/exportUtils';
+import { exportToExcel, exportTransactionLogsToExcel } from '../utils/exportUtils';
 import toast from 'react-hot-toast';
 import {
   XAxis,
@@ -330,6 +331,16 @@ export const ReportsPage = () => {
       );
     } catch (error) {
       console.error('Export failed:', error);
+    }
+  };
+
+  const handleExportDetailedLogs = async () => {
+    try {
+      await exportTransactionLogsToExcel(detailedLogs);
+      toast.success('Detailed Transaction Logs Export Generated Successfully');
+    } catch (error) {
+      console.error('Export failed:', error);
+      toast.error('Failed to generate export');
     }
   };
 
@@ -653,7 +664,29 @@ export const ReportsPage = () => {
                 <h3 className="text-xl font-black text-gray-900 dark:text-white flex items-center gap-2 font-display uppercase tracking-tight"><Receipt className="w-6 h-6 text-indigo-500" /> Detailed Transaction Logs</h3>
                 <p className="text-[10px] font-bold text-gray-400 tracking-widest uppercase italic mt-1">Showing {paginatedLogs.length} of {detailedLogs.length} Records</p>
             </div>
-            <div className="flex flex-wrap gap-2">{(['all', 'rent', 'electricity', 'token', 'deposit', 'adjustment', 'payout'] as const).map(filter => (<button key={filter} onClick={() => setTransactionFilter(filter)} className={cn("px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all", transactionFilter === filter ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20" : "bg-gray-50 text-gray-500 dark:bg-white/5 dark:text-gray-400 hover:bg-gray-100 shadow-sm")}>{filter}</button>))}</div>
+            <div className="flex flex-wrap items-center gap-2">
+              {(['all', 'rent', 'electricity', 'token', 'deposit', 'adjustment', 'payout'] as const).map(filter => (
+                <button
+                  key={filter}
+                  onClick={() => setTransactionFilter(filter)}
+                  className={cn(
+                    "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                    transactionFilter === filter
+                      ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
+                      : "bg-gray-50 text-gray-500 dark:bg-white/5 dark:text-gray-400 hover:bg-gray-100 shadow-sm"
+                  )}
+                >
+                  {filter}
+                </button>
+              ))}
+              <button
+                onClick={handleExportDetailedLogs}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-emerald-600/20 transition-all shrink-0"
+                title="Export Detailed Transaction Logs to Excel"
+              >
+                <Download className="w-3.5 h-3.5" /> Export Excel
+              </button>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[800px]">
