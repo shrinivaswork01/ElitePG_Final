@@ -24,7 +24,8 @@ import {
   Clock,
   LogOut,
   CheckCircle,
-  XCircle
+  XCircle,
+  AlertTriangle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePaginatedData } from '../hooks/usePaginatedData';
@@ -62,9 +63,9 @@ export const TenantsPage = () => {
   }
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isAgreementGeneratorOpen, setIsAgreementGeneratorOpen] = useState(false);
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [filterStatus, setFilterStatus] = useState<TenantStatus | 'all'>('all');
+  const [isAgreementGeneratorOpen, setIsAgreementGeneratorOpen] = useState(false);
   const [viewingPayments, setViewingPayments] = useState<Tenant | null>(null);
   const [viewingAgreement, setViewingAgreement] = useState<Tenant | null>(null);
   const [tenantForLogin, setTenantForLogin] = useState<Tenant | null>(null);
@@ -73,7 +74,16 @@ export const TenantsPage = () => {
   const [tenantToDelete, setTenantToDelete] = useState<Tenant | null>(null);
   const [kycUploadTenant, setKycUploadTenant] = useState<Tenant | null>(null);
   const [menuTenant, setMenuTenant] = useState<Tenant | null>(null);
-  const [checkoutConfirmModal, setCheckoutConfirmModal] = useState<{ isOpen: boolean, tenantId: string, tenantName: string } | null>(null);
+  const [checkoutConfirmModal, setCheckoutConfirmModal] = useState<{ isOpen: boolean, tenantId: string, tenantName: string, depositBalance: number, exitDate: string } | null>(null);
+  const [checkoutKeysReturned, setCheckoutKeysReturned] = useState(false);
+  const [checkoutRoomCleaned, setCheckoutRoomCleaned] = useState(false);
+  const [checkoutUtilitiesSettled, setCheckoutUtilitiesSettled] = useState(false);
+  const [checkoutDeductions, setCheckoutDeductions] = useState<{ amount: number; reason: string }[]>([]);
+  const [forceCheckout, setForceCheckout] = useState(false);
+  const [newDeductionReason, setNewDeductionReason] = useState('');
+  const [newDeductionAmount, setNewDeductionAmount] = useState('');
+  const [adjustExitDateModal, setAdjustExitDateModal] = useState<{ isOpen: boolean, tenantId: string, tenantName: string, exitDate: string } | null>(null);
+  const [newExitDate, setNewExitDate] = useState('');
   const [vacateConfirmModal, setVacateConfirmModal] = useState<{ isOpen: boolean, tenantId: string, tenantName: string } | null>(null);
   const [cancelVacateConfirmModal, setCancelVacateConfirmModal] = useState<{ isOpen: boolean, tenantId: string, tenantName: string } | null>(null);
   const [adminKycFile, setAdminKycFile] = useState<{ type: string; file?: File; url?: string; fileName: string } | null>(null);
@@ -229,7 +239,35 @@ export const TenantsPage = () => {
               <DropdownItem 
                 icon={<CheckCircle className="w-4 h-4 text-emerald-500" />} 
                 label="Confirm Checkout" 
-                onClick={() => setCheckoutConfirmModal({ isOpen: true, tenantId: t.id, tenantName: t.name })} 
+                onClick={() => {
+                  setCheckoutConfirmModal({
+                    isOpen: true,
+                    tenantId: t.id,
+                    tenantName: t.name,
+                    depositBalance: t.deposit_balance ?? t.depositBalance ?? 0,
+                    exitDate: t.exit_date || t.exitDate || ''
+                  });
+                  setCheckoutKeysReturned(false);
+                  setCheckoutRoomCleaned(false);
+                  setCheckoutUtilitiesSettled(false);
+                  setCheckoutDeductions([]);
+                  setForceCheckout(false);
+                }} 
+              />
+            )}
+            {['super', 'admin', 'manager'].includes(user?.role || '') && t.status === 'vacating' && (
+              <DropdownItem 
+                icon={<Calendar className="w-4 h-4 text-indigo-500" />} 
+                label="Adjust Exit Date" 
+                onClick={() => {
+                  setAdjustExitDateModal({
+                    isOpen: true,
+                    tenantId: t.id,
+                    tenantName: t.name,
+                    exitDate: t.exit_date || t.exitDate || ''
+                  });
+                  setNewExitDate(t.exit_date || t.exitDate || '');
+                }} 
               />
             )}
             {['super', 'admin', 'manager'].includes(user?.role || '') && t.status === 'vacating' && (
@@ -775,6 +813,20 @@ export const TenantsPage = () => {
         onDelete={(t) => setTenantToDelete(t)}
         onViewAgreement={(t) => setViewingAgreement(t)}
         onViewPayments={(t) => setViewingPayments(t)}
+        onCheckout={(t) => {
+          setCheckoutConfirmModal({
+            isOpen: true,
+            tenantId: t.id,
+            tenantName: t.name,
+            depositBalance: t.depositBalance ?? t.deposit_balance ?? 0,
+            exitDate: t.exitDate || t.exit_date || ''
+          });
+          setCheckoutKeysReturned(false);
+          setCheckoutRoomCleaned(false);
+          setCheckoutUtilitiesSettled(false);
+          setCheckoutDeductions([]);
+          setForceCheckout(false);
+        }}
         onAuthorize={async (uid) => {
           await authorizeUser(uid);
           toast.success('Tenant login authorized successfully!');
@@ -1663,46 +1715,273 @@ export const TenantsPage = () => {
             </motion.div>
           </div>
         )}
-        {checkoutConfirmModal?.isOpen && (
+        {checkoutConfirmModal?.isOpen && (() => {
+          const hasPendingDues = (payments || []).some(p => p.tenantId === checkoutConfirmModal.tenantId && p.status === 'pending');
+          const totalDeductions = checkoutDeductions.reduce((sum, d) => sum + d.amount, 0);
+          const netRefund = Math.max(0, checkoutConfirmModal.depositBalance - totalDeductions);
+          const isChecklistCompleted = checkoutKeysReturned && checkoutRoomCleaned && checkoutUtilitiesSettled;
+          const isCheckoutAllowed = isChecklistCompleted && (!hasPendingDues || forceCheckout);
+
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setCheckoutConfirmModal(null)}
+                className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+              />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="relative w-full max-w-lg bg-white dark:bg-[#111111] rounded-[2.5rem] shadow-2xl border border-white/5 p-8 max-h-[90vh] overflow-y-auto flex flex-col gap-6"
+              >
+                <div>
+                  <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight">
+                    Final Check-out
+                  </h3>
+                  <p className="text-xs text-gray-500 font-medium">
+                    Checkout for <span className="font-bold text-gray-700 dark:text-gray-300">{checkoutConfirmModal.tenantName}</span> (Exit Date: {checkoutConfirmModal.exitDate ? format(parseISO(checkoutConfirmModal.exitDate), 'dd MMM yyyy') : 'N/A'})
+                  </p>
+                </div>
+
+                {/* Checklist Section */}
+                <div className="space-y-3">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-gray-400">1. Checkout Checklist</h4>
+                  <div className="grid grid-cols-1 gap-2">
+                    <label className={cn(
+                      "flex items-center gap-3 p-3 rounded-2xl border transition-all cursor-pointer",
+                      checkoutKeysReturned 
+                        ? "bg-indigo-50/50 dark:bg-indigo-500/5 border-indigo-200 dark:border-indigo-500/20 text-indigo-700 dark:text-indigo-400" 
+                        : "bg-gray-50 dark:bg-white/[0.02] border-gray-100 dark:border-white/5 text-gray-500"
+                    )}>
+                      <input
+                        type="checkbox"
+                        checked={checkoutKeysReturned}
+                        onChange={(e) => setCheckoutKeysReturned(e.target.checked)}
+                        className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4"
+                      />
+                      <span className="text-xs font-bold">Room Keys Collected</span>
+                    </label>
+                    <label className={cn(
+                      "flex items-center gap-3 p-3 rounded-2xl border transition-all cursor-pointer",
+                      checkoutRoomCleaned 
+                        ? "bg-indigo-50/50 dark:bg-indigo-500/5 border-indigo-200 dark:border-indigo-500/20 text-indigo-700 dark:text-indigo-400" 
+                        : "bg-gray-50 dark:bg-white/[0.02] border-gray-100 dark:border-white/5 text-gray-500"
+                    )}>
+                      <input
+                        type="checkbox"
+                        checked={checkoutRoomCleaned}
+                        onChange={(e) => setCheckoutRoomCleaned(e.target.checked)}
+                        className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4"
+                      />
+                      <span className="text-xs font-bold">Room Inspected & Cleaned</span>
+                    </label>
+                    <label className={cn(
+                      "flex items-center gap-3 p-3 rounded-2xl border transition-all cursor-pointer",
+                      checkoutUtilitiesSettled 
+                        ? "bg-indigo-50/50 dark:bg-indigo-500/5 border-indigo-200 dark:border-indigo-500/20 text-indigo-700 dark:text-indigo-400" 
+                        : "bg-gray-50 dark:bg-white/[0.02] border-gray-100 dark:border-white/5 text-gray-500"
+                    )}>
+                      <input
+                        type="checkbox"
+                        checked={checkoutUtilitiesSettled}
+                        onChange={(e) => setCheckoutUtilitiesSettled(e.target.checked)}
+                        className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4"
+                      />
+                      <span className="text-xs font-bold">Utility / Meter Readings Settled</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Deductions Section */}
+                <div className="space-y-4">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-gray-400">2. Damage & Deductions</h4>
+                  
+                  {checkoutDeductions.length > 0 && (
+                    <div className="space-y-2 max-h-[120px] overflow-y-auto pr-1">
+                      {checkoutDeductions.map((d, index) => (
+                        <div key={index} className="flex justify-between items-center bg-gray-50 dark:bg-white/5 px-3 py-2 rounded-xl text-xs">
+                          <span className="font-medium text-gray-700 dark:text-gray-300">{d.reason}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-rose-500">− ₹{d.amount.toLocaleString()}</span>
+                            <button
+                              type="button"
+                              onClick={() => setCheckoutDeductions(prev => prev.filter((_, i) => i !== index))}
+                              className="text-gray-400 hover:text-rose-500 transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      placeholder="Reason (e.g. wall stain)"
+                      value={newDeductionReason}
+                      onChange={(e) => setNewDeductionReason(e.target.value)}
+                      className="px-3 py-2 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-xl text-xs text-gray-900 dark:text-white placeholder-gray-450 focus:ring-1 focus:ring-indigo-500"
+                    />
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        placeholder="Amount"
+                        value={newDeductionAmount}
+                        onChange={(e) => setNewDeductionAmount(e.target.value)}
+                        className="px-3 py-2 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-xl text-xs text-gray-900 dark:text-white placeholder-gray-450 focus:ring-1 focus:ring-indigo-500 w-full"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (newDeductionReason.trim() && Number(newDeductionAmount) > 0) {
+                            setCheckoutDeductions(prev => [...prev, { reason: newDeductionReason.trim(), amount: Number(newDeductionAmount) }]);
+                            setNewDeductionReason('');
+                            setNewDeductionAmount('');
+                          } else {
+                            toast.error('Enter valid deduction details');
+                          }
+                        }}
+                        className="px-3 py-2 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-colors"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Balance Calculation Summary */}
+                <div className="bg-gray-50 dark:bg-white/5 rounded-3xl p-5 space-y-2.5 border border-gray-100 dark:border-white/5">
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>Security Deposit Balance</span>
+                    <span className="font-semibold">₹{checkoutConfirmModal.depositBalance.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-rose-500">
+                    <span>Deductions / Damage Charges</span>
+                    <span className="font-semibold">− ₹{totalDeductions.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-sm pt-2.5 border-t border-gray-200 dark:border-white/10">
+                    <span className="font-bold text-gray-900 dark:text-white">Calculated Net Refund</span>
+                    <span className="font-black text-emerald-600 dark:text-emerald-400 text-base">
+                      ₹{netRefund.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Warning Banner for Pending Dues */}
+                {hasPendingDues && (
+                  <div className="space-y-3">
+                    <div className="p-4 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-2xl flex gap-3 text-xs text-amber-700 dark:text-amber-400">
+                      <AlertTriangle className="w-5 h-5 shrink-0" />
+                      <div>
+                        <span className="font-bold">Cannot Checkout:</span> Tenant has outstanding pending bills. Settle bills first, or force checkout if authorized.
+                      </div>
+                    </div>
+
+                    {['super', 'admin', 'manager'].includes(user?.role || '') && (
+                      <label className="flex items-center gap-3 p-3 rounded-2xl border border-rose-200 dark:border-rose-500/20 bg-rose-50/50 dark:bg-rose-500/5 cursor-pointer text-xs font-bold text-rose-700 dark:text-rose-400 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={forceCheckout}
+                          onChange={(e) => setForceCheckout(e.target.checked)}
+                          className="rounded text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer"
+                        />
+                        <span>Force Checkout (bypass unpaid bills blocker)</span>
+                      </label>
+                    )}
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => setCheckoutConfirmModal(null)}
+                    className="flex-1 px-4 py-3 bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-gray-400 font-bold rounded-2xl hover:bg-gray-100 dark:hover:bg-white/10 transition-all text-xs uppercase tracking-wider"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await completeCheckout(checkoutConfirmModal.tenantId, forceCheckout, checkoutDeductions);
+                        setCheckoutConfirmModal(null);
+                        refetch();
+                      } catch (err: any) {
+                        if (err.message === 'PENDING_DUES') {
+                          // Already handled inside context with toast.error
+                        } else {
+                          toast.error(err.message || 'Checkout failed');
+                        }
+                      }
+                    }}
+                    disabled={!isCheckoutAllowed}
+                    className="flex-1 px-4 py-3 bg-rose-600 text-white font-bold rounded-2xl shadow-lg shadow-rose-600/20 hover:bg-rose-700 transition-all text-xs uppercase tracking-wider disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Finalize Checkout
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          );
+        })()}
+
+        {/* Adjust Exit Date Modal */}
+        {adjustExitDateModal?.isOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setCheckoutConfirmModal(null)}
+              onClick={() => setAdjustExitDateModal(null)}
               className="absolute inset-0 bg-black/40 backdrop-blur-sm"
             />
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-sm bg-white dark:bg-[#111111] rounded-3xl shadow-2xl overflow-hidden border border-white/5 p-6 text-center"
+              className="relative w-full max-w-md bg-white dark:bg-[#111111] rounded-[2rem] shadow-2xl border border-white/5 p-6"
             >
-              <div className="w-16 h-16 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <CheckCircle className="w-8 h-8" />
-              </div>
               <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2 tracking-tight">
-                Final Check-out
+                Adjust Exit Date
               </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 leading-relaxed">
-                Finalize checkout for <span className="font-bold text-gray-900 dark:text-white">{checkoutConfirmModal.tenantName}</span>? <br/>Bed will be freed.
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+                Update expected exit date for <span className="font-bold text-gray-900 dark:text-white">{adjustExitDateModal.tenantName}</span>.
               </p>
+              
+              <div className="space-y-4 mb-6">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold uppercase tracking-wider text-gray-400">Expected Exit Date</label>
+                  <input
+                    type="date"
+                    value={newExitDate}
+                    onChange={(e) => setNewExitDate(e.target.value)}
+                    className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white transition-all font-medium"
+                  />
+                </div>
+              </div>
+
               <div className="flex gap-3">
                 <button
-                  onClick={() => setCheckoutConfirmModal(null)}
+                  onClick={() => setAdjustExitDateModal(null)}
                   className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-gray-400 font-bold rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-all"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={async () => {
-                    await completeCheckout(checkoutConfirmModal.tenantId);
-                    setCheckoutConfirmModal(null);
+                    await updateTenant(adjustExitDateModal.tenantId, { exitDate: newExitDate });
+                    setAdjustExitDateModal(null);
                     refetch();
+                    toast.success('Expected exit date adjusted.');
                   }}
-                  className="flex-1 px-4 py-2.5 bg-rose-600 text-white font-bold rounded-xl shadow-lg shadow-rose-600/20 hover:bg-rose-700 transition-all"
+                  className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
+                  style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
                 >
-                  Finalize
+                  Save Date
                 </button>
               </div>
             </motion.div>

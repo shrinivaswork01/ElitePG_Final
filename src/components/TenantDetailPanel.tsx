@@ -16,6 +16,7 @@ interface TenantDetailPanelProps {
   onDelete?: (t: any) => void;
   onViewAgreement?: (t: any) => void;
   onViewPayments?: (t: any) => void;
+  onCheckout?: (t: any) => void;
   canEdit?: boolean;
   canDelete?: boolean;
   onAuthorize?: (userId: string) => void;
@@ -52,7 +53,7 @@ const statusColor: Record<string, string> = {
 };
 
 export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
-  tenant, onClose, onEdit, onDelete, onViewAgreement, onViewPayments, canEdit, canDelete, onAuthorize, electricityShare, onUpdate
+  tenant, onClose, onEdit, onDelete, onViewAgreement, onViewPayments, onCheckout, canEdit, canDelete, onAuthorize, electricityShare, onUpdate
 }) => {
   const { user } = useAuth();
   const { pgConfig, branches, updateTenant, tenants, rooms, cancelVacating, completeCheckout, payments } = useApp();
@@ -67,6 +68,24 @@ export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
   const [customRent, setCustomRent] = useState<number>(0);
   const [switchDate, setSwitchDate] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
+  const [tempExitDate, setTempExitDate] = useState('');
+
+  React.useEffect(() => {
+    if (tenant) {
+      setTempExitDate(tenant.exitDate || tenant.exit_date || '');
+    }
+  }, [tenant]);
+
+  const handleSaveExitDate = async (newDate: string) => {
+    if (!tenant) return;
+    try {
+      await updateTenant(tenant.id, { exitDate: newDate });
+      if (onUpdate) onUpdate();
+      toast.success('Expected exit date adjusted.');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update exit date');
+    }
+  };
 
   // Override the static prop with the live context object so the panel updates instantly without a refresh
   tenant = tenants.find((t: any) => t.id === tenant?.id) || tenant;
@@ -260,12 +279,28 @@ export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
                 {(tenant.vacatingDate || tenant.vacating_date) && (
                   <Field label="Notice Date" value={format(parseISO(tenant.vacatingDate || tenant.vacating_date), 'dd MMM yyyy')} />
                 )}
-                {(tenant.exitDate || tenant.exit_date) && (
-                  <Field 
-                    label={tenant.status === 'vacated' ? "Checkout Date" : "Expected Exit"} 
-                    value={format(parseISO(tenant.exitDate || tenant.exit_date), 'dd MMM yyyy')} 
-                  />
-                )}
+                 {(tenant.exitDate || tenant.exit_date) && (
+                   <div className="flex flex-col gap-0.5 col-span-2 sm:col-span-1">
+                     <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+                       {tenant.status === 'vacated' ? "Checkout Date" : "Expected Exit"}
+                     </span>
+                     {tenant.status === 'vacating' && canEdit ? (
+                       <input
+                         type="date"
+                         value={tempExitDate}
+                         onChange={(e) => {
+                           setTempExitDate(e.target.value);
+                           handleSaveExitDate(e.target.value);
+                         }}
+                         className="px-2.5 py-1 bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                       />
+                     ) : (
+                       <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                         {format(parseISO(tenant.exitDate || tenant.exit_date), 'dd MMM yyyy')}
+                       </span>
+                     )}
+                   </div>
+                 )}
               </div>
 
               {/* Move-in Summary Card */}
@@ -320,16 +355,42 @@ export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
                   
                   {new Date() >= new Date(tenant.exitDate) ? (
                     <button
-                      onClick={() => { completeCheckout(tenant.id); onClose(); }}
+                      onClick={() => {
+                        if (onCheckout) {
+                          onCheckout(tenant);
+                        } else {
+                          completeCheckout(tenant.id);
+                          onClose();
+                        }
+                      }}
                       className="w-full py-3 bg-rose-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-rose-600/20 hover:bg-rose-700 transition-all flex items-center justify-center gap-2"
                     >
                       <CheckCircle2 className="w-4 h-4" />
                       Complete Checkout
                     </button>
                   ) : (
-                    <div className="p-3 bg-white/50 dark:bg-white/5 rounded-xl text-center">
-                      <p className="text-[10px] font-bold text-rose-600/60 uppercase">Checkout Available On</p>
-                      <p className="text-sm font-bold text-rose-600">{tenant.exitDate}</p>
+                    <div className="space-y-2">
+                      <div className="p-3 bg-white/50 dark:bg-white/5 rounded-xl text-center">
+                        <p className="text-[10px] font-bold text-rose-600/60 uppercase">Expected Exit Date</p>
+                        <p className="text-sm font-bold text-rose-600">{tenant.exitDate}</p>
+                      </div>
+                      {['super', 'admin', 'manager'].includes(user?.role || '') && (
+                        <button
+                          onClick={() => {
+                            if (onCheckout) {
+                              onCheckout(tenant);
+                            } else {
+                              completeCheckout(tenant.id);
+                              onClose();
+                            }
+                          }}
+                          className="w-full py-3 bg-rose-650 hover:bg-rose-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg transition-all flex items-center justify-center gap-2"
+                          style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          Checkout Early
+                        </button>
+                      )}
                     </div>
                   )}
                   {['super', 'admin', 'manager'].includes(user?.role || '') && (

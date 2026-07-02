@@ -37,7 +37,7 @@ interface AppContextType {
   deleteTenant: (id: string) => Promise<void>;
   requestVacating: (tenantId: string) => Promise<void>;
   cancelVacating: (tenantId: string) => Promise<void>;
-  completeCheckout: (tenantId: string) => Promise<void>;
+  completeCheckout: (tenantId: string, force?: boolean, deductions?: { amount: number, reason: string }[]) => Promise<void>;
 
   addRoom: (room: Omit<Room, 'id' | 'branchId'>) => Promise<void>;
   updateRoom: (id: string, updates: Partial<Room>) => Promise<void>;
@@ -1045,16 +1045,41 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     toast.success('Vacating request cancelled. Tenant is now active.');
   };
 
-  const completeCheckout = async (tenantId: string) => {
+  const completeCheckout = async (tenantId: string, force = false, deductions: { amount: number, reason: string }[] = []) => {
     const tenant = data.tenants.find((t: any) => t.id === tenantId);
     if (!tenant) return;
 
     // Check if there are any outstanding pending payments/bills
     const pendingPayments = (data.payments || []).filter((p: any) => p.tenantId === tenantId && p.status === 'pending');
-    if (pendingPayments.length > 0) {
+    if (pendingPayments.length > 0 && !force) {
       toast.error(`Cannot complete checkout. ${tenant.name} has pending unpaid bills.`);
-      return;
+      throw new Error('PENDING_DUES');
     }
+
+    // Process any damage or other deductions
+    let totalDeductions = 0;
+    for (const d of deductions) {
+      if (d.amount > 0) {
+        totalDeductions += d.amount;
+        // Record deduction as a payment of type 'adjust'
+        await addPayment({
+          tenantId: tenantId,
+          amount: d.amount,
+          lateFee: 0,
+          totalAmount: d.amount,
+          paymentType: 'adjust',
+          paymentDate: new Date().toISOString().split('T')[0],
+          month: new Date().toISOString().substring(0, 7),
+          status: 'paid',
+          method: 'Offline',
+          transactionId: `DED-${Date.now()}`,
+          receiptUrl: null as any
+        });
+      }
+    }
+
+    // Calculate final deposit balance after deductions
+    const remainingBalance = Math.max(0, (tenant.depositBalance || 0) - totalDeductions);
 
     const updates: any = {
       status: 'vacated',
@@ -1062,11 +1087,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       roomId: null as any
     };
 
-    // If deposit refund is pending (depositBalance > 0 and not already marked as refunded)
-    if (tenant.depositBalance > 0 && tenant.depositStatus !== 'refunded') {
+    // Mark deposit as refunded
+    if (tenant.depositStatus !== 'refunded') {
       updates.depositStatus = 'refunded';
       updates.depositBalance = 0;
-      toast.success(`Security deposit of ₹${tenant.depositBalance.toLocaleString()} automatically marked as refunded.`);
+      if (remainingBalance > 0) {
+        toast.success(`Security deposit balance of ₹${remainingBalance.toLocaleString()} marked as refunded.`);
+      } else if (totalDeductions > 0) {
+        toast.success('Security deposit balance fully adjusted for deductions.');
+      }
     }
 
     // 1. Mark as vacated & update deposit details
