@@ -32,7 +32,8 @@ export const exportToExcel = async (
   branch: PGBranch | undefined,
   branches: PGBranch[] = [],
   stats: any,
-  expenses: any[] = []
+  expenses: any[] = [],
+  filterMonth?: string
 ) => {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'ElitePG';
@@ -47,16 +48,42 @@ export const exportToExcel = async (
     { header: 'Value', key: 'value', width: 20 },
   ];
 
+  const uniqueBranchIds = Array.from(new Set([
+    ...tenants.map(t => t.branchId || (t as any).branch_id),
+    ...rooms.map(r => r.branchId || (r as any).branch_id),
+    ...payments.map(p => p.branchId || (p as any).branch_id)
+  ].filter(Boolean)));
+  
+  const activeBranchNames = uniqueBranchIds
+    .map(id => branches.find(b => b.id === id)?.name)
+    .filter(Boolean)
+    .join(', ');
+
+  let branchScope = 'Combined';
+  if (branch) {
+    branchScope = branch.name;
+  } else if (activeBranchNames) {
+    branchScope = `Combined (${activeBranchNames})`;
+  } else {
+    branchScope = 'Combined (All Branches)';
+  }
+
+  // Apply month filter if provided
+  const filteredPayments = filterMonth ? payments.filter(p => p.month === filterMonth) : payments;
+  const filteredExpenses = filterMonth ? expenses.filter(e => e.month === filterMonth) : expenses;
+
   const totalBeds = rooms.reduce((sum, r) => sum + (r.totalBeds || (r as any).total_beds || 0), 0);
   const activeTenantsCount = tenants.filter(t => t.status === 'active').length;
   const occupancyPercentage = totalBeds > 0 ? (activeTenantsCount / totalBeds) * 100 : 0;
-  const totalRevenue = payments
+  const totalRevenue = filteredPayments
     .filter(p => p.status === 'paid' && ['rent', 'token'].includes((p.paymentType || (p as any).payment_type || 'rent').toLowerCase()))
     .reduce((sum, p) => sum + (p.totalAmount || (p as any).total_amount || 0), 0);
-  const totalExpenses = expenses.filter(e => e.status !== 'rejected').reduce((sum, e) => sum + (e.amount || 0), 0);
-  const pendingPayments = payments.filter(p => p.status === 'pending').reduce((sum, p) => sum + (p.totalAmount || (p as any).total_amount || 0), 0);
+  const totalExpenses = filteredExpenses.filter(e => e.status !== 'rejected').reduce((sum, e) => sum + (e.amount || 0), 0);
+  const pendingPayments = filteredPayments.filter(p => p.status === 'pending').reduce((sum, p) => sum + (p.totalAmount || (p as any).total_amount || 0), 0);
 
   summarySheet.addRows([
+    { metric: 'Branch / Scope', value: branchScope },
+    { metric: 'Report Month', value: filterMonth || 'All Time' },
     { metric: 'Total Tenants (Record)', value: tenants.length },
     { metric: 'Active Tenants', value: activeTenantsCount },
     { metric: 'Vacating Tenants', value: tenants.filter(t => t.vacatingStatus === 'notice_given').length },
@@ -167,7 +194,7 @@ export const exportToExcel = async (
     { header: 'Payment Date', key: 'date', width: 15 },
   ];
 
-  payments.forEach(p => {
+  filteredPayments.forEach(p => {
     const tenant = tenants.find(t => t.id === (p.tenantId || (p as any).tenant_id));
     const pBranch = branches.find(b => b.id === (p.branchId || (p as any).branch_id)) || branch;
     paymentsSheet.addRow({
@@ -227,7 +254,7 @@ export const exportToExcel = async (
     { header: 'Total Share', key: 'total', width: 15 },
   ];
 
-  const electricityPayments = payments.filter(p => (p.paymentType || (p as any).payment_type) === 'electricity');
+  const electricityPayments = filteredPayments.filter(p => (p.paymentType || (p as any).payment_type) === 'electricity');
   
   electricityPayments.forEach(p => {
     const tenant = tenants.find(t => t.id === (p.tenantId || (p as any).tenant_id));
@@ -267,7 +294,7 @@ export const exportToExcel = async (
     { header: 'Month', key: 'month', width: 15 },
   ];
 
-  expenses.forEach(e => {
+  filteredExpenses.forEach(e => {
      const eBranch = branches.find(b => b.id === (e.branchId || (e as any).branch_id)) || branch;
      expensesSheet.addRow({
        title: e.title,
@@ -366,7 +393,8 @@ export const exportToExcel = async (
   // --- FINALIZATION ---
   const buffer = await workbook.xlsx.writeBuffer();
   const fileType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8';
-  const fileName = `ElitePG_Report_${branch?.name || 'General'}_${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
+  const monthLabel = filterMonth || format(new Date(), 'yyyy-MM-dd');
+  const fileName = `ElitePG_Report_${branch?.name || 'General'}_${monthLabel}.xlsx`;
   const blob = new Blob([buffer], { type: fileType });
   saveAs(blob, fileName);
 };
@@ -648,5 +676,85 @@ export const exportTransactionLogsToExcel = async (
   const fileType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8';
   const blob = new Blob([buffer], { type: fileType });
   saveAs(blob, `ElitePG_Transaction_Logs_Export_${format(new Date(), 'dd-MM-yyyy')}.xlsx`);
+};
+
+export const exportSingleTenantToExcel = async (
+  tenant: any,
+  payments: Payment[],
+  rooms: Room[],
+  branchName?: string
+) => {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'ElitePG';
+  workbook.lastModifiedBy = 'ElitePG';
+  workbook.created = new Date();
+  workbook.modified = new Date();
+
+  // --- 1. PROFILE SHEET ---
+  const profileSheet = workbook.addWorksheet('Profile & Rent');
+  profileSheet.columns = [
+    { header: 'Property', key: 'property', width: 25 },
+    { header: 'Detail', key: 'detail', width: 35 },
+  ];
+
+  const room = rooms.find(r => r.id === (tenant.roomId || tenant.room_id));
+  const roomNum = room?.roomNumber || tenant.rooms?.room_number || 'N/A';
+  const roomType = room?.type || tenant.rooms?.type || 'N/A';
+
+  profileSheet.addRows([
+    { property: 'Tenant Name', detail: tenant.name },
+    { property: 'Email Address', detail: tenant.email },
+    { property: 'Phone Number', detail: tenant.phone },
+    { property: 'Branch', detail: branchName || 'N/A' },
+    { property: 'Status', detail: tenant.status?.toUpperCase() },
+    { property: 'KYC Status', detail: tenant.kycStatus || tenant.kyc_status || 'unsubmitted' },
+    { property: 'Room Number', detail: `Room ${roomNum} (${roomType})` },
+    { property: 'Bed Number', detail: `Bed ${tenant.bedNumber ?? tenant.bed_number}` },
+    { property: 'Monthly Rent Amount', detail: Number(tenant.rentAmount ?? tenant.rent_amount ?? 0) },
+    { property: 'Payment Due Date', detail: `${tenant.paymentDueDate ?? tenant.payment_due_date}th of every month` },
+    { property: 'Deposit Amount', detail: Number(tenant.depositAmount ?? tenant.deposit_amount ?? 0) },
+    { property: 'Deposit Status', detail: tenant.depositStatus || tenant.deposit_status || 'Pending' },
+    { property: 'Deposit Balance', detail: Number(tenant.depositBalance ?? tenant.deposit_balance ?? 0) },
+    { property: 'Token Amount', detail: Number(tenant.tokenAmount ?? tenant.token_amount ?? 0) },
+    { property: 'Token Status', detail: tenant.tokenStatus || tenant.token_status || 'Pending' },
+    { property: 'Joining Date', detail: tenant.joiningDate || tenant.joining_date || 'N/A' },
+    { property: 'Move-in Date', detail: tenant.moveInDate || tenant.move_in_date || 'N/A' },
+    { property: 'Room Shift/Switch Date', detail: tenant.roomSwitchDate || tenant.room_switch_date || 'N/A' },
+    { property: 'Notice/Vacating Date', detail: tenant.vacatingDate || tenant.vacating_date || 'N/A' },
+    { property: 'Expected Exit/Checkout Date', detail: tenant.exitDate || tenant.exit_date || 'N/A' },
+  ]);
+
+  applyHeaderStyle(profileSheet, 2);
+
+  // --- 2. PAYMENTS SHEET ---
+  const paymentsSheet = workbook.addWorksheet('Payment History');
+  paymentsSheet.columns = [
+    { header: 'Payment Date', key: 'paymentDate', width: 15 },
+    { header: 'Month', key: 'month', width: 15 },
+    { header: 'Type', key: 'type', width: 15 },
+    { header: 'Amount', key: 'amount', width: 15 },
+    { header: 'Method', key: 'method', width: 15 },
+    { header: 'Status', key: 'status', width: 15 },
+  ];
+
+  const tenantPayments = payments.filter(p => p.tenantId === tenant.id);
+  tenantPayments.forEach(p => {
+    paymentsSheet.addRow({
+      paymentDate: p.paymentDate,
+      month: p.month,
+      type: p.paymentType || (p as any).payment_type || 'rent',
+      amount: p.totalAmount || (p as any).total_amount || 0,
+      method: p.method,
+      status: p.status,
+    });
+  });
+
+  applyHeaderStyle(paymentsSheet, 6);
+  paymentsSheet.getColumn('amount').numFmt = '"₹"#,##0.00';
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const fileType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8';
+  const blob = new Blob([buffer], { type: fileType });
+  saveAs(blob, `ElitePG_Tenant_${tenant.name.replace(/\s+/g, '_')}_Data.xlsx`);
 };
 

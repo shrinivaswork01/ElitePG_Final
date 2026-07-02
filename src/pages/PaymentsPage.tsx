@@ -25,6 +25,7 @@ import {
   MoreVertical,
   MessageCircle,
   History as HistoryIcon,
+  ChevronDown,
   Settings,
   Zap,
   Home,
@@ -32,7 +33,7 @@ import {
   Ticket,
   Activity
 } from 'lucide-react';
-import { format, parseISO, differenceInDays, getDate, isAfter } from 'date-fns';
+import { format, parseISO, differenceInDays, getDate, isAfter, subMonths } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePaginatedData } from '../hooks/usePaginatedData';
 import { DataGrid, ColumnDef } from '../components/DataGrid';
@@ -62,6 +63,12 @@ export const PaymentsPage = () => {
   const [filterStatus, setFilterStatus] = useState<'all' | 'paid' | 'pending'>('all');
   const [filterType, setFilterType] = useState<'all' | 'rent' | 'electricity' | 'token' | 'deposit'>('all');
   const [filterMonth, setFilterMonth] = useState<string>(format(new Date(), 'yyyy-MM'));
+  const monthOptions = React.useMemo(() => {
+    return Array.from({ length: 12 }, (_, i) => {
+      const d = subMonths(new Date(), i);
+      return { value: format(d, 'yyyy-MM'), label: format(d, 'MMMM yyyy') };
+    });
+  }, []);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [detailPayment, setDetailPayment] = useState<any | null>(null);
   const [viewerDoc, setViewerDoc] = useState<{ url: string, title: string } | null>(null);
@@ -119,8 +126,10 @@ export const PaymentsPage = () => {
     return matching.map(t => t.id);
   }, [searchTerm, tenants, rooms]);
 
-  // Server-side paginated hook — fetches ONLY 10 records at a time
-  const { data: paginatedPayments, totalCount, isLoading: isPaymentsLoading, page, setPage, limit, refetch: refetchPayments } = usePaginatedData<any>({
+  const [limit, setLimit] = useState(10);
+
+  // Server-side paginated hook
+  const { data: paginatedPayments, totalCount, isLoading: isPaymentsLoading, page, setPage, refetch: refetchPayments } = usePaginatedData<any>({
     table: 'payments',
     select: '*, tenants!payments_tenant_id_fkey(name, phone, rooms!tenants_room_id_fkey(room_number))',
     ilikeFilters: (searchTerm && !(searchTenantIds && searchTenantIds.length > 0)) ? { transaction_id: searchTerm, payment_type: searchTerm } : undefined,
@@ -131,7 +140,8 @@ export const PaymentsPage = () => {
       ...(filterMonth !== 'all' ? { month: filterMonth } : {}),
       ...(isTenant && tenantData ? { tenant_id: tenantData.id } : {})
     },
-    orderBy: { column: 'payment_date', ascending: false }
+    orderBy: { column: 'payment_date', ascending: false },
+    limit: limit
   });
 
   const isAdmin = ['super', 'admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '');
@@ -1099,22 +1109,26 @@ export const PaymentsPage = () => {
     document.body.removeChild(link);
   };
 
+  const targetMonth = React.useMemo(() => {
+    return filterMonth === 'all' ? currentMonth : filterMonth;
+  }, [filterMonth, currentMonth]);
+
   // Dashboard stats should be independent of the current search term to match Dashboard expectations
   const totalRevenue = React.useMemo(() => {
     return (isTenant ? payments.filter(p => p.tenantId === tenantData?.id) : payments)
-      .filter(p => p.status === 'paid' && p.month === currentMonth && (p.paymentType || 'rent').toLowerCase() === 'rent')
+      .filter(p => p.status === 'paid' && (filterMonth === 'all' || p.month === filterMonth) && (p.paymentType || 'rent').toLowerCase() === 'rent')
       .reduce((sum, p) => sum + p.totalAmount, 0);
-  }, [isTenant, payments, tenantData?.id, currentMonth]);
+  }, [isTenant, payments, tenantData?.id, filterMonth]);
 
   const myPaymentsThisMonth = React.useMemo(() => {
-    return isTenant ? payments.filter(p => p.tenantId === tenantData?.id && p.month === currentMonth) : [];
-  }, [isTenant, payments, tenantData?.id, currentMonth]);
+    return isTenant ? payments.filter(p => p.tenantId === tenantData?.id && (filterMonth === 'all' || p.month === filterMonth)) : [];
+  }, [isTenant, payments, tenantData?.id, filterMonth]);
   
   const myPendingDuesCount = isTenant ? (hasPaidCurrentMonth ? 0 : 1) : 0;
   
   const paidThisMonthCount = React.useMemo(() => {
-    return payments.filter(p => p.month === currentMonth && p.status === 'paid').length;
-  }, [payments, currentMonth]);
+    return payments.filter(p => (filterMonth === 'all' || p.month === filterMonth) && p.status === 'paid').length;
+  }, [payments, filterMonth]);
 
   const pendingTenantsCount = React.useMemo(() => {
     const activeTenants = tenants.filter(t => t.status === 'active' || t.status === 'vacating');
@@ -1123,7 +1137,7 @@ export const PaymentsPage = () => {
       // Condition 1: Have they paid their rent this month?
       const hasPaidRent = payments.some(p => 
         p.tenantId === t.id && 
-        p.month === currentMonth && 
+        p.month === targetMonth && 
         p.status === 'paid' && 
         (p.paymentType === 'rent' || !p.paymentType)
       );
@@ -1131,7 +1145,8 @@ export const PaymentsPage = () => {
       // Condition 2: Do they have any explicit 'pending' record (like an electricity bill)?
       const hasPendingRecords = payments.some(p => 
         p.tenantId === t.id && 
-        p.status === 'pending'
+        p.status === 'pending' &&
+        (filterMonth === 'all' || p.month === filterMonth)
       );
 
       // If they haven't paid rent OR they have an unpaid bill, they count as having Pending Dues
@@ -1142,11 +1157,11 @@ export const PaymentsPage = () => {
 
     // Also include any non-active tenants who might still have pending records
     const inactiveTenantsWithDues = tenants.filter(t => t.status !== 'active' && t.status !== 'vacating').filter(t => 
-      payments.some(p => p.tenantId === t.id && p.status === 'pending')
+      payments.some(p => p.tenantId === t.id && p.status === 'pending' && (filterMonth === 'all' || p.month === filterMonth))
     ).length;
 
     return count + inactiveTenantsWithDues;
-  }, [tenants, payments, currentMonth]);
+  }, [tenants, payments, targetMonth, filterMonth]);
 
   return (
     <div className="space-y-6">
@@ -1297,7 +1312,13 @@ export const PaymentsPage = () => {
               <TrendingUp className="w-6 h-6" />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{isTenant ? 'Total Paid to Date' : 'Rent Revenue (This Month)'}</p>
+              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                {isTenant 
+                  ? 'Total Paid to Date' 
+                  : filterMonth === 'all' 
+                    ? 'Rent Revenue (All Time)' 
+                    : `Rent Revenue (${monthOptions.find(m => m.value === filterMonth)?.label?.split(' ')[0] || 'This Month'})`}
+              </p>
               <h3 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">₹{totalRevenue.toLocaleString()}</h3>
             </div>
           </div>
@@ -1308,7 +1329,13 @@ export const PaymentsPage = () => {
               <CheckCircle2 className="w-6 h-6" />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{isTenant ? 'Payments (This Month)' : 'Paid This Month'}</p>
+              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                {isTenant 
+                  ? 'Payments (This Month)' 
+                  : filterMonth === 'all' 
+                    ? 'Paid (All Time)' 
+                    : `Paid in ${monthOptions.find(m => m.value === filterMonth)?.label?.split(' ')[0] || 'This Month'}`}
+              </p>
               <h3 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
                 {isTenant ? myPaymentsThisMonth.length : paidThisMonthCount} Payments
               </h3>
@@ -1321,7 +1348,13 @@ export const PaymentsPage = () => {
               <Clock className="w-6 h-6" />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{isTenant ? 'Pending Dues' : 'Pending Dues'}</p>
+              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                {isTenant 
+                  ? 'Pending Dues' 
+                  : filterMonth === 'all' 
+                    ? 'Pending Dues (Current Month)' 
+                    : `Pending Dues (${monthOptions.find(m => m.value === filterMonth)?.label?.split(' ')[0] || 'This Month'})`}
+              </p>
               <h3 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
                 {isTenant ? myPendingDuesCount : pendingTenantsCount} {isTenant ? 'Dues' : 'Tenants'}
               </h3>
@@ -1375,14 +1408,20 @@ export const PaymentsPage = () => {
             </button>
           ))}
 
-          <div className="h-6 w-px bg-gray-100 dark:bg-white/10 mx-2 hidden sm:block" />
-          <input
-            type="month"
-            value={filterMonth === 'all' ? '' : filterMonth}
-            onChange={(e) => setFilterMonth(e.target.value || 'all')}
-            className="px-4 py-2 bg-white dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-xl text-xs font-bold text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-amber-500/20 uppercase tracking-widest outline-none shadow-sm"
-            title="Filter by Month/Year"
-          />
+          <div className="relative">
+            <select
+              value={filterMonth}
+              onChange={(e) => setFilterMonth(e.target.value)}
+              className="pl-10 pr-8 py-2 bg-white dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-xl text-xs font-bold text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-amber-500/20 appearance-none cursor-pointer outline-none shadow-sm min-w-[150px]"
+            >
+              <option value="all">All Months</option>
+              {monthOptions.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <Calendar className="w-3.5 h-3.5 text-indigo-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <ChevronDown className="w-3.5 h-3.5 text-gray-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
         </div>
       )}
 
@@ -1418,6 +1457,10 @@ export const PaymentsPage = () => {
           page={page}
           limit={limit}
           onPageChange={setPage}
+          onLimitChange={(newLimit) => {
+            setLimit(newLimit);
+            setPage(1);
+          }}
           emptyStateMessage="No payment records found"
           onRowClick={(p: any) => {
             const normalized = {

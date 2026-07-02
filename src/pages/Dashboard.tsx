@@ -73,6 +73,7 @@ export const Dashboard = () => {
     checkFeatureAccess,
     fetchData,
     requestVacating,
+    cancelVacating,
     completeCheckout,
     userInvites,
     currentBranch,
@@ -237,12 +238,7 @@ export const Dashboard = () => {
     if (vacateConfirmModal) {
       if (vacateConfirmModal.isVacating) {
         // Cancel request: return to active
-        updateTenant(vacateConfirmModal.tenantId, { 
-          status: 'active', 
-          vacatingStatus: 'active',
-          vacatingDate: undefined,
-          exitDate: undefined
-        });
+        cancelVacating(vacateConfirmModal.tenantId);
       } else {
         // Start 30-day notice
         requestVacating(vacateConfirmModal.tenantId);

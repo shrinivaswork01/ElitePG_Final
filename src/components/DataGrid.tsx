@@ -28,6 +28,7 @@ export interface DataGridProps<T> {
   limit: number;
   totalCount: number;
   onPageChange: (page: number) => void;
+  onLimitChange?: (limit: number) => void;
   
   // UI Customizations
   onRowClick?: (item: T) => void;
@@ -44,6 +45,7 @@ const DataGridComponent = <T,>({
   limit,
   totalCount,
   onPageChange,
+  onLimitChange,
   onRowClick,
   emptyStateMessage = "No records found",
   compact = false
@@ -185,10 +187,26 @@ const DataGridComponent = <T,>({
       </div>
 
       {/* Pagination Footer */}
-      <div className="px-6 py-4 border-t border-gray-100 dark:border-white/5 flex items-center justify-between bg-gray-50/50 dark:bg-[#1a1a1a]/50">
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          Showing <span className="font-medium text-gray-900 dark:text-white">{Math.min((page - 1) * limit + 1, totalCount)}</span> to <span className="font-medium text-gray-900 dark:text-white">{Math.min(page * limit, totalCount)}</span> of <span className="font-medium text-gray-900 dark:text-white">{totalCount}</span> results
-        </p>
+      <div className="px-6 py-4 border-t border-gray-100 dark:border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4 bg-gray-50/50 dark:bg-[#1a1a1a]/50">
+        <div className="flex flex-wrap items-center gap-4">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Showing <span className="font-medium text-gray-900 dark:text-white">{totalCount === 0 ? 0 : Math.min((page - 1) * limit + 1, totalCount)}</span> to <span className="font-medium text-gray-900 dark:text-white">{Math.min(page * limit, totalCount)}</span> of <span className="font-medium text-gray-900 dark:text-white">{totalCount}</span> results
+          </p>
+          {onLimitChange && (
+            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+              <span className="text-xs">Show</span>
+              <select
+                value={limit}
+                onChange={(e) => onLimitChange(Number(e.target.value))}
+                className="px-2.5 py-1 bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold text-gray-700 dark:text-gray-250 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
+              >
+                <option value={10}>10 rows</option>
+                <option value={20}>20 rows</option>
+                <option value={50}>50 rows</option>
+              </select>
+            </div>
+          )}
+        </div>
         
         <div className="flex items-center gap-2">
           <button

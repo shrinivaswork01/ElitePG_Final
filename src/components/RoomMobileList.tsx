@@ -14,6 +14,7 @@ import {
   Plus
 } from 'lucide-react';
 import { cn } from '../utils';
+import { useApp } from '../context/AppContext';
 
 interface RoomMobileCardProps {
   room: Room;
@@ -51,8 +52,10 @@ const RoomMobileCard = memo(({
     shouldPreventDefault: true
   });
 
-  const isFull = room.occupiedBeds >= room.totalBeds;
-  const occupancyPct = room.totalBeds > 0 ? (room.occupiedBeds / room.totalBeds) * 100 : 0;
+  const { tenants } = useApp();
+  const roomTenants = tenants.filter(t => t.roomId === room.id && ['active', 'vacating'].includes(t.status));
+  const isFull = roomTenants.length >= room.totalBeds;
+  const occupancyPct = room.totalBeds > 0 ? (roomTenants.length / room.totalBeds) * 100 : 0;
 
   return (
     <motion.div
@@ -112,10 +115,29 @@ const RoomMobileCard = memo(({
              </div>
           </div>
 
+          {/* Tenants list */}
+          {roomTenants.length > 0 && (
+            <div className="flex flex-wrap gap-1 mb-3">
+              {roomTenants.map(t => (
+                <span 
+                  key={t.id} 
+                  className={cn(
+                    "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border",
+                    t.status === 'vacating'
+                      ? "bg-amber-50 dark:bg-amber-500/10 text-amber-600 border-amber-200/50 dark:border-amber-500/20"
+                      : "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-650 dark:text-indigo-400 border-indigo-200/50 dark:border-indigo-500/20"
+                  )}
+                >
+                  {t.name} (Bed {t.bedNumber})
+                </span>
+              ))}
+            </div>
+          )}
+
           {/* Occupancy Progress */}
           <div className="space-y-1.5">
             <div className="flex justify-between text-[10px] font-black uppercase tracking-wider">
-              <span className="text-gray-400">{room.occupiedBeds} / {room.totalBeds} BEDS</span>
+              <span className="text-gray-400">{roomTenants.length} / {room.totalBeds} BEDS</span>
               <span className={isFull ? "text-rose-500" : "text-emerald-500"}>
                 {isFull ? "FULL" : "AVAILABLE"}
               </span>

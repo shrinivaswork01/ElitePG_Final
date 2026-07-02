@@ -50,6 +50,15 @@ export const ReportsPage = () => {
   const RECORDS_PER_PAGE = 10;
   const [payoutMonth, setPayoutMonth] = useState(format(new Date(), 'yyyy-MM'));
 
+  // Month filter for the entire reports page
+  const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
+  const monthOptions = useMemo(() => {
+    return Array.from({ length: 12 }, (_, i) => {
+      const d = subMonths(new Date(), i);
+      return { value: format(d, 'yyyy-MM'), label: format(d, 'MMMM yyyy') };
+    });
+  }, []);
+
   const canViewCombined = user?.role === 'super' || user?.role === 'admin' || user?.role === 'partner';
   const shouldRenderCombined = viewMode === 'combined' && canViewCombined;
 
@@ -79,20 +88,22 @@ export const ReportsPage = () => {
     return dataArray.filter(item => selectedBranchIds.includes(item.branchId || item.branch_id));
   };
 
-  const currentPayments = (shouldRenderCombined ? getRelevantData(rawData.payments || payments) : payments) || [];
-  const currentExpenses = (shouldRenderCombined ? getRelevantData(rawData.expenses || expenses) : expenses) || [];
-  const currentSalaries = (shouldRenderCombined ? getRelevantData(rawData.salaryPayments || salaryPayments) : salaryPayments) || [];
+  const currentPayments = getRelevantData(rawData.payments || payments);
+  const currentExpenses = getRelevantData(rawData.expenses || expenses);
+  const currentSalaries = getRelevantData(rawData.salaryPayments || salaryPayments);
 
   const themeColor = pgConfig?.primaryColor || '#4f46e5';
   const expenseColor = '#f43f5e'; // Rose for expenses
   
-  const currentMonthStr = format(new Date(), 'yyyy-MM');
+  const currentMonthStr = selectedMonth;
 
-  // Revenue vs Expenses History (Last 6 Months)
+  // Revenue vs Expenses History (6 months ending at selectedMonth)
   const historyData = useMemo(() => {
+    const [selYear, selMon] = selectedMonth.split('-').map(Number);
+    const selectedDate = new Date(selYear, selMon - 1, 1);
     const data = [];
     for (let i = 5; i >= 0; i--) {
-      const d = subMonths(new Date(), i);
+      const d = subMonths(selectedDate, i);
       const monthStr = format(d, 'yyyy-MM');
       
       const rev = currentPayments
@@ -118,7 +129,7 @@ export const ReportsPage = () => {
       });
     }
     return data;
-  }, [currentPayments, currentExpenses, currentSalaries]);
+  }, [currentPayments, currentExpenses, currentSalaries, selectedMonth]);
 
   // Current Month Totals
   const currentMonthData = historyData[historyData.length - 1];
@@ -156,12 +167,12 @@ export const ReportsPage = () => {
   const remainingBalance = currentMonthData.profit - currentMonthPayoutsTotal;
 
   // Vacancy Data Logic
-  const currentRooms = (shouldRenderCombined ? getRelevantData(rawData.rooms || rooms) : rooms) || [];
-  const currentTenants = (shouldRenderCombined ? getRelevantData(rawData.tenants || tenants) : tenants) || [];
-  const currentMeterGroups = (shouldRenderCombined ? getRelevantData(rawData.meterGroups || meterGroups) : meterGroups) || [];
+  const currentRooms = getRelevantData(rawData.rooms || rooms);
+  const currentTenants = getRelevantData(rawData.tenants || tenants);
+  const currentMeterGroups = getRelevantData(rawData.meterGroups || meterGroups);
 
   const [vacancyPage, setVacancyPage] = useState(1);
-  const VACANCY_PER_PAGE = 10;
+  const [vacancyLimit, setVacancyLimit] = useState(10);
   const [vacancyFilterBranch, setVacancyFilterBranch] = useState('all');
 
   const vacantRoomsList = useMemo(() => {
@@ -187,8 +198,8 @@ export const ReportsPage = () => {
   }, [vacantRoomsList]);
 
   const paginatedVacantRooms = useMemo(() => {
-    return vacantRoomsList.slice((vacancyPage - 1) * VACANCY_PER_PAGE, vacancyPage * VACANCY_PER_PAGE);
-  }, [vacantRoomsList, vacancyPage]);
+    return vacantRoomsList.slice((vacancyPage - 1) * vacancyLimit, vacancyPage * vacancyLimit);
+  }, [vacantRoomsList, vacancyPage, vacancyLimit]);
 
   const vacancyColumns: ColumnDef<any>[] = useMemo(() => [
     {
@@ -308,11 +319,11 @@ export const ReportsPage = () => {
   const handleExportExcel = async () => {
     try {
       await exportToExcel(
-         shouldRenderCombined ? getRelevantData(rawData.tenants) : tenants, 
-         shouldRenderCombined ? getRelevantData(rawData.rooms) : rooms, 
+         currentTenants, 
+         currentRooms, 
          currentPayments, 
-         shouldRenderCombined ? getRelevantData(rawData.complaints) : complaints, 
-         shouldRenderCombined ? getRelevantData(rawData.meterGroups) : meterGroups, 
+         getRelevantData(rawData.complaints || complaints), 
+         currentMeterGroups, 
          shouldRenderCombined ? undefined : currentBranch, 
          branches, 
          { 
@@ -327,7 +338,8 @@ export const ReportsPage = () => {
              p.status === 'PAID'
            )
          },
-         currentExpenses
+         currentExpenses,
+         selectedMonth
       );
     } catch (error) {
       console.error('Export failed:', error);
@@ -348,9 +360,11 @@ export const ReportsPage = () => {
      const allRooms = shouldRenderCombined ? (rawData.rooms || rooms) : rooms;
      const allTenants = shouldRenderCombined ? (rawData.tenants || tenants) : tenants;
 
-     let filteredPayments = currentPayments;
+     // Filter payments to selected month
+     let monthFilteredPayments = currentPayments.filter(p => p.month === currentMonthStr);
+     let filteredPayments = monthFilteredPayments;
      if (transactionFilter !== 'all') {
-       filteredPayments = currentPayments.filter(p => {
+       filteredPayments = monthFilteredPayments.filter(p => {
          const pType = (p.paymentType || (p as any).payment_type || 'rent').toLowerCase();
          if (transactionFilter === 'adjustment') return pType === 'adjust' || pType === 'adjustment';
          return pType === transactionFilter;
@@ -373,7 +387,8 @@ export const ReportsPage = () => {
         };
      });
 
-     const exps = (transactionFilter === 'all' || transactionFilter === 'adjustment') ? currentExpenses.map(e => ({
+     const monthFilteredExpenses = currentExpenses.filter(e => e.month === currentMonthStr);
+     const exps = (transactionFilter === 'all' || transactionFilter === 'adjustment') ? monthFilteredExpenses.map(e => ({
         type: 'expense',
         branch_name: (branches.find(b => b.id === (e.branchId || e.branch_id))?.name || 'Unknown'),
         date: e.date,
@@ -382,7 +397,7 @@ export const ReportsPage = () => {
         amount: -e.amount
      })) : [];
 
-     const currentPayouts = (rawData?.partnerPayouts || []).filter((p: any) => shouldRenderCombined || p.branchId === currentBranch?.id) || [];
+     const currentPayouts = (rawData?.partnerPayouts || []).filter((p: any) => (shouldRenderCombined || p.branchId === currentBranch?.id) && p.month === currentMonthStr) || [];
      const payoutsArr = (transactionFilter === 'all' || transactionFilter === 'payout') ? currentPayouts.filter((p: any) => p.status === 'PAID').map((p: any) => {
         const partnerName = rawData.users?.find((u: any) => u.id === p.partnerId)?.name || 'Partner';
         return {
@@ -396,12 +411,12 @@ export const ReportsPage = () => {
      }) : [];
 
      return [...revenue, ...exps, ...payoutsArr].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [currentPayments, currentExpenses, branches, transactionFilter, rooms, tenants, rawData, shouldRenderCombined, currentBranch]);
+  }, [currentPayments, currentExpenses, branches, transactionFilter, rooms, tenants, rawData, shouldRenderCombined, currentBranch, currentMonthStr]);
 
   const totalPages = Math.max(1, Math.ceil(detailedLogs.length / RECORDS_PER_PAGE));
   const paginatedLogs = detailedLogs.slice((currentPage - 1) * RECORDS_PER_PAGE, currentPage * RECORDS_PER_PAGE);
 
-  React.useEffect(() => { setCurrentPage(1); }, [transactionFilter]);
+  React.useEffect(() => { setCurrentPage(1); }, [transactionFilter, currentMonthStr]);
   React.useEffect(() => { setVacancyPage(1); }, [vacancyFilterBranch]);
 
   return (
@@ -414,7 +429,7 @@ export const ReportsPage = () => {
             {shouldRenderCombined ? 'Combined overview for all branches' : `Overview for ${currentBranch?.name || 'Active Branch'}`}
           </p>
         </div>
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-3 items-center">
           {canViewCombined && (
              <div className="flex bg-gray-100 dark:bg-white/5 rounded-xl p-1">
                <button onClick={() => setViewMode('active')} className={cn("px-4 py-1.5 rounded-lg text-xs font-bold transition-all", viewMode === 'active' ? "bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow" : "text-gray-500")}>Active Branch</button>
@@ -434,6 +449,20 @@ export const ReportsPage = () => {
                 <option>{currentBranch?.name || 'Active Branch'}</option>
              </select>
           )}
+          {/* Month Filter Dropdown */}
+          <div className="relative">
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-2xl text-sm font-bold text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 appearance-none cursor-pointer min-w-[180px]"
+            >
+              {monthOptions.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <Calendar className="w-4 h-4 text-indigo-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
           <button onClick={handleExportExcel} className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-2xl text-sm font-black hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20 active:scale-95" style={{ background: themeColor }}>
             <FileSpreadsheet className="w-4 h-4" /> Export Excel
           </button>
@@ -447,7 +476,7 @@ export const ReportsPage = () => {
           <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-600 mb-4">
             <CreditCard className="w-6 h-6" />
           </div>
-          <p className="text-[10px] font-black text-gray-400 tracking-[0.05em] mb-1 uppercase">Total Revenue (This Month)</p>
+          <p className="text-[10px] font-black text-gray-400 tracking-[0.05em] mb-1 uppercase">Total Revenue ({monthOptions.find(m => m.value === selectedMonth)?.label?.split(' ')[0] || 'This Month'})</p>
           <div className="flex items-baseline gap-2 font-display">
             <h3 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">₹{currentMonthData.revenue.toLocaleString()}</h3>
             <span className={cn("text-[10px] font-black tracking-tighter", revTrend >= 0 ? 'text-emerald-500' : 'text-rose-500')}>
@@ -461,7 +490,7 @@ export const ReportsPage = () => {
           <div className="w-12 h-12 bg-rose-50 dark:bg-rose-500/10 rounded-2xl flex items-center justify-center text-rose-600 mb-4">
             <Receipt className="w-6 h-6" />
           </div>
-          <p className="text-[10px] font-black text-gray-400 tracking-[0.05em] mb-1 uppercase">Total Expenses (This Month)</p>
+          <p className="text-[10px] font-black text-gray-400 tracking-[0.05em] mb-1 uppercase">Total Expenses ({monthOptions.find(m => m.value === selectedMonth)?.label?.split(' ')[0] || 'This Month'})</p>
           <div className="flex items-baseline gap-2 font-display">
             <h3 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">₹{currentMonthData.expenses.toLocaleString()}</h3>
             <span className={cn("text-[10px] font-black tracking-tighter", expTrend <= 0 ? 'text-emerald-500' : 'text-rose-500')}>
@@ -475,7 +504,7 @@ export const ReportsPage = () => {
           <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-500/10 rounded-2xl flex items-center justify-center text-emerald-600 mb-4">
             <TrendingUp className="w-6 h-6" />
           </div>
-          <p className="text-[10px] font-black text-gray-400 tracking-[0.05em] mb-1 uppercase">Net Profit (This Month)</p>
+          <p className="text-[10px] font-black text-gray-400 tracking-[0.05em] mb-1 uppercase">Net Profit ({monthOptions.find(m => m.value === selectedMonth)?.label?.split(' ')[0] || 'This Month'})</p>
           <div className="flex items-baseline gap-2 font-display">
             <h3 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">₹{currentMonthData.profit.toLocaleString()}</h3>
             <span className={cn("text-[10px] font-black tracking-tighter", profTrend >= 0 ? 'text-emerald-500' : 'text-rose-500')}>
@@ -548,7 +577,7 @@ export const ReportsPage = () => {
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="bg-white dark:bg-[#0d0d0d] p-8 rounded-[3rem] border border-gray-100 dark:border-white/5 shadow-sm min-h-[450px] flex flex-col">
           <div className="mb-6">
             <h3 className="text-xl font-black text-gray-900 dark:text-white flex items-center gap-2 font-display uppercase tracking-tight">Expenses Breakdown</h3>
-            <p className="text-[10px] font-bold text-gray-400 tracking-widest mt-1 uppercase italic">Current Month Categories</p>
+            <p className="text-[10px] font-bold text-gray-400 tracking-widest mt-1 uppercase italic">{monthOptions.find(m => m.value === selectedMonth)?.label || 'Selected Month'} Categories</p>
           </div>
           <div className="flex-1 flex flex-col items-center justify-center">
              <ResponsiveContainer width="100%" height={240}>
@@ -617,7 +646,7 @@ export const ReportsPage = () => {
             </select>
           )}
         </div>
-        <DataGrid columns={vacancyColumns} data={paginatedVacantRooms} isLoading={false} keyExtractor={(r) => r.id} page={vacancyPage} limit={VACANCY_PER_PAGE} totalCount={vacantRoomsList.length} onPageChange={setVacancyPage} emptyStateMessage="No vacant beds currently" compact />
+        <DataGrid columns={vacancyColumns} data={paginatedVacantRooms} isLoading={false} keyExtractor={(r) => r.id} page={vacancyPage} limit={vacancyLimit} totalCount={vacantRoomsList.length} onPageChange={setVacancyPage} onLimitChange={(newLimit) => { setVacancyLimit(newLimit); setVacancyPage(1); }} emptyStateMessage="No vacant beds currently" compact />
       </div>
 
       {/* 4. VACANCY STATS CARDS */}
@@ -652,7 +681,7 @@ export const ReportsPage = () => {
       {/* Branch Comparison Table */}
       {shouldRenderCombined && branchComparisonData.length > 0 && (
         <div className="bg-white dark:bg-[#111111] rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm p-8 overflow-hidden mt-8">
-          <h3 className="text-xl font-black text-gray-900 dark:text-white mb-6 uppercase tracking-tight font-display">Branch Comparison (Current Month)</h3>
+          <h3 className="text-xl font-black text-gray-900 dark:text-white mb-6 uppercase tracking-tight font-display">Branch Comparison ({monthOptions.find(m => m.value === selectedMonth)?.label || 'Selected Month'})</h3>
           <DataGrid columns={branchColumns} data={branchComparisonData} isLoading={false} keyExtractor={(b) => b.id} page={1} limit={100} totalCount={branchComparisonData.length} onPageChange={() => {}} compact />
         </div>
       )}

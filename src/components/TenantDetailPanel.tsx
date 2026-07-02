@@ -55,7 +55,7 @@ export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
   tenant, onClose, onEdit, onDelete, onViewAgreement, onViewPayments, canEdit, canDelete, onAuthorize, electricityShare, onUpdate
 }) => {
   const { user } = useAuth();
-  const { pgConfig, branches, updateTenant, tenants, rooms, completeCheckout, payments } = useApp();
+  const { pgConfig, branches, updateTenant, tenants, rooms, cancelVacating, completeCheckout, payments } = useApp();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const uploadAgreementRef = useRef<HTMLInputElement>(null);
@@ -257,6 +257,15 @@ export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
                 {(tenant.roomSwitchDate || tenant.room_switch_date) && (
                   <Field label="Switch Date" value={format(parseISO(tenant.roomSwitchDate || tenant.room_switch_date), 'dd MMM yyyy')} />
                 )}
+                {(tenant.vacatingDate || tenant.vacating_date) && (
+                  <Field label="Notice Date" value={format(parseISO(tenant.vacatingDate || tenant.vacating_date), 'dd MMM yyyy')} />
+                )}
+                {(tenant.exitDate || tenant.exit_date) && (
+                  <Field 
+                    label={tenant.status === 'vacated' ? "Checkout Date" : "Expected Exit"} 
+                    value={format(parseISO(tenant.exitDate || tenant.exit_date), 'dd MMM yyyy')} 
+                  />
+                )}
               </div>
 
               {/* Move-in Summary Card */}
@@ -322,6 +331,20 @@ export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
                       <p className="text-[10px] font-bold text-rose-600/60 uppercase">Checkout Available On</p>
                       <p className="text-sm font-bold text-rose-600">{tenant.exitDate}</p>
                     </div>
+                  )}
+                  {['super', 'admin', 'manager'].includes(user?.role || '') && (
+                    <button
+                      onClick={async () => {
+                        if (window.confirm(`Are you sure you want to cancel the vacating request for ${tenant.name}?`)) {
+                          await cancelVacating(tenant.id);
+                          onUpdate?.();
+                          onClose();
+                        }
+                      }}
+                      className="w-full py-2.5 bg-gray-100 dark:bg-white/5 text-gray-700 dark:text-gray-300 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-gray-200 dark:hover:bg-white/10 transition-all flex items-center justify-center gap-2 mt-2"
+                    >
+                      Cancel Vacate Request
+                    </button>
                   )}
                 </div>
               )}

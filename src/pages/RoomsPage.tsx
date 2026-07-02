@@ -35,7 +35,7 @@ import { exportRoomsToExcel, exportFlatsToExcel } from '../utils/exportUtils';
 export const RoomsPage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroups, addMeterGroup, updateMeterGroup, deleteMeterGroup, pgConfig, branches, currentBranch } = useApp();
+  const { rooms, addRoom, updateRoom, deleteRoom, currentPlan, tenants, meterGroups, addMeterGroup, updateMeterGroup, deleteMeterGroup, pgConfig, branches, currentBranch, fetchData, isAppLoading } = useApp();
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [roomToDelete, setRoomToDelete] = useState<Room | null>(null);
   const [electricityFlat, setElectricityFlat] = useState<MeterGroup | null>(null);
@@ -85,14 +85,60 @@ export const RoomsPage = () => {
 
   const filterType = searchTerm ? 'all' : 'all'; // placeholder so we can add type filter later
 
-  // Server-side paginated hook — fetches ONLY 10 records at a time
-  const { data: paginatedRooms, totalCount, isLoading, page, setPage, limit, refetch } = usePaginatedData<any>({
-    table: 'rooms',
-    select: '*, meter_groups(id, name, floor, branch_id, created_at)',
-    filters: filterFloor !== 'all' ? { floor: filterFloor } : undefined,
-    ilikeFilters: searchTerm ? { room_number: searchTerm } : undefined,
-    orderBy: { column: 'room_number', ascending: true }
-  });
+  // Client-side pagination state
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+
+  const [flatPage, setFlatPage] = useState(1);
+  const [flatLimit, setFlatLimit] = useState(10);
+
+  useEffect(() => {
+    setPage(1);
+    setFlatPage(1);
+  }, [searchTerm, filterFloor]);
+
+  const allFilteredRooms = React.useMemo(() => {
+    return (rooms || []).filter(r => {
+      // 1. Filter by Floor
+      if (filterFloor !== 'all' && r.floor !== Number(filterFloor)) {
+        return false;
+      }
+
+      // 2. Search Term Matching
+      if (searchTerm.trim() !== '') {
+        const query = searchTerm.toLowerCase();
+        
+        // Match Room Number
+        const matchesRoomNumber = String(r.roomNumber || '').toLowerCase().includes(query);
+        
+        // Match Room Type
+        const matchesType = String(r.type || '').toLowerCase().includes(query);
+        
+        // Match Flat/Group Name
+        const matchesFlatName = r.meterGroup?.name ? r.meterGroup.name.toLowerCase().includes(query) : false;
+        
+        // Match Tenant Names
+        const matchesTenants = tenants.some(t => 
+          t.roomId === r.id && 
+          ['active', 'vacating'].includes(t.status) && 
+          t.name.toLowerCase().includes(query)
+        );
+
+        return matchesRoomNumber || matchesType || matchesFlatName || matchesTenants;
+      }
+
+      return true;
+    });
+  }, [rooms, tenants, searchTerm, filterFloor]);
+
+  const totalCount = allFilteredRooms.length;
+  const paginatedRooms = React.useMemo(() => {
+    const startIndex = (page - 1) * limit;
+    return allFilteredRooms.slice(startIndex, startIndex + limit);
+  }, [allFilteredRooms, page, limit]);
+
+  const isLoading = isAppLoading || false;
+  const refetch = fetchData;
 
   // Sync detail panel when paginated data updates (e.g. after edit + refetch)
   useEffect(() => {
@@ -121,24 +167,57 @@ export const RoomsPage = () => {
   const roomColumns: ColumnDef<any>[] = React.useMemo(() => [
     {
       header: 'Room',
-      accessorKey: 'room_number',
+      accessorKey: 'roomNumber',
       sortable: true,
-      className: 'w-[35%] min-w-[160px]',
+      className: 'w-[18%] min-w-[130px]',
       cell: (r) => (
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500 dark:text-indigo-400 flex items-center justify-center shrink-0">
             <DoorOpen className="w-5 h-5" />
           </div>
           <div>
-            <p className="text-sm font-bold text-gray-900 dark:text-white">Room {r.room_number}</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">{r.meter_groups ? `${r.meter_groups.name} (Floor ${r.floor})` : `Floor ${r.floor}`} • {r.type}</p>
+            <p className="text-sm font-bold text-gray-900 dark:text-white">Room {r.roomNumber}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{r.meterGroup ? `${r.meterGroup.name} (Floor ${r.floor})` : `Floor ${r.floor}`}</p>
           </div>
         </div>
       )
     },
     {
+      header: 'Tenants',
+      accessorKey: 'id',
+      className: 'w-[32%] min-w-[180px]',
+      cell: (r) => {
+        const roomTenants = tenants.filter(t => t.roomId === r.id && ['active', 'vacating'].includes(t.status));
+        return (
+          <div className="flex flex-col gap-3 py-1">
+            {roomTenants.map(t => (
+              <div key={t.id} className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-black text-xs shadow-md shadow-indigo-500/15 uppercase shrink-0">
+                  {t.name?.charAt(0) || '?'}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-gray-900 dark:text-white truncate flex items-center gap-1.5">
+                    {t.name}
+                    {t.status === 'vacating' && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-200/50 dark:border-amber-500/20">
+                        Vacating
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">Bed {t.bedNumber}</p>
+                </div>
+              </div>
+            ))}
+            {roomTenants.length === 0 && (
+              <span className="text-xs text-gray-400 dark:text-gray-500 font-medium italic">Empty Room</span>
+            )}
+          </div>
+        );
+      }
+    },
+    {
       header: 'Occupancy',
-      accessorKey: 'occupied_beds',
+      accessorKey: 'occupiedBeds',
       sortable: true,
       sortFn: (a, b, direction) => {
         // Live occupied beds calculation
@@ -146,15 +225,15 @@ export const RoomsPage = () => {
         const liveB = tenants.filter(t => t.roomId === b.id && t.status === 'active').length;
         return direction === 'asc' ? liveA - liveB : liveB - liveA;
       },
-      className: 'w-[28%] min-w-[150px]',
+      className: 'w-[20%] min-w-[130px]',
       cell: (r) => {
         // Compute live from tenants (DB occupied_beds column is not auto-synced)
         const liveOccupied = tenants.filter(t => t.roomId === r.id && t.status === 'active').length;
-        const totalBeds = r.total_beds ?? 0;
+        const totalBeds = r.totalBeds ?? 0;
         const isFull = liveOccupied >= totalBeds;
         const pct = totalBeds > 0 ? Math.round((liveOccupied / totalBeds) * 100) : 0;
         return (
-          <div className="min-w-[130px]">
+          <div className="min-w-[110px]">
             <div className="flex justify-between text-xs mb-1">
               <span className="font-semibold text-gray-900 dark:text-gray-200">{liveOccupied} / {totalBeds} beds</span>
               <span className={cn('font-bold', isFull ? 'text-rose-500' : 'text-emerald-500')}>{isFull ? 'Full' : 'Available'}</span>
@@ -170,7 +249,7 @@ export const RoomsPage = () => {
       header: 'Type',
       accessorKey: 'type',
       sortable: true,
-      className: 'w-[15%]',
+      className: 'w-[12%] min-w-[90px]',
       cell: (r) => (
         <span className={cn(
           'px-2.5 py-1 rounded-full text-xs font-bold uppercase',
@@ -184,7 +263,7 @@ export const RoomsPage = () => {
       header: 'Price',
       accessorKey: 'price',
       sortable: true,
-      className: 'w-[17%]',
+      className: 'w-[13%] min-w-[90px]',
       cell: (r) => (
         <span className="text-sm font-bold text-gray-900 dark:text-white">₹{Number(r.price).toLocaleString()}<span className="text-xs text-gray-500 font-normal">/mo</span></span>
       )
@@ -213,7 +292,7 @@ export const RoomsPage = () => {
       header: 'Flat / Group',
       accessorKey: 'name',
       sortable: true,
-      className: 'w-[40%] min-w-[200px]',
+      className: 'w-[25%] min-w-[150px]',
       cell: (f) => (
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400 flex items-center justify-center shrink-0">
@@ -235,13 +314,20 @@ export const RoomsPage = () => {
         const countB = rooms.filter(r => r.meterGroupId === b.id).length;
         return direction === 'asc' ? countA - countB : countB - countA;
       },
-      className: 'w-[25%]',
+      className: 'w-[35%] min-w-[180px]',
       cell: (f) => {
-        const linkedCount = rooms.filter(r => r.meterGroupId === f.id).length;
+        const linkedRooms = rooms.filter(r => r.meterGroupId === f.id);
         return (
-          <div className="flex items-center gap-2">
-            <DoorOpen className="w-4 h-4 text-gray-400" />
-            <span className="text-sm font-semibold text-gray-900 dark:text-gray-200">{linkedCount} Rooms</span>
+          <div className="flex flex-col gap-2 py-1">
+            {linkedRooms.map(r => (
+              <div key={r.id} className="flex flex-col">
+                <span className="text-sm font-semibold text-gray-900 dark:text-white">Room {r.roomNumber}</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">{r.type} • {r.totalBeds} Beds</span>
+              </div>
+            ))}
+            {linkedRooms.length === 0 && (
+              <span className="text-xs text-gray-400 dark:text-gray-500 font-medium italic">No Rooms Linked</span>
+            )}
           </div>
         );
       }
@@ -257,7 +343,7 @@ export const RoomsPage = () => {
         const occupiedB = tenants.filter(t => linkedRoomsB.some(r => r.id === t.roomId) && t.status === 'active').length;
         return direction === 'asc' ? occupiedA - occupiedB : occupiedB - occupiedA;
       },
-      className: 'w-[25%]',
+      className: 'w-[20%] min-w-[120px]',
       cell: (f) => {
         const linkedRooms = rooms.filter(r => r.meterGroupId === f.id);
         const total = linkedRooms.reduce((sum, r) => sum + (r.totalBeds || 0), 0);
@@ -266,6 +352,30 @@ export const RoomsPage = () => {
           <div className="flex items-center gap-2">
             <Users className="w-4 h-4 text-gray-400" />
             <span className="text-sm font-semibold text-gray-900 dark:text-gray-200">{occupied} / {total} Beds</span>
+          </div>
+        );
+      }
+    },
+    {
+      header: 'Type',
+      accessorKey: 'id',
+      className: 'w-[15%] min-w-[100px]',
+      cell: (f) => {
+        const linkedRooms = rooms.filter(r => r.meterGroupId === f.id);
+        const types = Array.from(new Set(linkedRooms.map(r => r.type).filter(Boolean)));
+        return (
+          <div className="flex flex-wrap gap-1.5">
+            {types.map(t => (
+              <span key={t} className={cn(
+                'px-2.5 py-1 rounded-full text-xs font-bold uppercase',
+                t === 'AC' ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400' : 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400'
+              )}>
+                {t}
+              </span>
+            ))}
+            {types.length === 0 && (
+              <span className="text-xs text-gray-400 dark:text-gray-500 font-medium">-</span>
+            )}
           </div>
         );
       }
@@ -423,11 +533,36 @@ export const RoomsPage = () => {
 
   const filteredMeterGroups = React.useMemo(() => {
     return (meterGroups || []).filter(mg => {
-      const matchesSearch = searchTerm === '' || mg.name.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesFloor = filterFloor === 'all' || mg.floor === Number(filterFloor);
-      return matchesSearch && matchesFloor;
+      if (filterFloor !== 'all' && mg.floor !== Number(filterFloor)) {
+        return false;
+      }
+
+      if (searchTerm.trim() !== '') {
+        const query = searchTerm.toLowerCase();
+        const matchesName = mg.name.toLowerCase().includes(query);
+        
+        const linkedRooms = rooms.filter(r => r.meterGroupId === mg.id);
+        const matchesRooms = linkedRooms.some(r => 
+          String(r.roomNumber || '').toLowerCase().includes(query)
+        );
+        
+        const matchesTenants = tenants.some(t => 
+          linkedRooms.some(r => r.id === t.roomId) && 
+          ['active', 'vacating'].includes(t.status) && 
+          t.name.toLowerCase().includes(query)
+        );
+
+        return matchesName || matchesRooms || matchesTenants;
+      }
+
+      return true;
     });
-  }, [meterGroups, searchTerm, filterFloor]);
+  }, [meterGroups, rooms, tenants, searchTerm, filterFloor]);
+
+  const paginatedMeterGroups = React.useMemo(() => {
+    const startIndex = (flatPage - 1) * flatLimit;
+    return filteredMeterGroups.slice(startIndex, startIndex + flatLimit);
+  }, [filteredMeterGroups, flatPage, flatLimit]);
 
   const roomsToExport = React.useMemo(() => {
     return (rooms || []).filter(r => {
@@ -441,17 +576,17 @@ export const RoomsPage = () => {
     const liveOccupied = tenants.filter(t => t.roomId === r.id && t.status === 'active').length;
     return {
       id: r.id,
-      roomNumber: r.room_number,
+      roomNumber: r.roomNumber ?? r.room_number,
       floor: r.floor,
-      totalBeds: r.total_beds,
+      totalBeds: r.totalBeds ?? r.total_beds,
       occupiedBeds: liveOccupied,
       type: r.type,
       price: r.price,
       description: r.description,
       amenities: r.amenities || [],
-      branchId: r.branch_id,
-      meterGroupId: r.meter_group_id,
-      meterGroup: r.meter_groups
+      branchId: r.branchId ?? r.branch_id,
+      meterGroupId: r.meterGroupId ?? r.meter_group_id,
+      meterGroup: r.meterGroup ?? r.meter_groups
     };
   });
 
@@ -619,26 +754,34 @@ export const RoomsPage = () => {
         {activeTab === 'rooms' ? (
           <DataGrid
             columns={roomColumns}
-            data={paginatedRooms || []}
+            data={roomsData}
             isLoading={isLoading}
             keyExtractor={(r: any) => r.id}
             page={page}
             limit={limit}
             totalCount={totalCount}
             onPageChange={setPage}
+            onLimitChange={(newLimit) => {
+              setLimit(newLimit);
+              setPage(1);
+            }}
             onRowClick={(r: any) => setDetailRoom(rooms.find(room => room.id === r.id) || null)}
           />
         ) : (
           <DataGrid
             columns={flatColumns}
-            data={filteredMeterGroups}
+            data={paginatedMeterGroups}
             isLoading={false}
             keyExtractor={(f: any) => f.id}
             onRowClick={(f: any) => setDetailFlat(f)}
-            page={1}
-            limit={100}
+            page={flatPage}
+            limit={flatLimit}
             totalCount={filteredMeterGroups.length}
-            onPageChange={() => {}}
+            onPageChange={setFlatPage}
+            onLimitChange={(newLimit) => {
+              setFlatLimit(newLimit);
+              setFlatPage(1);
+            }}
           />
         )}
       </div>

@@ -36,6 +36,7 @@ interface AppContextType {
   updateTenant: (id: string, updates: Partial<Tenant>, kycDoc?: { type: string, file?: File, url?: string }, rentAgreementDoc?: { file?: File, url?: string }) => Promise<void>;
   deleteTenant: (id: string) => Promise<void>;
   requestVacating: (tenantId: string) => Promise<void>;
+  cancelVacating: (tenantId: string) => Promise<void>;
   completeCheckout: (tenantId: string) => Promise<void>;
 
   addRoom: (room: Omit<Room, 'id' | 'branchId'>) => Promise<void>;
@@ -1032,6 +1033,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       status: 'vacating'
     });
     toast.success(`Vacating request submitted. Exit date: ${exitDateStr}`);
+  };
+
+  const cancelVacating = async (tenantId: string) => {
+    await updateTenant(tenantId, {
+      status: 'active',
+      vacatingStatus: 'active',
+      vacatingDate: null as any,
+      exitDate: null as any
+    });
+    toast.success('Vacating request cancelled. Tenant is now active.');
   };
 
   const completeCheckout = async (tenantId: string) => {
@@ -2124,7 +2135,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     <AppContext.Provider value={{
       ...filteredData,
       addTenant, updateTenant, deleteTenant,
-      requestVacating, completeCheckout,
+      requestVacating, cancelVacating, completeCheckout,
       addRoom, updateRoom, deleteRoom,
       addMeterGroup, updateMeterGroup, deleteMeterGroup,
       addPayment, updatePayment, deletePayment,

@@ -23,7 +23,8 @@ import {
   Receipt,
   Clock,
   LogOut,
-  CheckCircle
+  CheckCircle,
+  XCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePaginatedData } from '../hooks/usePaginatedData';
@@ -34,13 +35,14 @@ import { TenantMobileList } from '../components/TenantMobileList';
 import { RentAgreementGeneratorModal } from '../components/RentAgreementGeneratorModal';
 import { cn } from '../utils';
 import { getTenantElectricityShare } from '../utils/electricityUtils';
+import { exportSingleTenantToExcel } from '../utils/exportUtils';
 import toast from 'react-hot-toast';
 
 export const TenantsPage = () => {
   const navigate = useNavigate();
   const { user, users, register, updateUser, authorizeUser } = useAuth();
   const location = useLocation();
-  const { tenants, rooms, branches, addTenant, updateTenant, deleteTenant, checkFeatureAccess, currentPlan, uploadVerifiedKYC, kycs, userInvites, pgConfig, requestVacating, completeCheckout, currentBranch } = useApp();
+  const { tenants, rooms, branches, addTenant, updateTenant, deleteTenant, checkFeatureAccess, currentPlan, uploadVerifiedKYC, kycs, userInvites, pgConfig, requestVacating, cancelVacating, completeCheckout, currentBranch } = useApp();
   const canSendWhatsApp = checkFeatureAccess('whatsapp');
 
   const currentTenantsCount = tenants.length;
@@ -73,6 +75,7 @@ export const TenantsPage = () => {
   const [menuTenant, setMenuTenant] = useState<Tenant | null>(null);
   const [checkoutConfirmModal, setCheckoutConfirmModal] = useState<{ isOpen: boolean, tenantId: string, tenantName: string } | null>(null);
   const [vacateConfirmModal, setVacateConfirmModal] = useState<{ isOpen: boolean, tenantId: string, tenantName: string } | null>(null);
+  const [cancelVacateConfirmModal, setCancelVacateConfirmModal] = useState<{ isOpen: boolean, tenantId: string, tenantName: string } | null>(null);
   const [adminKycFile, setAdminKycFile] = useState<{ type: string; file?: File; url?: string; fileName: string } | null>(null);
   const [adminKycType, setAdminKycType] = useState('Aadhar Card');
   const [detailTenant, setDetailTenant] = useState<any | null>(null);
@@ -87,12 +90,15 @@ export const TenantsPage = () => {
   } | null>(null);
   const { payments } = useApp();
 
-  // Server-side paginated hook — fetches ONLY 10 records at a time
-  const { data: paginatedTenants, totalCount, isLoading, page, setPage, limit, refetch } = usePaginatedData<any>({
+  const [limit, setLimit] = useState(10);
+
+  // Server-side paginated hook
+  const { data: paginatedTenants, totalCount, isLoading, page, setPage, refetch } = usePaginatedData<any>({
     table: 'tenants',
     select: '*, rooms!tenants_room_id_fkey(room_number, type), kyc_documents!kyc_documents_tenant_id_fkey(document_url, status)',
     ilikeFilters: searchTerm ? { name: searchTerm, email: searchTerm } : undefined,
-    filters: filterStatus !== 'all' ? { status: filterStatus } : undefined
+    filters: filterStatus !== 'all' ? { status: filterStatus } : undefined,
+    limit: limit
   });
 
   const columns: ColumnDef<any>[] = React.useMemo(() => [
@@ -117,12 +123,26 @@ export const TenantsPage = () => {
       accessorKey: 'room_id',
       cell: (t) => {
         const roomNumber = t.rooms?.room_number;
-        const roomType = t.rooms?.type ? ` (${t.rooms.type})` : '';
         return (
           <div className="flex flex-col">
-            <span className="text-sm font-semibold text-gray-900 dark:text-white">Room {roomNumber || 'N/A'}{roomType}</span>
+            <span className="text-sm font-semibold text-gray-900 dark:text-white">Room {roomNumber || 'N/A'}</span>
             <span className="text-xs text-gray-500 dark:text-gray-400">Bed {t.bed_number}</span>
           </div>
+        );
+      }
+    },
+    {
+      header: 'Type',
+      accessorKey: 'rooms.type',
+      cell: (t) => {
+        const roomType = t.rooms?.type || 'Non-AC';
+        return (
+          <span className={cn(
+            'px-2.5 py-1 rounded-full text-xs font-bold uppercase',
+            roomType === 'AC' ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400' : 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400'
+          )}>
+            {roomType}
+          </span>
         );
       }
     },
@@ -205,14 +225,21 @@ export const TenantsPage = () => {
                 onClick={() => setVacateConfirmModal({ isOpen: true, tenantId: t.id, tenantName: t.name })} 
               />
             )}
-            {['admin', 'manager'].includes(user?.role || '') && t.status === 'vacating' && (
+            {['super', 'admin', 'manager'].includes(user?.role || '') && t.status === 'vacating' && (
               <DropdownItem 
                 icon={<CheckCircle className="w-4 h-4 text-emerald-500" />} 
                 label="Confirm Checkout" 
                 onClick={() => setCheckoutConfirmModal({ isOpen: true, tenantId: t.id, tenantName: t.name })} 
               />
             )}
-            {['admin', 'manager'].includes(user?.role || '') && (
+            {['super', 'admin', 'manager'].includes(user?.role || '') && t.status === 'vacating' && (
+              <DropdownItem 
+                icon={<XCircle className="w-4 h-4 text-rose-500" />} 
+                label="Cancel Vacating" 
+                onClick={() => setCancelVacateConfirmModal({ isOpen: true, tenantId: t.id, tenantName: t.name })} 
+              />
+            )}
+            {['super', 'admin', 'manager'].includes(user?.role || '') && (
               <DropdownItem icon={<Trash2 className="w-4 h-4" />} label="Delete Tenant" onClick={() => setTenantToDelete(t)} danger />
             )}
           </DropdownMenu>
@@ -715,6 +742,10 @@ export const TenantsPage = () => {
           totalCount={totalCount}
           page={page}
           onPageChange={setPage}
+          onLimitChange={(newLimit) => {
+            setLimit(newLimit);
+            setPage(1);
+          }}
           limit={limit}
           emptyStateMessage="No tenants found matching your criteria"
           onRowClick={(t) => setDetailTenant(t)}
@@ -786,9 +817,22 @@ export const TenantsPage = () => {
                 <Trash2 className="w-8 h-8 text-rose-500" />
               </div>
               <h3 className="text-2xl font-black text-gray-900 dark:text-white mb-2 tracking-tight">Delete Tenant?</h3>
-              <p className="text-gray-500 dark:text-gray-400 mb-8 leading-relaxed">
+              <p className="text-gray-500 dark:text-gray-400 mb-6 leading-relaxed">
                 Are you sure you want to delete <span className="font-bold text-gray-900 dark:text-white">{tenantToDelete.name}</span>? This action cannot be undone and will permanently erase all associated data.
               </p>
+              <div className="mb-6">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const branch = branches.find(b => b.id === tenantToDelete.branchId);
+                    await exportSingleTenantToExcel(tenantToDelete, payments, rooms, branch?.name);
+                  }}
+                  className="w-full py-3.5 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-all flex items-center justify-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  Export Tenant Data (Excel)
+                </button>
+              </div>
               <div className="flex gap-4">
                 <button
                   onClick={() => setTenantToDelete(null)}
@@ -1702,6 +1746,52 @@ export const TenantsPage = () => {
                     refetch();
                   }}
                   className="flex-1 px-4 py-2.5 bg-rose-600 text-white font-bold rounded-xl shadow-lg shadow-rose-600/20 hover:bg-rose-700 transition-all"
+                >
+                  Confirm
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+        {cancelVacateConfirmModal?.isOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setCancelVacateConfirmModal(null)}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-sm bg-white dark:bg-[#111111] rounded-3xl shadow-2xl overflow-hidden border border-white/5 p-6 text-center"
+            >
+              <div className="w-16 h-16 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <XCircle className="w-8 h-8 text-rose-500" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2 tracking-tight">
+                Cancel Vacating?
+              </h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 leading-relaxed">
+                Are you sure you want to cancel the vacating request for <span className="font-bold text-gray-900 dark:text-white">{cancelVacateConfirmModal.tenantName}</span>? Their status will return to active.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setCancelVacateConfirmModal(null)}
+                  className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-gray-400 font-bold rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    await cancelVacating(cancelVacateConfirmModal.tenantId);
+                    setCancelVacateConfirmModal(null);
+                    refetch();
+                  }}
+                  className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
+                  style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
                 >
                   Confirm
                 </button>

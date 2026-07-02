@@ -47,15 +47,18 @@ export const ExpensesPage = () => {
   const [filterCategory, setFilterCategory] = useState<ExpenseCategory | 'all'>('all');
   const [filterMonth, setFilterMonth] = useState(format(new Date(), 'yyyy-MM'));
 
+  const [limit, setLimit] = useState(10);
+
   // Pagination hook
-  const { data: paginatedExpenses, totalCount, isLoading, setPage, refetch } = usePaginatedData<any>({
+  const { data: paginatedExpenses, totalCount, isLoading, page, setPage, refetch } = usePaginatedData<any>({
     table: 'expenses',
     select: '*',
     ilikeFilters: searchTerm ? { title: searchTerm } : undefined,
     filters: {
       ...(filterCategory !== 'all' ? { category: filterCategory } : {}),
       month: filterMonth
-    }
+    },
+    limit: limit
   });
 
   const [formData, setFormData] = useState({
@@ -410,10 +413,14 @@ export const ExpensesPage = () => {
           columns={columns}
           isLoading={isLoading}
           onPageChange={setPage}
+          onLimitChange={(newLimit) => {
+            setLimit(newLimit);
+            setPage(1);
+          }}
           totalCount={totalCount}
           keyExtractor={(item) => item.id}
-          page={1} // usePaginatedData handles internal page, but DataGrid wants it as prop
-          limit={10} 
+          page={page}
+          limit={limit}
         />
       </div>
 
