@@ -1057,25 +1057,86 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
 
     // Process any damage or other deductions
+    let availableDepositLeft = tenant.depositBalance || 0;
     let totalDeductions = 0;
+
     for (const d of deductions) {
       if (d.amount > 0) {
         totalDeductions += d.amount;
-        // Record deduction as a payment of type 'adjust'
-        await addPayment({
-          tenantId: tenantId,
-          amount: d.amount,
-          lateFee: 0,
-          totalAmount: d.amount,
-          paymentType: 'adjust',
-          paymentDate: new Date().toISOString().split('T')[0],
-          month: new Date().toISOString().substring(0, 7),
+        
+        if (d.amount <= availableDepositLeft) {
+          // Covered fully by deposit
+          availableDepositLeft -= d.amount;
+          await addPayment({
+            tenantId: tenantId,
+            amount: d.amount,
+            lateFee: 0,
+            totalAmount: d.amount,
+            paymentType: 'adjust',
+            paymentDate: new Date().toISOString().split('T')[0],
+            month: new Date().toISOString().substring(0, 7),
+            status: 'paid',
+            method: 'Offline',
+            transactionId: `DED-${Date.now()}`,
+            receiptUrl: null as any
+          });
+        } else {
+          // Partly covered or not covered
+          const coveredPart = availableDepositLeft;
+          const uncoveredPart = d.amount - coveredPart;
+          availableDepositLeft = 0;
+
+          if (coveredPart > 0) {
+            await addPayment({
+              tenantId: tenantId,
+              amount: coveredPart,
+              lateFee: 0,
+              totalAmount: coveredPart,
+              paymentType: 'adjust',
+              paymentDate: new Date().toISOString().split('T')[0],
+              month: new Date().toISOString().substring(0, 7),
+              status: 'paid',
+              method: 'Offline',
+              transactionId: `DED-${Date.now()}`,
+              receiptUrl: null as any
+            });
+          }
+
+          if (uncoveredPart > 0) {
+            // Recorded as pending bill (outstanding)
+            // If force checkout is active, we write it off immediately as paid
+            const status = force ? 'paid' : 'pending';
+            const txId = force 
+              ? `DED-${Date.now()} *Written-off / Force Checked Out*` 
+              : `DED-${Date.now()}`;
+
+            await addPayment({
+              tenantId: tenantId,
+              amount: uncoveredPart,
+              lateFee: 0,
+              totalAmount: uncoveredPart,
+              paymentType: 'adjust',
+              paymentDate: new Date().toISOString().split('T')[0],
+              month: new Date().toISOString().substring(0, 7),
+              status: status,
+              method: 'Offline',
+              transactionId: txId,
+              receiptUrl: null as any
+            });
+          }
+        }
+      }
+    }
+
+    // Force checkout Option B write-off of other pre-existing bills
+    if (force && pendingPayments.length > 0) {
+      for (const p of pendingPayments) {
+        await updatePayment(p.id, {
           status: 'paid',
-          method: 'Offline',
-          transactionId: `DED-${Date.now()}`,
-          receiptUrl: null as any
+          transactionId: `${p.transactionId || ''} *Written-off / Force Checked Out*`
         });
       }
+      toast.success(`${pendingPayments.length} pending bill(s) written off successfully.`);
     }
 
     // Calculate final deposit balance after deductions
@@ -1083,8 +1144,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     const updates: any = {
       status: 'vacated',
-      vacatingStatus: 'vacated',
-      roomId: null as any
+      vacatingStatus: 'vacated'
+      // Preserving roomId to show room info in dashboard/history
     };
 
     // Mark deposit as refunded

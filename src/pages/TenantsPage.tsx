@@ -1719,8 +1719,11 @@ export const TenantsPage = () => {
           const hasPendingDues = (payments || []).some(p => p.tenantId === checkoutConfirmModal.tenantId && p.status === 'pending');
           const totalDeductions = checkoutDeductions.reduce((sum, d) => sum + d.amount, 0);
           const netRefund = Math.max(0, checkoutConfirmModal.depositBalance - totalDeductions);
+          const amountOwed = Math.max(0, totalDeductions - checkoutConfirmModal.depositBalance);
+          const finalPendingDuesExist = hasPendingDues || (amountOwed > 0);
+
           const isChecklistCompleted = checkoutKeysReturned && checkoutRoomCleaned && checkoutUtilitiesSettled;
-          const isCheckoutAllowed = isChecklistCompleted && (!hasPendingDues || forceCheckout);
+          const isCheckoutAllowed = isChecklistCompleted && (!finalPendingDuesExist || forceCheckout);
 
           return (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -1870,15 +1873,29 @@ export const TenantsPage = () => {
                       ₹{netRefund.toLocaleString()}
                     </span>
                   </div>
+                  {amountOwed > 0 && (
+                    <div className="flex justify-between text-xs text-rose-600 dark:text-rose-400 font-bold pt-2 border-t border-dashed border-gray-200 dark:border-white/5">
+                      <span>Amount Owed by Tenant</span>
+                      <span>₹{amountOwed.toLocaleString()}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Warning Banner for Pending Dues */}
-                {hasPendingDues && (
+                {finalPendingDuesExist && (
                   <div className="space-y-3">
                     <div className="p-4 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-2xl flex gap-3 text-xs text-amber-700 dark:text-amber-400">
                       <AlertTriangle className="w-5 h-5 shrink-0" />
                       <div>
-                        <span className="font-bold">Cannot Checkout:</span> Tenant has outstanding pending bills. Settle bills first, or force checkout if authorized.
+                        {amountOwed > 0 ? (
+                          <span>
+                            <span className="font-bold">Damages exceed deposit!</span> Tenant owes <span className="font-black text-rose-600 dark:text-rose-400">₹{amountOwed.toLocaleString()}</span> for damage deductions. Settle dues or check Force Checkout.
+                          </span>
+                        ) : (
+                          <span>
+                            <span className="font-bold">Cannot Checkout:</span> Tenant has outstanding pending bills. Settle bills first, or force checkout if authorized.
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -1890,7 +1907,7 @@ export const TenantsPage = () => {
                           onChange={(e) => setForceCheckout(e.target.checked)}
                           className="rounded text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer"
                         />
-                        <span>Force Checkout (bypass unpaid bills blocker)</span>
+                        <span>Force Checkout (bypass billing/damage dues blocker)</span>
                       </label>
                     )}
                   </div>

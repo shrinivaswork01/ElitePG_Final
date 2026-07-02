@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import { RentAgreementGeneratorModal } from './RentAgreementGeneratorModal';
 import { uploadToSupabase } from '../utils/storage';
+import { exportSingleTenantToExcel } from '../utils/exportUtils';
 import toast from 'react-hot-toast';
 
 interface TenantDetailPanelProps {
@@ -160,9 +161,21 @@ export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
                   </span>
                 </div>
               </div>
-              <button onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-white/5 transition-colors text-gray-400">
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={async () => {
+                    const branch = branches.find((b: any) => b.id === tenant.branchId);
+                    await exportSingleTenantToExcel(tenant, payments, rooms, branch?.name || branch?.branchName);
+                  }}
+                  className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-white/5 transition-colors text-emerald-600 dark:text-emerald-400"
+                  title="Export Details to Excel"
+                >
+                  <Download className="w-5 h-5" />
+                </button>
+                <button onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-white/5 transition-colors text-gray-400">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Scrollable Content */}
