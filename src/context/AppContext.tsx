@@ -1049,12 +1049,28 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const tenant = data.tenants.find((t: any) => t.id === tenantId);
     if (!tenant) return;
 
-    // 1. Mark as vacated
-    await updateTenant(tenantId, {
+    // Check if there are any outstanding pending payments/bills
+    const pendingPayments = (data.payments || []).filter((p: any) => p.tenantId === tenantId && p.status === 'pending');
+    if (pendingPayments.length > 0) {
+      toast.error(`Cannot complete checkout. ${tenant.name} has pending unpaid bills.`);
+      return;
+    }
+
+    const updates: any = {
       status: 'vacated',
       vacatingStatus: 'vacated',
-      roomId: null as any // Using any to allow nulling out if types are strict
-    });
+      roomId: null as any
+    };
+
+    // If deposit refund is pending (depositBalance > 0 and not already marked as refunded)
+    if (tenant.depositBalance > 0 && tenant.depositStatus !== 'refunded') {
+      updates.depositStatus = 'refunded';
+      updates.depositBalance = 0;
+      toast.success(`Security deposit of ₹${tenant.depositBalance.toLocaleString()} automatically marked as refunded.`);
+    }
+
+    // 1. Mark as vacated & update deposit details
+    await updateTenant(tenantId, updates);
 
     // 2. Update room occupancy if tracked manually
     if (tenant.roomId) {
