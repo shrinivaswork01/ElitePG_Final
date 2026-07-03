@@ -4,7 +4,7 @@ import { useLongPress } from '../hooks/useLongPress';
 import { Tenant } from '../types';
 import {
   CheckCircle2, MessageCircle, FileCheck, Edit2,
-  Trash2, History, Share2, X, AlertCircle, FileText
+  Trash2, History, Share2, X, AlertCircle, FileText, Home
 } from 'lucide-react';
 import { cn } from '../utils';
 
@@ -19,6 +19,7 @@ interface TenantMobileListProps {
   onBulkDelete: (ids: string[]) => void;
   onBulkWhatsApp: (ids: string[]) => void;
   onShareDetails: (ids: string[]) => void;
+  onSwitchRoom?: (t: Tenant) => void;
 }
 
 const TenantMobileCard = memo(({ 
@@ -128,7 +129,8 @@ TenantMobileCard.displayName = 'TenantMobileCard';
 
 export const TenantMobileList: React.FC<TenantMobileListProps> = ({
   tenants, onManage, onEdit, onPaymentHistory, onViewAgreement,
-  onWhatsAppReminder, onDelete, onBulkDelete, onBulkWhatsApp, onShareDetails
+  onWhatsAppReminder, onDelete, onBulkDelete, onBulkWhatsApp, onShareDetails,
+  onSwitchRoom
 }) => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const isSelectionMode = selectedIds.size > 0;
@@ -207,6 +209,9 @@ export const TenantMobileList: React.FC<TenantMobileListProps> = ({
                 <>
                   <ActionButton icon={CheckCircle2} label="Manage" primary onClick={() => { clearSelection(); onManage(firstSelected); }} />
                   <ActionButton icon={Edit2} label="Edit Info" onClick={() => { clearSelection(); onEdit(firstSelected); }} />
+                  {firstSelected.status === 'active' && (
+                    <ActionButton icon={Home} label="Switch Room" onClick={() => { clearSelection(); onSwitchRoom?.(firstSelected); }} />
+                  )}
                   <ActionButton icon={History} label="Payments" onClick={() => { clearSelection(); onPaymentHistory(firstSelected); }} />
                   {(firstSelected.rent_agreement_url || firstSelected.rentAgreementUrl) && (
                     <ActionButton icon={FileText} label="Agreement" onClick={() => { clearSelection(); onViewAgreement(firstSelected); }} />

@@ -7,6 +7,7 @@ import { format, parseISO } from 'date-fns';
 import {
   Search,
   Plus,
+  Home,
   Filter,
   Download,
   Shield,
@@ -34,6 +35,7 @@ import { DropdownMenu, DropdownItem } from '../components/DropdownMenu';
 import { TenantDetailPanel } from '../components/TenantDetailPanel';
 import { TenantMobileList } from '../components/TenantMobileList';
 import { RentAgreementGeneratorModal } from '../components/RentAgreementGeneratorModal';
+import { SwitchRoomModal } from '../components/SwitchRoomModal';
 import { cn } from '../utils';
 import { getTenantElectricityShare } from '../utils/electricityUtils';
 import { exportSingleTenantToExcel } from '../utils/exportUtils';
@@ -89,6 +91,7 @@ export const TenantsPage = () => {
   const [adminKycFile, setAdminKycFile] = useState<{ type: string; file?: File; url?: string; fileName: string } | null>(null);
   const [adminKycType, setAdminKycType] = useState('Aadhar Card');
   const [detailTenant, setDetailTenant] = useState<any | null>(null);
+  const [switchRoomTenant, setSwitchRoomTenant] = useState<any | null>(null);
   const [tenantElectricityShare, setTenantElectricityShare] = useState<{ 
     baseShare: number; 
     acShare: number; 
@@ -217,6 +220,9 @@ export const TenantsPage = () => {
             {/* Edit first */}
             {['admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '') && (
               <DropdownItem icon={<Edit2 className="w-4 h-4" />} label="Edit Tenant" onClick={() => handleEditClick(t)} />
+            )}
+            {['admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '') && t.status === 'active' && (
+              <DropdownItem icon={<Home className="w-4 h-4" />} label="Switch Room" onClick={() => setSwitchRoomTenant(t)} />
             )}
             <DropdownItem icon={<History className="w-4 h-4" />} label="Payment History" onClick={() => setViewingPayments(t)} />
             {(t.rent_agreement_url || t.rentAgreementUrl) && (
@@ -802,6 +808,7 @@ export const TenantsPage = () => {
           onBulkDelete={handleBulkDelete}
           onBulkWhatsApp={handleBulkWhatsApp}
           onShareDetails={handleShareDetails}
+          onSwitchRoom={(t) => setSwitchRoomTenant(t)}
         />
       </div>
 
@@ -842,10 +849,30 @@ export const TenantsPage = () => {
       <RentAgreementGeneratorModal 
          isOpen={isAgreementGeneratorOpen}
          onClose={() => setIsAgreementGeneratorOpen(false)}
-         tenant={editingTenant || undefined}
+         tenant={editingTenant || formData}
          user={user}
          branch={branches.find((b: any) => b.id === (editingTenant?.branchId || user?.branchId))}
          pgConfig={pgConfig}
+         onAgreementGenerated={(pdfFile, idFile) => {
+           setRentAgreement({
+             file: pdfFile,
+             fileName: pdfFile.name,
+             url: URL.createObjectURL(pdfFile)
+           });
+           setKycDoc(prev => ({
+             ...prev,
+             file: idFile,
+             fileName: idFile.name,
+             url: URL.createObjectURL(idFile)
+           }));
+         }}
+      />
+
+      <SwitchRoomModal
+         isOpen={!!switchRoomTenant}
+         onClose={() => setSwitchRoomTenant(null)}
+         tenant={switchRoomTenant}
+         onUpdate={refetch}
       />
 
       {/* Delete Confirmation Modal */}
@@ -1291,18 +1318,20 @@ export const TenantsPage = () => {
                           </span>
                         </label>
                       </div>
-                      {editingTenant ? (
-                        <button
-                          type="button"
-                          onClick={() => setIsAgreementGeneratorOpen(true)}
-                          className="px-6 py-3 bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-purple-100 dark:hover:bg-purple-500/20 transition-colors w-full h-full min-h-[46px] box-border"
-                        >
-                          <FileText className="w-4 h-4" />
-                          Generate
-                        </button>
-                      ) : (
-                        <div />
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!formData.name) {
+                            toast.error('Please enter the tenant name first');
+                            return;
+                          }
+                          setIsAgreementGeneratorOpen(true);
+                        }}
+                        className="px-6 py-3 bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-purple-100 dark:hover:bg-purple-500/20 transition-colors w-full h-full min-h-[46px] box-border"
+                      >
+                        <FileText className="w-4 h-4" />
+                        Generate
+                      </button>
                     </div>
                   </div>
                 </div>

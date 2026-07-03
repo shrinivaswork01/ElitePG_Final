@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Upload, FileText, CheckCircle2, Image as ImageIcon, Loader2, PenTool } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -14,12 +14,13 @@ interface RentAgreementGeneratorModalProps {
   user: any;
   branch: any;
   pgConfig: any;
+  onAgreementGenerated?: (pdfFile: File, idFile: File, signatureFile: File | null) => void;
 }
 
 const TOTAL_STEPS = 4;
 
 export const RentAgreementGeneratorModal: React.FC<RentAgreementGeneratorModalProps> = ({
-  isOpen, onClose, tenant, user, branch, pgConfig
+  isOpen, onClose, tenant, user, branch, pgConfig, onAgreementGenerated
 }) => {
   const { updateTenant, rooms } = useApp();
   const [step, setStep] = useState(1);
@@ -27,6 +28,15 @@ export const RentAgreementGeneratorModal: React.FC<RentAgreementGeneratorModalPr
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [signatureFile, setSignatureFile] = useState<File | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setStep(1);
+      setIdFile(null);
+      setPhotoFile(null);
+      setSignatureFile(null);
+    }
+  }, [isOpen]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, setFile: (file: File | null) => void) => {
     const file = e.target.files?.[0];
@@ -63,7 +73,15 @@ export const RentAgreementGeneratorModal: React.FC<RentAgreementGeneratorModalPr
       const tenantRoom = rooms?.find((r: any) => r.id === tenant?.roomId || r.id === tenant?.room_id);
       const enhancedTenant = { 
         ...tenant, 
-        room_number: tenantRoom?.roomNumber || (tenantRoom as any)?.room_number || tenant?.room_number || tenant?.rooms?.room_number 
+        name: tenant?.name,
+        phone: tenant?.phone,
+        email: tenant?.email,
+        room_number: tenantRoom?.roomNumber || (tenantRoom as any)?.room_number || tenant?.room_number || tenant?.rooms?.room_number || '—',
+        rent_amount: tenant?.rent_amount ?? tenant?.rentAmount ?? 0,
+        deposit_amount: tenant?.deposit_amount ?? tenant?.depositAmount ?? 0,
+        joining_date: tenant?.joining_date ?? tenant?.joiningDate,
+        payment_due_date: tenant?.payment_due_date ?? tenant?.paymentDueDate ?? 1,
+        signature_url: tenant?.signature_url ?? tenant?.signatureUrl
       };
 
       // Generate the PDF — it will auto-download AND return a Blob
@@ -71,6 +89,16 @@ export const RentAgreementGeneratorModal: React.FC<RentAgreementGeneratorModalPr
       
       if (!pdfBlob) {
         throw new Error('PDF Generation failed');
+      }
+
+      if (!tenant?.id) {
+        const pdfFile = new File([pdfBlob], fname, { type: 'application/pdf' });
+        if (onAgreementGenerated) {
+          onAgreementGenerated(pdfFile, idFile, signatureFile);
+        }
+        toast.success('Agreement Generated!');
+        onClose();
+        return;
       }
 
       // Upload ID Proof to Supabase
