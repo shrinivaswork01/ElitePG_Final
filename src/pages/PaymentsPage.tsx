@@ -47,6 +47,7 @@ import { loadRazorpayScript } from '../utils/razorpay';
 import { generateTenantReceiptPDF } from '../utils/generateReceipt';
 import { uploadToSupabase } from '../utils/storage';
 import { fetchElectricityBill, calculateElectricityShares, fetchElectricityBillById, fetchRoomAcReadings } from '../utils/electricityUtils';
+import { supabase } from '../lib/supabase';
 import { ElectricityBill, ElectricityShare } from '../types';
 import toast from 'react-hot-toast';
 
@@ -704,7 +705,29 @@ export const PaymentsPage = () => {
           linkedBillId = bill.id;
         }
 
-        const existingPaymentForMonth = payments.find(p => p.tenantId === newPayment.tenantId && p.month === newPayment.month && p.paymentType === newPayment.paymentType);
+        let existingPaymentForMonth = payments.find(p => p.tenantId === newPayment.tenantId && p.month === newPayment.month && p.paymentType === newPayment.paymentType);
+        
+        // For electricity, always query DB directly — local state may be stale after bill modal creates pending records
+        if (newPayment.paymentType === 'electricity' && !existingPaymentForMonth) {
+          const { data: dbExisting } = await supabase
+            .from('payments')
+            .select('id, tenant_id, month, status, total_amount, payment_type, electricity_bill_id')
+            .eq('tenant_id', newPayment.tenantId)
+            .eq('month', newPayment.month)
+            .eq('payment_type', 'electricity')
+            .maybeSingle();
+          if (dbExisting) {
+            existingPaymentForMonth = {
+              id: dbExisting.id,
+              tenantId: dbExisting.tenant_id,
+              month: dbExisting.month,
+              status: dbExisting.status,
+              totalAmount: dbExisting.total_amount,
+              paymentType: dbExisting.payment_type,
+              electricityBillId: dbExisting.electricity_bill_id,
+            } as any;
+          }
+        }
         
         if (newPayment.paymentType === 'rent') {
           if (existingPaymentForMonth && !isFirstRent) {

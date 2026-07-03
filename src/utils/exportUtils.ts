@@ -33,7 +33,8 @@ export const exportToExcel = async (
   branches: PGBranch[] = [],
   stats: any,
   expenses: any[] = [],
-  filterMonth?: string
+  filterMonth?: string,
+  salaryPayments: any[] = []
 ) => {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'ElitePG';
@@ -76,9 +77,12 @@ export const exportToExcel = async (
   const activeTenantsCount = tenants.filter(t => t.status === 'active').length;
   const occupancyPercentage = totalBeds > 0 ? (activeTenantsCount / totalBeds) * 100 : 0;
   const totalRevenue = filteredPayments
-    .filter(p => p.status === 'paid' && ['rent', 'token'].includes((p.paymentType || (p as any).payment_type || 'rent').toLowerCase()))
+    .filter(p => p.status === 'paid' && (p.paymentType || (p as any).payment_type || 'rent').toLowerCase() === 'rent')
     .reduce((sum, p) => sum + (p.totalAmount || (p as any).total_amount || 0), 0);
-  const totalExpenses = filteredExpenses.filter(e => e.status !== 'rejected').reduce((sum, e) => sum + (e.amount || 0), 0);
+  const filteredSalaries = filterMonth ? salaryPayments.filter(s => s.month === filterMonth) : salaryPayments;
+  const totalExpensesOps = filteredExpenses.filter(e => e.status !== 'rejected').reduce((sum, e) => sum + (e.amount || 0), 0);
+  const totalSalaryExpenses = filteredSalaries.filter(s => s.status === 'paid').reduce((sum, s) => sum + (s.amount || 0), 0);
+  const totalExpenses = totalExpensesOps + totalSalaryExpenses;
   const pendingPayments = filteredPayments.filter(p => p.status === 'pending').reduce((sum, p) => sum + (p.totalAmount || (p as any).total_amount || 0), 0);
 
   summarySheet.addRows([

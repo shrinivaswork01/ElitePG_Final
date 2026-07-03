@@ -339,7 +339,8 @@ export const ReportsPage = () => {
            )
          },
          currentExpenses,
-         selectedMonth
+         selectedMonth,
+         currentSalaries
       );
     } catch (error) {
       console.error('Export failed:', error);
