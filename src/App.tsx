@@ -30,6 +30,7 @@ import { HelpSupportPage } from './pages/HelpSupportPage';
 import { TasksPage } from './pages/TasksPage';
 import { UpdatePasswordPage } from './pages/UpdatePasswordPage';
 import { ExpensesPage } from './pages/ExpensesPage';
+import { PWAInstallPrompt } from './components/PWAInstallPrompt';
 
 const RootRedirect = () => {
   const { user, isInitializing } = useAuth();
@@ -83,6 +84,7 @@ export default function App() {
               },
             }}
           />
+          <PWAInstallPrompt />
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<LoginPage isSignUp={true} />} />
