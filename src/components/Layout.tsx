@@ -25,7 +25,7 @@ import {
   Receipt
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '../utils';
+import { cn, hexToRgba } from '../utils';
 import { useTheme } from '../context/ThemeContext';
 import { useApp } from '../context/AppContext';
 import { AppFeature } from '../types';
@@ -41,12 +41,24 @@ interface LayoutProps {
 export const Layout = ({ children }: LayoutProps) => {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
-  const { pgConfig, checkFeatureAccess, currentBranch } = useApp();
+  const { pgConfig, checkFeatureAccess, currentBranch, rawData } = useApp();
   const location = useLocation();
   const navigate = useNavigate();
   const { branchId: urlBranchId } = useParams<{ branchId: string }>();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const activeBranchId = urlBranchId || user?.branchId;
+
+  const extractBaseColor = (colorStr?: string) => {
+    if (!colorStr) return '#4f46e5';
+    if (colorStr.includes('gradient')) {
+      const match = colorStr.match(/#(?:[0-9a-fA-F]{3,4}){1,2}/g);
+      return match ? match[0] : '#4f46e5';
+    }
+    return colorStr;
+  };
+  // Use pgConfig if available, otherwise fall back to first available config
+  const effectivePrimaryColor = pgConfig?.primaryColor || rawData?.pgConfigs?.[0]?.primaryColor;
+  const baseColor = extractBaseColor(effectivePrimaryColor);
 
   // Helper to prefix internal routes with branchId
   const getBranchPath = (path: string) => {
@@ -168,12 +180,12 @@ export const Layout = ({ children }: LayoutProps) => {
           {pgConfig?.logoUrl ? (
             <img src={pgConfig.logoUrl} alt="Logo" className="w-10 h-10 rounded-xl object-cover" />
           ) : (
-            <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl" style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}>
-              {pgConfig?.pgName?.charAt(0) || 'E'}
+            <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl" style={{ background: effectivePrimaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}>
+              {pgConfig?.pgName?.charAt(0) || rawData?.pgConfigs?.[0]?.pgName?.charAt(0) || 'E'}
             </div>
           )}
           <span className="text-xl font-bold text-gray-900 dark:text-white tracking-tight truncate">
-            {pgConfig?.pgName || 'ElitePG'}
+            {pgConfig?.pgName || rawData?.pgConfigs?.[0]?.pgName || 'ElitePG'}
           </span>
         </div>
 
@@ -206,14 +218,14 @@ export const Layout = ({ children }: LayoutProps) => {
                     ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 shadow-sm"
                     : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 hover:text-gray-900 dark:hover:text-white"
                 )}
-                style={isActive && pgConfig?.primaryColor ? { 
-                  background: pgConfig.primaryColor.includes('gradient') ? pgConfig.primaryColor : `${pgConfig.primaryColor}15`, 
-                  color: pgConfig.primaryColor.includes('gradient') ? '#fff' : pgConfig.primaryColor 
+                style={isActive && effectivePrimaryColor ? { 
+                  background: effectivePrimaryColor.includes('gradient') ? effectivePrimaryColor : hexToRgba(baseColor, 0.15), 
+                  color: effectivePrimaryColor.includes('gradient') ? '#fff' : baseColor 
                 } : {}}
               >
                 <item.icon 
                   className={cn("w-5 h-5", isActive ? "text-indigo-600 dark:text-indigo-400" : "text-gray-400 dark:text-gray-500")} 
-                  style={isActive && pgConfig?.primaryColor ? { color: pgConfig.primaryColor.includes('gradient') ? '#fff' : pgConfig.primaryColor } : {}}
+                  style={isActive && effectivePrimaryColor ? { color: effectivePrimaryColor.includes('gradient') ? '#fff' : baseColor } : {}}
                 />
                 {item.name}
                 {isActive && (
@@ -240,7 +252,7 @@ export const Layout = ({ children }: LayoutProps) => {
             )}
           >
             <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs overflow-hidden" 
-                 style={{ background: !user?.avatar ? (pgConfig?.primaryColor?.includes('gradient') ? pgConfig.primaryColor : `${pgConfig?.primaryColor}20`) : undefined, color: pgConfig?.primaryColor?.includes('gradient') ? '#fff' : pgConfig?.primaryColor }}>
+                 style={{ background: !user?.avatar ? (effectivePrimaryColor?.includes('gradient') ? effectivePrimaryColor : hexToRgba(baseColor, 0.2)) : undefined, color: effectivePrimaryColor?.includes('gradient') ? '#fff' : baseColor }}>
               {user?.avatar ? (
                 <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               ) : (
@@ -359,14 +371,14 @@ export const Layout = ({ children }: LayoutProps) => {
                           ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 shadow-sm"
                           : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 hover:text-gray-900 dark:hover:text-white"
                       )}
-                      style={isActive && pgConfig?.primaryColor ? { 
-                        background: pgConfig.primaryColor.includes('gradient') ? pgConfig.primaryColor : `${pgConfig.primaryColor}15`, 
-                        color: pgConfig.primaryColor.includes('gradient') ? '#fff' : pgConfig.primaryColor 
+                      style={isActive && effectivePrimaryColor ? { 
+                        background: effectivePrimaryColor.includes('gradient') ? effectivePrimaryColor : hexToRgba(baseColor, 0.15), 
+                        color: effectivePrimaryColor.includes('gradient') ? '#fff' : baseColor 
                       } : {}}
                     >
                       <item.icon 
                         className={cn("w-5 h-5", isActive ? "text-indigo-600 dark:text-indigo-400" : "text-gray-400 dark:text-gray-500")} 
-                        style={isActive && pgConfig?.primaryColor ? { color: pgConfig.primaryColor.includes('gradient') ? '#fff' : pgConfig.primaryColor } : {}}
+                        style={isActive && effectivePrimaryColor ? { color: effectivePrimaryColor.includes('gradient') ? '#fff' : baseColor } : {}}
                       />
                       {item.name}
                     </Link>
@@ -429,7 +441,7 @@ export const Layout = ({ children }: LayoutProps) => {
               className="flex items-center gap-2 sm:gap-3 p-1.5 pr-3 hover:bg-gray-100 dark:hover:bg-white/5 rounded-2xl transition-all"
             >
               <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-sm overflow-hidden"
-                   style={{ background: !user?.avatar ? (pgConfig?.primaryColor?.includes('gradient') ? pgConfig.primaryColor : `${pgConfig?.primaryColor}20`) : undefined, color: pgConfig?.primaryColor?.includes('gradient') ? '#fff' : pgConfig?.primaryColor }}>
+                   style={{ background: !user?.avatar ? (effectivePrimaryColor?.includes('gradient') ? effectivePrimaryColor : hexToRgba(baseColor, 0.2)) : undefined, color: effectivePrimaryColor?.includes('gradient') ? '#fff' : baseColor }}>
                 {user?.avatar ? (
                   <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 ) : (

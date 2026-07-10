@@ -16,13 +16,23 @@ import {
 } from 'lucide-react';
 import { ImageUpload } from '../components/ImageUpload';
 import { motion, AnimatePresence } from 'framer-motion';
-import { cn } from '../utils';
+import { cn, hexToRgba } from '../utils';
 import { format, parseISO } from 'date-fns';
 import toast from 'react-hot-toast';
 
 export const UnifiedStaffTasksPage = () => {
   const { user } = useAuth();
   const { tasks, complaints, updateTask, updateComplaint, pgConfig } = useApp();
+  const extractBaseColor = (colorStr?: string) => {
+    if (!colorStr) return '#4f46e5';
+    if (colorStr.includes('gradient')) {
+      const match = colorStr.match(/#(?:[0-9a-fA-F]{3,4}){1,2}/g);
+      return match ? match[0] : '#4f46e5';
+    }
+    return colorStr;
+  };
+  const themeColor = extractBaseColor(pgConfig?.primaryColor);
+
   const [activeTab, setActiveTab] = useState<'tasks' | 'complaints'>('tasks');
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed' | 'open' | 'assigned' | 'resolved'>('pending');
   const [searchTerm, setSearchTerm] = useState('');
@@ -121,10 +131,12 @@ export const UnifiedStaffTasksPage = () => {
                 onClick={() => setFilter(f)}
                 className={cn(
                   "px-4 py-2 rounded-xl text-xs font-bold capitalize transition-all whitespace-nowrap",
-                  filter === f 
-                    ? "bg-indigo-600/10 text-indigo-600 dark:text-indigo-400" 
-                    : "bg-white dark:bg-white/5 text-gray-500 dark:text-gray-400 border border-gray-100 dark:border-white/5"
+                  filter !== f && "bg-white dark:bg-white/5 text-gray-500 dark:text-gray-400 border border-gray-100 dark:border-white/5"
                 )}
+                style={filter === f ? {
+                  backgroundColor: hexToRgba(themeColor, 0.15),
+                  color: themeColor
+                } : {}}
               >
                 {f}
               </button>
@@ -136,10 +148,12 @@ export const UnifiedStaffTasksPage = () => {
                 onClick={() => setFilter(f)}
                 className={cn(
                   "px-4 py-2 rounded-xl text-xs font-bold capitalize transition-all whitespace-nowrap",
-                  filter === f 
-                    ? "bg-indigo-600/10 text-indigo-600 dark:text-indigo-400" 
-                    : "bg-white dark:bg-white/5 text-gray-500 dark:text-gray-400 border border-gray-100 dark:border-white/5"
+                  filter !== f && "bg-white dark:bg-white/5 text-gray-500 dark:text-gray-400 border border-gray-100 dark:border-white/5"
                 )}
+                style={filter === f ? {
+                  backgroundColor: hexToRgba(themeColor, 0.15),
+                  color: themeColor
+                } : {}}
               >
                 {f}
               </button>

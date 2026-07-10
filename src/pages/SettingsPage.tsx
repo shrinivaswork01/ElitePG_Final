@@ -14,6 +14,22 @@ export const SettingsPage = () => {
   
   const GRADIENT_THEME = 'linear-gradient(to right, #4f46e5, #7c3aed)';
 
+  const parseGradientColors = (gradientStr: string) => {
+    const regex = /linear-gradient\(to right,\s*(#[a-fA-F0-9]{3,6}|[a-zA-Z]+),\s*(#[a-fA-F0-9]{3,6}|[a-zA-Z]+)\)/;
+    const match = (gradientStr || '').match(regex);
+    if (match) {
+      return { color1: match[1], color2: match[2] };
+    }
+    return { color1: '#4f46e5', color2: '#7c3aed' };
+  };
+
+  const handleGradientColorChange = (c1: string, c2: string) => {
+    setSettingsForm(prev => ({
+      ...prev,
+      primaryColor: `linear-gradient(to right, ${c1}, ${c2})`
+    }));
+  };
+
   const [settingsForm, setSettingsForm] = useState<Partial<PGConfig>>({
     pgName: '',
     logoUrl: '',
@@ -198,21 +214,59 @@ export const SettingsPage = () => {
                   className="w-12 h-12 rounded-xl border border-gray-200 dark:border-white/10 shrink-0 shadow-sm"
                   style={{ background: settingsForm.primaryColor }}
                 />
-                <div className="flex-1 flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={settingsForm.primaryColor?.startsWith('linear') ? '#4f46e5' : settingsForm.primaryColor}
-                    onChange={(e) => setSettingsForm({ ...settingsForm, primaryColor: e.target.value })}
-                    className="w-10 h-10 rounded-lg border-none cursor-pointer bg-transparent shrink-0"
-                  />
-                  <input
-                    type="text"
-                    value={settingsForm.primaryColor}
-                    onChange={(e) => setSettingsForm({ ...settingsForm, primaryColor: e.target.value })}
-                    placeholder="HEX, RGB, or linear-gradient"
-                    className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white font-mono text-sm"
-                  />
-                </div>
+                 {settingsForm.primaryColor?.startsWith('linear') ? (
+                  <div className="flex-1 flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5 bg-gray-50 dark:bg-white/5 px-3 py-1.5 border border-gray-200 dark:border-white/10 rounded-xl">
+                        <span className="text-[10px] font-bold text-gray-400">Color 1</span>
+                        <input
+                          type="color"
+                          value={parseGradientColors(settingsForm.primaryColor).color1}
+                          onChange={(e) => {
+                            const colors = parseGradientColors(settingsForm.primaryColor || '');
+                            handleGradientColorChange(e.target.value, colors.color2);
+                          }}
+                          className="w-8 h-8 rounded-lg border-none cursor-pointer bg-transparent"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1.5 bg-gray-50 dark:bg-white/5 px-3 py-1.5 border border-gray-200 dark:border-white/10 rounded-xl">
+                        <span className="text-[10px] font-bold text-gray-400">Color 2</span>
+                        <input
+                          type="color"
+                          value={parseGradientColors(settingsForm.primaryColor).color2}
+                          onChange={(e) => {
+                            const colors = parseGradientColors(settingsForm.primaryColor || '');
+                            handleGradientColorChange(colors.color1, e.target.value);
+                          }}
+                          className="w-8 h-8 rounded-lg border-none cursor-pointer bg-transparent"
+                        />
+                      </div>
+                    </div>
+                    <input
+                      type="text"
+                      value={settingsForm.primaryColor}
+                      onChange={(e) => setSettingsForm({ ...settingsForm, primaryColor: e.target.value })}
+                      placeholder="HEX, RGB, or linear-gradient"
+                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white font-mono text-sm"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex-1 flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={settingsForm.primaryColor}
+                      onChange={(e) => setSettingsForm({ ...settingsForm, primaryColor: e.target.value })}
+                      className="w-10 h-10 rounded-lg border-none cursor-pointer bg-transparent shrink-0"
+                    />
+                    <input
+                      type="text"
+                      value={settingsForm.primaryColor}
+                      onChange={(e) => setSettingsForm({ ...settingsForm, primaryColor: e.target.value })}
+                      placeholder="HEX, RGB, or linear-gradient"
+                      className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white font-mono text-sm"
+                    />
+                  </div>
+                )}
               </div>
               <p className="text-[10px] text-gray-400">Custom selection (HEX, RGB, or linear-gradient)</p>
               

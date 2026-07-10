@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Zap, ChevronDown, FileText, Info, DollarSign, Gauge } from 'lucide-react';
-import { cn } from '../utils';
+import { cn, hexToRgba } from '../utils';
 
 interface ElectricityBreakdownCardProps {
   baseAmount: number;
@@ -35,7 +35,7 @@ export const ElectricityBreakdownCard = ({
     <div className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden transition-all duration-300">
       <div className="p-6 sm:p-8 border-b border-gray-100 dark:border-white/5 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-xl" style={{ background: `${themeColor}15`, color: themeColor }}>
+          <div className="p-2.5 bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-xl" style={{ backgroundColor: hexToRgba(themeColor, 0.15), color: themeColor }}>
             <Zap className="w-5 h-5" />
           </div>
           <div>
@@ -68,7 +68,7 @@ export const ElectricityBreakdownCard = ({
             <button
                onClick={(e) => { e.stopPropagation(); onPay(); }}
                className="px-6 py-3 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:brightness-110 transition-all shadow-lg active:scale-95"
-               style={{ background: themeColor, boxShadow: `0 10px 20px -5px ${themeColor}40` }}
+               style={{ background: themeColor, boxShadow: `0 10px 20px -5px ${hexToRgba(themeColor, 0.4)}` }}
             >
                Pay Now
             </button>
@@ -90,7 +90,7 @@ export const ElectricityBreakdownCard = ({
               <div className="pt-2 space-y-4">
                 {/* Cost per unit badge */}
                 {isUnitBased && (
-                  <div className="flex items-center gap-2 p-3 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl border border-indigo-100 dark:border-indigo-500/20" style={{ background: `${themeColor}10`, borderColor: `${themeColor}20` }}>
+                  <div className="flex items-center gap-2 p-3 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl border border-indigo-100 dark:border-indigo-500/20" style={{ backgroundColor: hexToRgba(themeColor, 0.1), borderColor: hexToRgba(themeColor, 0.2) }}>
                     <Gauge className="w-4 h-4" style={{ color: themeColor }} />
                     <span className="text-xs font-black uppercase tracking-tight" style={{ color: themeColor }}>
                       Rate: ₹{costPerUnit?.toFixed(2)}/unit

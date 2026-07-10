@@ -22,6 +22,8 @@ import {
   Code,
   Type,
   ChevronDown,
+  Check,
+  Search,
   X,
   Zap,
   BookTemplate,
@@ -33,6 +35,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../utils';
 import { Navigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+
+import { ModernSelect } from '../components/ModernSelect';
 
 const CATEGORY_CONFIG: Record<WhatsAppTemplateCategory, { label: string, color: string, bgColor: string }> = {
   reminder: { label: 'Reminder', color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-50 dark:bg-amber-500/10' },
@@ -265,7 +269,8 @@ const WhatsAppPreview = ({ content }: { content: string }) => {
 
 export const BroadcastPage = () => {
   const { user, users } = useAuth();
-  const { tenants, rooms, announcements, addAnnouncement, deleteAnnouncement, whatsappTemplates, addWhatsAppTemplate, updateWhatsAppTemplate, deleteWhatsAppTemplate } = useApp();
+  const { tenants, rooms, announcements, addAnnouncement, deleteAnnouncement, whatsappTemplates, addWhatsAppTemplate, updateWhatsAppTemplate, deleteWhatsAppTemplate, pgConfig } = useApp();
+  const themeGradient = pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)';
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [formData, setFormData] = useState<Omit<Announcement, 'id' | 'branchId'>>({
     title: '',
@@ -508,7 +513,8 @@ export const BroadcastPage = () => {
           </button>
           <button
             onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
+            className="flex items-center gap-2 px-4 py-2.5 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 transition-all"
+            style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
           >
             <Plus className="w-5 h-5" />
             New Announcement
@@ -595,54 +601,79 @@ export const BroadcastPage = () => {
 
             <div className="space-y-4">
               {/* Select Recipient */}
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Select Tenant / Recipient</label>
-                <select
-                  value={quickBroadcast.tenantId}
-                  onChange={(e) => {
-                    const nextTenantId = e.target.value;
-                    setQuickBroadcast(prev => {
-                      // Automatically resolve placeholders in composer if switching to a specific tenant
-                      const resolvedMessage = resolveVariables(prev.message, nextTenantId);
-                      return {
-                        ...prev,
-                        tenantId: nextTenantId,
-                        message: resolvedMessage
-                      };
-                    });
-                  }}
-                  className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500/20"
-                >
-                  <option value="">Choose tenant...</option>
-                  <option value="all">All Tenants (WhatsApp Group)</option>
-                  {user?.role === 'super' && (
-                    <option value="all_admins">All Admins</option>
-                  )}
-                  {user?.role === 'super' && users.filter(u => u.role === 'admin' || u.role === 'partner').map(admin => (
-                    <option key={`admin_${admin.id}`} value={admin.id}>[Admin] {admin.name} ({admin.phone || 'No phone'})</option>
-                  ))}
-                  {tenants.map(t => (
-                    <option key={`tenant_${t.id}`} value={t.id}>{t.name} ({t.phone})</option>
-                  ))}
-                </select>
-              </div>
+              {(() => {
+                const recipientOptions = [
+                  { value: "", label: "Choose tenant..." },
+                  { value: "all", label: "All Tenants (WhatsApp Group)" },
+                  ...(user?.role === 'super' ? [
+                    { value: "all_admins", label: "All Admins" },
+                    ...users.filter(u => u.role === 'admin' || u.role === 'partner').map(admin => ({
+                      value: admin.id,
+                      label: `[Admin] ${admin.name} (${admin.phone || 'No phone'})`
+                    }))
+                  ] : []),
+                  ...tenants.map(t => ({
+                    value: t.id,
+                    label: `${t.name} (${t.phone})`
+                  }))
+                ];
+
+                return (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Select Tenant / Recipient</label>
+                    <ModernSelect
+                      placeholder="Choose tenant..."
+                      searchPlaceholder="Search tenants..."
+                      value={quickBroadcast.tenantId}
+                      options={recipientOptions}
+                      onChange={(nextTenantId) => {
+                        setQuickBroadcast(prev => {
+                          const resolvedMessage = resolveVariables(prev.message, nextTenantId);
+                          return {
+                            ...prev,
+                            tenantId: nextTenantId,
+                            message: resolvedMessage
+                          };
+                        });
+                      }}
+                    />
+                  </div>
+                );
+              })()}
 
               {/* Load Template Dropdown */}
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Load Saved Template</label>
-                <select
-                  value={selectedTemplateId}
-                  onChange={handleTemplateDropdownChange}
-                  className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500/20"
-                >
-                  <option value="">Choose a template to autofill...</option>
-                  {(whatsappTemplates || []).map(t => (
-                    <option key={t.id} value={t.id}>
-                      [{CATEGORY_CONFIG[t.category]?.label || t.category}] {t.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {(() => {
+                const templateOptions = [
+                  { value: "", label: "Choose a template to autofill..." },
+                  ...(whatsappTemplates || []).map(t => ({
+                    value: t.id,
+                    label: `[${CATEGORY_CONFIG[t.category]?.label || t.category}] ${t.name}`
+                  }))
+                ];
+
+                return (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Load Saved Template</label>
+                    <ModernSelect
+                      placeholder="Choose a template to autofill..."
+                      searchPlaceholder="Search templates..."
+                      value={selectedTemplateId}
+                      options={templateOptions}
+                      onChange={(tempVal) => {
+                        setSelectedTemplateId(tempVal);
+                        if (tempVal) {
+                          const temp = whatsappTemplates.find(t => t.id === tempVal);
+                          if (temp) {
+                            useTemplate(temp);
+                          }
+                        } else {
+                          setQuickBroadcast(prev => ({ ...prev, message: '' }));
+                        }
+                      }}
+                    />
+                  </div>
+                );
+              })()}
 
               {/* Message Composer & Toolbar */}
               <div className="space-y-2">
@@ -679,7 +710,10 @@ export const BroadcastPage = () => {
           </div>
 
           {/* Pro Tip Card */}
-          <div className="bg-indigo-600 rounded-3xl p-6 text-white shadow-xl shadow-indigo-600/20">
+          <div
+            className="rounded-3xl p-6 text-white shadow-xl shadow-indigo-600/20"
+            style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
+          >
             <h4 className="font-bold mb-2 flex items-center gap-2">
               <CheckCircle2 className="w-5 h-5" />
               Pro Tip
@@ -734,44 +768,55 @@ export const BroadcastPage = () => {
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Target Audience</label>
-                  <select
-                    value={formData.target}
-                    onChange={(e) => setFormData({ ...formData, target: e.target.value as any })}
-                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                  >
-                    <option value="all">All Tenants</option>
-                    <option value="active">Active Tenants Only</option>
-                    <option value="vacating">Vacating Tenants Only</option>
-                  </select>
+                  {(() => {
+                    const targetOptions = [
+                      { value: "all", label: "All Tenants" },
+                      { value: "active", label: "Active Tenants Only" },
+                      { value: "vacating", label: "Vacating Tenants Only" }
+                    ];
+                    return (
+                      <ModernSelect
+                        placeholder="Select target..."
+                        value={formData.target}
+                        options={targetOptions}
+                        onChange={(val) => setFormData({ ...formData, target: val as any })}
+                      />
+                    );
+                  })()}
                 </div>
 
                 {/* Load Saved Template */}
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Load Saved Template</label>
-                  <select
-                    value={announcementTemplateId}
-                    onChange={(e) => {
-                      const templateId = e.target.value;
-                      setAnnouncementTemplateId(templateId);
-                      if (templateId) {
-                        const selectedTemplate = whatsappTemplates.find(t => t.id === templateId);
-                        if (selectedTemplate) {
-                          setFormData(prev => ({ ...prev, content: selectedTemplate.content }));
-                          toast.success(`Template "${selectedTemplate.name}" loaded`);
-                        }
-                      } else {
-                        setFormData(prev => ({ ...prev, content: '' }));
-                      }
-                    }}
-                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white text-sm"
-                  >
-                    <option value="">Choose a template to autofill...</option>
-                    {(whatsappTemplates || []).map(t => (
-                      <option key={t.id} value={t.id}>
-                        [{CATEGORY_CONFIG[t.category]?.label || t.category}] {t.name}
-                      </option>
-                    ))}
-                  </select>
+                  {(() => {
+                    const templateOptions = [
+                      { value: "", label: "Choose a template to autofill..." },
+                      ...(whatsappTemplates || []).map(t => ({
+                        value: t.id,
+                        label: `[${CATEGORY_CONFIG[t.category]?.label || t.category}] ${t.name}`
+                      }))
+                    ];
+                    return (
+                      <ModernSelect
+                        placeholder="Choose a template to autofill..."
+                        searchPlaceholder="Search templates..."
+                        value={announcementTemplateId}
+                        options={templateOptions}
+                        onChange={(templateId) => {
+                          setAnnouncementTemplateId(templateId);
+                          if (templateId) {
+                            const selectedTemplate = whatsappTemplates.find(t => t.id === templateId);
+                            if (selectedTemplate) {
+                              setFormData(prev => ({ ...prev, content: selectedTemplate.content }));
+                              toast.success(`Template "${selectedTemplate.name}" loaded`);
+                            }
+                          } else {
+                            setFormData(prev => ({ ...prev, content: '' }));
+                          }
+                        }}
+                      />
+                    );
+                  })()}
                 </div>
 
                 {/* Content with Format Toolbar */}
@@ -824,7 +869,8 @@ export const BroadcastPage = () => {
                   </button>
                   <button
                     type="submit"
-                    className="px-6 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
+                    className="px-6 py-2.5 text-white text-sm font-semibold rounded-xl shadow-lg transition-all active:scale-95"
+                    style={{ background: themeGradient }}
                   >
                     Post Announcement
                   </button>
@@ -867,7 +913,8 @@ export const BroadcastPage = () => {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={openNewTemplate}
-                    className="flex items-center gap-1 px-3 py-2 text-xs font-semibold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all shadow shadow-indigo-600/10 animate-fade-in"
+                    className="flex items-center gap-1 px-3 py-2 text-xs font-semibold text-white rounded-xl transition-all shadow animate-fade-in active:scale-95"
+                    style={{ background: themeGradient }}
                   >
                     <Plus className="w-4 h-4" />
                     Create Template
@@ -902,9 +949,10 @@ export const BroadcastPage = () => {
                       className={cn(
                         "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all",
                         templateCategoryFilter === 'all'
-                          ? "bg-indigo-600 text-white"
+                          ? "text-white"
                           : "bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10"
                       )}
+                      style={templateCategoryFilter === 'all' ? { background: themeGradient } : {}}
                     >
                       All
                     </button>
@@ -1129,7 +1177,8 @@ export const BroadcastPage = () => {
                   </button>
                   <button
                     type="submit"
-                    className="px-6 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
+                    className="px-6 py-2.5 text-white text-sm font-semibold rounded-xl shadow-lg transition-all active:scale-95"
+                    style={{ background: themeGradient }}
                   >
                     {editingTemplate ? 'Update Template' : 'Save Template'}
                   </button>

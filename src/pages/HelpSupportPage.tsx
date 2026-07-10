@@ -4,10 +4,24 @@ import { useApp } from '../context/AppContext';
 import { Phone, MessageCircle, Copy, User, ShieldCheck, Mail, Building2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { motion } from 'motion/react';
+import { hexToRgba } from '../utils';
 
 export const HelpSupportPage = () => {
   const { user, users } = useAuth();
-  const { branches, employees, currentBranch } = useApp();
+  const { branches, employees, currentBranch, pgConfig, rawData } = useApp();
+
+  const extractBaseColor = (colorStr?: string) => {
+    if (!colorStr) return '#4f46e5';
+    if (colorStr.includes('gradient')) {
+      const match = colorStr.match(/#(?:[0-9a-fA-F]{3,4}){1,2}/g);
+      return match ? match[0] : '#4f46e5';
+    }
+    return colorStr;
+  };
+  // Use pgConfig if available, otherwise fall back to first available config from rawData
+  const effectivePrimaryColor = pgConfig?.primaryColor || rawData?.pgConfigs?.[0]?.primaryColor;
+  const themeColor = extractBaseColor(effectivePrimaryColor);
+  const gradientBg = effectivePrimaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)';
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -27,7 +41,12 @@ export const HelpSupportPage = () => {
     >
       <div className="flex items-start justify-between mb-6">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center font-bold text-xl">
+          <div 
+            className="w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-xl text-white shadow-sm"
+            style={{
+              background: effectivePrimaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)'
+            }}
+          >
             {name.charAt(0)}
           </div>
           <div>
@@ -54,7 +73,11 @@ export const HelpSupportPage = () => {
               </button>
               <a 
                 href={`tel:${phone}`}
-                className="p-1.5 hover:bg-indigo-100 dark:hover:bg-indigo-500/10 rounded-lg text-indigo-600 transition-colors"
+                className="p-1.5 rounded-lg transition-colors hover:bg-[var(--theme-hover)] text-[var(--theme-color)]"
+                style={{
+                  ['--theme-color' as any]: themeColor,
+                  ['--theme-hover' as any]: hexToRgba(themeColor, 0.15)
+                }}
                 title="Call"
               >
                 <Phone className="w-4 h-4" />
@@ -89,14 +112,31 @@ export const HelpSupportPage = () => {
 
   const renderContent = () => {
     if (user?.role === 'tenant') {
-      const branchAdmin = currentBranch;
+      const tenantBranchId = user?.branchId;
+      
+      // Find the admin/super user associated with this tenant's branch
+      const adminUser = users.find(u => 
+        (u.role === 'admin' || u.role === 'super') && 
+        (u.branchId === tenantBranchId || u.branchIds?.includes(tenantBranchId || ''))
+      );
+
+      const branchAdminName = adminUser?.name?.trim() || currentBranch?.name?.trim() || 'PG Admin';
+      const branchAdminPhone = adminUser?.phone || currentBranch?.phone || '';
+      const branchAdminEmail = adminUser?.email || '';
+
       const branchStaff = employees.filter(e => ['manager', 'caretaker'].includes(e.role));
 
       return (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {branchAdmin && renderContactCard('PG Admin', branchAdmin.name, branchAdmin.phone, '', 'admin')}
+          {(adminUser || currentBranch) && renderContactCard(
+            'PG Admin',
+            branchAdminName,
+            branchAdminPhone,
+            branchAdminEmail,
+            'admin'
+          )}
           {branchStaff.map(staff => renderContactCard(staff.role, staff.name, staff.phone, staff.email, staff.role))}
-          {branchStaff.length === 0 && !branchAdmin && (
+          {branchStaff.length === 0 && !adminUser && !currentBranch && (
             <p className="col-span-full text-center py-12 text-gray-500 italic text-sm">No contact details found for your branch.</p>
           )}
         </div>
@@ -139,7 +179,10 @@ export const HelpSupportPage = () => {
 
       {renderContent()}
 
-      <div className="mt-12 p-8 bg-indigo-600 rounded-[2rem] text-white flex flex-col md:flex-row items-center justify-between gap-8 shadow-2xl shadow-indigo-600/20">
+      <div
+        className="mt-12 p-8 text-white flex flex-col md:flex-row items-center justify-between gap-8 rounded-[2rem] shadow-2xl shadow-indigo-600/20"
+        style={{ background: gradientBg }}
+      >
         <div className="space-y-4 text-center md:text-left">
           <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center">
             <ShieldCheck className="w-6 h-6" />

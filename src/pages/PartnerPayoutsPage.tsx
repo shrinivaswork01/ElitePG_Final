@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext';
 import { 
   TrendingUp, Calendar, ChevronDown, Wallet, Receipt, DollarSign, 
   Users, Lock, CreditCard, ShieldCheck, UserPlus, FileText, 
-  CheckCircle, History, Filter, Search, Edit2, Trash2, Download,
+  CheckCircle, History, Filter, Search, Edit2, Trash2, Download, FileSpreadsheet,
   ArrowUp, ArrowDown, ArrowUpDown
 } from 'lucide-react';
 import { format, subMonths, parseISO, isAfter } from 'date-fns';
@@ -26,10 +26,12 @@ export const PartnerPayoutsPage = () => {
     deletePartnerAndReferences,
     deletePartnerPayout,
     deleteAllPartnerPayouts,
-    rooms,
     tenants,
-    branches
+    branches,
+    pgConfig
   } = useApp();
+
+  const themeGradient = pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)';
 
   const [activeTab, setActiveTab] = useState<'payouts' | 'partners' | 'transactions'>('payouts');
   
@@ -352,9 +354,10 @@ export const PartnerPayoutsPage = () => {
             className={cn(
               "px-5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all",
               canRequest
-                ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/30"
+                ? "text-white shadow-lg shadow-indigo-600/30"
                 : "bg-gray-200 dark:bg-white/10 text-gray-500 cursor-not-allowed"
             )}
+            style={canRequest ? { background: themeGradient } : undefined}
          >
            {requestLabel}
          </button>
@@ -419,9 +422,10 @@ export const PartnerPayoutsPage = () => {
                  className={cn(
                    "px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
                    canForcePay
-                     ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/30"
+                     ? "text-white shadow-lg shadow-indigo-600/30"
                      : "bg-gray-200 dark:bg-white/10 text-gray-500 cursor-not-allowed"
                  )}
+                 style={canForcePay ? { background: themeGradient } : undefined}
               >
                  {canForcePay ? 'Force Pay' : 'No Balance'}
               </button>
@@ -452,11 +456,12 @@ export const PartnerPayoutsPage = () => {
                }}
                disabled={!canFinalPay}
                className={cn(
-                 "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
-                 canFinalPay
-                   ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/30"
-                   : "bg-gray-200 dark:bg-white/10 text-gray-500 cursor-not-allowed"
-               )}
+                  "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                  canFinalPay
+                    ? "text-white shadow-lg shadow-indigo-600/30"
+                    : "bg-gray-200 dark:bg-white/10 text-gray-500 cursor-not-allowed"
+                )}
+                style={canFinalPay ? { background: themeGradient } : undefined}
             >
                {canFinalPay ? 'Approve & Pay' : 'No Balance'}
             </button>
@@ -491,7 +496,8 @@ export const PartnerPayoutsPage = () => {
                      toast.error("Failed to re-request payout");
                    }
                  }}
-                 className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/30"
+                  className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all text-white shadow-lg shadow-indigo-600/30"
+                  style={{ background: themeGradient }}
               >
                  Re-request
               </button>
@@ -577,11 +583,12 @@ export const PartnerPayoutsPage = () => {
                           setUserFormData({ name: '', username: '', email: '', password: '', role: 'partner' });
                           setIsUserModalOpen(true);
                         }}
-                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-600/20"
-                     >
-                        <UserPlus className="w-4 h-4" />
-                        Add Partner
-                     </button>
+                         className="flex items-center gap-2 px-4 py-2 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-colors shadow-lg shadow-indigo-600/20"
+                         style={{ background: themeGradient }}
+                      >
+                         <UserPlus className="w-4 h-4" />
+                         Add Partner
+                      </button>
                   </div>
                )}
             </div>
@@ -672,12 +679,15 @@ export const PartnerPayoutsPage = () => {
                 <p className="text-3xl font-black text-gray-900 dark:text-white relative z-10">₹{totalExpenses.toLocaleString()}</p>
               </div>
 
-              <div className={cn(
-                "p-6 rounded-3xl border shadow-sm relative overflow-hidden group transition-all",
-                netProfit > 0
-                  ? "bg-indigo-600 border-indigo-500 hover:shadow-indigo-600/20 shadow-lg"
-                  : "bg-white dark:bg-[#0d0d0d] border-gray-100 dark:border-white/5"
-              )}>
+              <div 
+                className={cn(
+                  "p-6 rounded-3xl border shadow-sm relative overflow-hidden group transition-all text-white",
+                  netProfit > 0
+                    ? "border-indigo-500 hover:shadow-indigo-600/20 shadow-lg"
+                    : "bg-white dark:bg-[#0d0d0d] border-gray-100 dark:border-white/5"
+                )}
+                style={netProfit > 0 ? { background: themeGradient } : undefined}
+              >
                 {netProfit > 0 && <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full -mr-20 -mt-20 group-hover:scale-150 transition-transform duration-500 pointer-events-none" />}
                 <div className="flex items-center gap-3 mb-4 relative z-10">
                   <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", netProfit > 0 ? "bg-white/20 text-white" : "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500")}>
@@ -774,10 +784,11 @@ export const PartnerPayoutsPage = () => {
                 <div className="flex items-center gap-3">
                   <button 
                     onClick={handleExportTransactions} 
-                    className="flex items-center gap-2 px-4 py-2 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition-all font-display"
+                    className="flex items-center gap-2 px-6 py-2.5 text-white rounded-2xl text-sm font-black transition-all shadow-lg shadow-indigo-600/20 active:scale-95 hover:opacity-90 font-display shrink-0"
+                    style={{ background: themeGradient }}
                   >
-                    <Download className="w-4 h-4" />
-                    Excel
+                    <FileSpreadsheet className="w-4 h-4" />
+                    Export Excel
                   </button>
                   {isAdmin && rawPayouts.length > 0 && (
                     <button 
@@ -902,7 +913,7 @@ export const PartnerPayoutsPage = () => {
                </div>
                <div className="p-6 bg-gray-50 dark:bg-white/[0.02] border-t border-gray-100 dark:border-white/10 flex justify-end gap-3">
                   <button onClick={() => setIsRatioModalOpen(false)} className="px-6 py-2.5 rounded-xl text-xs font-bold text-gray-500 hover:bg-gray-200 dark:hover:bg-white/10 uppercase tracking-widest transition-all">Cancel</button>
-                  <button onClick={handleSaveRatios} disabled={ratioFormData.reduce((s, i) => s + i.ratio, 0) !== 100} className="px-6 py-2.5 rounded-xl text-xs font-black text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 uppercase tracking-widest transition-all">Save Config</button>
+                   <button onClick={handleSaveRatios} disabled={ratioFormData.reduce((s, i) => s + i.ratio, 0) !== 100} className="px-6 py-2.5 rounded-xl text-xs font-black text-white disabled:opacity-50 uppercase tracking-widest transition-all" style={{ background: themeGradient }}>Save Config</button>
                </div>
             </div>
          </div>
@@ -938,9 +949,9 @@ export const PartnerPayoutsPage = () => {
                   </div>
                   <div className="pt-4 flex justify-end gap-3">
                      <button type="button" onClick={() => setIsUserModalOpen(false)} className="px-6 py-3 rounded-xl text-xs font-bold text-gray-500 hover:bg-gray-100 uppercase transition-all">Cancel</button>
-                     <button type="submit" className="px-6 py-3 rounded-xl text-xs font-black text-white bg-indigo-600 hover:bg-indigo-700 uppercase transition-all shadow-lg">
-                       {editPartnerId ? 'Update Partner' : 'Save Partner'}
-                     </button>
+                      <button type="submit" className="px-6 py-3 rounded-xl text-xs font-black text-white uppercase transition-all shadow-lg" style={{ background: themeGradient }}>
+                        {editPartnerId ? 'Update Partner' : 'Save Partner'}
+                      </button>
                   </div>
                </form>
             </div>
@@ -1054,10 +1065,11 @@ export const PartnerPayoutsPage = () => {
                            updatePartnerPayoutStatus(payoutToForcePay, 'PAID', 'admin_approved_by', user?.id || '');
                            setPayoutToForcePay(null);
                         }} 
-                        className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-colors shadow-lg shadow-indigo-600/20"
-                     >
-                        Confirm & Pay
-                     </button>
+                         className="flex-1 py-3 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-colors shadow-lg shadow-indigo-600/20"
+                         style={{ background: themeGradient }}
+                      >
+                         Confirm & Pay
+                      </button>
                   </div>
                </div>
             </div>

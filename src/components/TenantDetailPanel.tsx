@@ -609,7 +609,8 @@ export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
               {canEdit && onEdit && (
                 <button
                   onClick={() => { onClose(); onEdit(tenant); }}
-                  className="flex-1 flex items-center justify-center gap-2 py-3 bg-indigo-600 text-white rounded-2xl font-bold text-sm hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-600/20"
+                  className="flex-1 flex items-center justify-center gap-2 py-3 text-white rounded-2xl font-bold text-sm shadow-lg shadow-indigo-600/20"
+                  style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
                 >
                   <Edit2 className="w-4 h-4" />
                   Edit Tenant

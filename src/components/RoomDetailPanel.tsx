@@ -23,7 +23,7 @@ const Field = ({ label, value, className }: { label: string; value: React.ReactN
 export const RoomDetailPanel: React.FC<RoomDetailPanelProps> = ({
   room, onClose, onEdit, onDelete, canEdit
 }) => {
-  const { tenants, rooms } = useApp();
+  const { tenants, rooms, pgConfig } = useApp();
   
   // Override with live context object for instant updates
   room = rooms.find(r => r.id === room?.id) || room;
@@ -62,7 +62,7 @@ export const RoomDetailPanel: React.FC<RoomDetailPanelProps> = ({
                 <div>
                   <h3 className="text-lg font-black text-gray-900 dark:text-white">Room {(room as any).room_number || room.roomNumber}</h3>
                   <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
-                    {(room.meterGroup || (room as any).meter_groups) ? `${(room.meterGroup || (room as any).meter_groups).name} (Floor ${room.floor})` : `Floor ${room.floor}`}
+                    {(room.meterGroup || (room as any).meter_groups) ? `${(room.meterGroup || (room as any).meter_groups).name} (${room.floor === 0 ? 'Ground Floor' : `Floor ${room.floor}`})` : (room.floor === 0 ? 'Ground Floor' : `Floor ${room.floor}`)}
                   </span>
                 </div>
               </div>
@@ -146,7 +146,8 @@ export const RoomDetailPanel: React.FC<RoomDetailPanelProps> = ({
               {canEdit && onEdit && (
                 <button
                   onClick={() => { onClose(); onEdit(room); }}
-                  className="flex-1 flex items-center justify-center gap-2 py-3 bg-indigo-600 text-white rounded-2xl font-bold text-sm hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-600/20"
+                  className="flex-1 flex items-center justify-center gap-2 py-3 text-white rounded-2xl font-bold text-sm shadow-lg shadow-indigo-600/20"
+                  style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
                 >
                   <Edit2 className="w-4 h-4" />
                   Edit Room

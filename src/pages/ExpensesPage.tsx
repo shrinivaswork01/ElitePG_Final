@@ -11,6 +11,7 @@ import {
   Search, 
   Filter, 
   Download, 
+  FileSpreadsheet,
   Calendar, 
   Edit2, 
   Trash2, 
@@ -30,6 +31,7 @@ import { usePaginatedData } from '../hooks/usePaginatedData';
 import { DataGrid, ColumnDef } from '../components/DataGrid';
 import { DropdownMenu, DropdownItem } from '../components/DropdownMenu';
 import toast from 'react-hot-toast';
+import { ModernSelect } from '../components/ModernSelect';
 
 const CATEGORIES: ExpenseCategory[] = ['apex', 'capital', 'operational', 'maintenance', 'salary', 'utility', 'other'];
 
@@ -327,7 +329,10 @@ export const ExpensesPage = () => {
       {/* Modern Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Total Expenditure */}
-        <motion.div className="bg-indigo-600 p-6 rounded-[2rem] shadow-lg shadow-indigo-600/20 relative overflow-hidden group">
+        <motion.div
+          className="p-6 rounded-[2rem] shadow-lg relative overflow-hidden group text-white"
+          style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
+        >
           <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-all duration-700" />
           <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center text-white mb-4">
             <TrendingUp className="w-6 h-6" />
@@ -364,8 +369,8 @@ export const ExpensesPage = () => {
       </div>
 
       {/* Filter Bar */}
-      <div className="flex flex-col sm:flex-row gap-4 bg-white/50 dark:bg-white/5 p-4 rounded-[2rem] border border-gray-100 dark:border-white/5 backdrop-blur-md sticky top-0 z-20">
-        <div className="flex-1 relative group">
+      <div className="flex flex-col sm:flex-row items-center gap-4 bg-white/50 dark:bg-white/5 p-4 rounded-[2rem] border border-gray-100 dark:border-white/5 backdrop-blur-md sticky top-0 z-20">
+        <div className="w-full sm:flex-1 relative group">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-indigo-500 transition-colors" />
           <input
             type="text"
@@ -376,32 +381,31 @@ export const ExpensesPage = () => {
           />
         </div>
         
-        <div className="flex gap-2">
-          <div className="relative group">
-             <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
-             <select
-                value={filterCategory}
-                onChange={(e) => setFilterCategory(e.target.value as any)}
-                className="pl-9 pr-8 py-3 bg-white dark:bg-[#111111] border border-gray-200 dark:border-white/10 rounded-2xl text-xs font-bold uppercase tracking-wider focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer"
-             >
-                <option value="all">Categories</option>
-                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-             </select>
-          </div>
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto">
+          <ModernSelect
+            value={filterCategory}
+            onChange={(val) => setFilterCategory(val as any)}
+            options={[
+              { value: "all", label: "Categories" },
+              ...CATEGORIES.map(c => ({ value: c, label: c.toUpperCase() }))
+            ]}
+            className="w-full sm:w-40 py-3 bg-white dark:bg-[#111111] border border-gray-200 dark:border-white/10 rounded-2xl text-xs font-bold uppercase tracking-wider"
+          />
           
           <input
             type="month"
             value={filterMonth}
             onChange={(e) => setFilterMonth(e.target.value)}
-            className="px-4 py-3 bg-white dark:bg-[#111111] border border-gray-200 dark:border-white/10 rounded-2xl text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none [color-scheme:light] dark:[color-scheme:dark]"
+            className="w-full sm:w-auto px-4 py-3 bg-white dark:bg-[#111111] border border-gray-200 dark:border-white/10 rounded-2xl text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none [color-scheme:light] dark:[color-scheme:dark]"
           />
 
           <button
             onClick={handleExport}
-            className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-300 rounded-2xl text-xs font-bold hover:bg-gray-50 dark:hover:bg-white/10 transition-all shadow-sm"
+            className="flex items-center justify-center gap-2 px-6 py-3 text-white rounded-2xl text-sm font-black transition-all shadow-lg shadow-indigo-600/20 active:scale-95 hover:opacity-90 whitespace-nowrap shrink-0 w-full sm:w-auto"
+            style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
           >
-            <Download className="w-3.5 h-3.5" />
-            Export
+            <FileSpreadsheet className="w-4 h-4" />
+            Export Excel
           </button>
         </div>
       </div>
@@ -469,13 +473,11 @@ export const ExpensesPage = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Category</label>
-                    <select
+                    <ModernSelect
                       value={formData.category}
-                      onChange={e => setFormData({ ...formData, category: e.target.value as ExpenseCategory })}
-                      className="w-full px-5 py-4 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-2xl text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500 appearance-none capitalize"
-                    >
-                      {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
+                      onChange={val => setFormData({ ...formData, category: val as ExpenseCategory })}
+                      options={CATEGORIES.map(c => ({ value: c, label: c.toUpperCase() }))}
+                    />
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Amount (₹)</label>

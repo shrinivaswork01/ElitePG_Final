@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '../utils';
+import { cn, hexToRgba } from '../utils';
 import { Link } from 'react-router-dom';
 import { InviteCodeCard } from '../components/InviteCodeCard';
 import {
@@ -355,9 +355,17 @@ export const Dashboard = () => {
               className="bg-white dark:bg-[#111111] p-6 rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm transition-all group h-full relative overflow-hidden"
             >
               <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-indigo-500/5 to-transparent rounded-bl-[100px] -mr-8 -mt-8 transition-transform group-hover:scale-110" />
-              
-              <div className="flex items-start justify-between relative z-10">
-                <div className={cn("p-4 rounded-2xl text-white shadow-lg transition-all", stat.color)}>
+                <div className="flex items-start justify-between relative z-10">
+                <div 
+                  className={cn(
+                    "p-4 rounded-2xl text-white shadow-lg transition-all", 
+                    ['bg-indigo-600', 'bg-indigo-500', 'bg-violet-500', 'bg-violet-600'].includes(stat.color) ? "" : stat.color
+                  )}
+                  style={['bg-indigo-600', 'bg-indigo-500', 'bg-violet-500', 'bg-violet-600'].includes(stat.color) ? { 
+                    background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)',
+                    boxShadow: `0 10px 15px -3px ${hexToRgba(themeColor, 0.4)}`
+                  } : {}}
+                >
                   <stat.icon className="w-6 h-6" />
                 </div>
                 <div className={cn(
@@ -408,47 +416,7 @@ export const Dashboard = () => {
         })}
       </div>
 
-      {isManagerial ? (
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden flex flex-col"
-        >
-          <div className="p-6 sm:p-8 border-b border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/[0.02]">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <Zap className="w-5 h-5 text-indigo-600" />
-              Quick Actions
-            </h3>
-          </div>
-          <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Link to="/tenants" state={{ openAddModal: true }} className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-500/5 hover:bg-indigo-100 dark:hover:bg-indigo-500/10 border border-indigo-100/50 dark:border-indigo-500/20 transition-all group">
-              <div className="p-3 bg-white dark:bg-white/10 text-indigo-600 dark:text-indigo-400 rounded-xl shadow-sm group-hover:scale-110 group-hover:rotate-3 transition-all">
-                <Users className="w-5 h-5" />
-              </div>
-              <span className="text-xs font-bold text-gray-900 dark:text-gray-100">Add Tenant</span>
-            </Link>
-            <Link to="/payments" className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-emerald-50/50 dark:bg-emerald-500/5 hover:bg-emerald-100 dark:hover:bg-emerald-500/10 border border-emerald-100/50 dark:border-emerald-500/20 transition-all group">
-              <div className="p-3 bg-white dark:bg-white/10 text-emerald-600 dark:text-emerald-400 rounded-xl shadow-sm group-hover:scale-110 group-hover:rotate-3 transition-all">
-                <CreditCard className="w-5 h-5" />
-              </div>
-              <span className="text-xs font-bold text-gray-900 dark:text-gray-100">Record Rent</span>
-            </Link>
-            <Link to="/rooms" className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-amber-50/50 dark:bg-amber-500/5 hover:bg-amber-100 dark:hover:bg-amber-500/10 border border-amber-100/50 dark:border-amber-500/20 transition-all group">
-              <div className="p-3 bg-white dark:bg-white/10 text-amber-600 dark:text-amber-400 rounded-xl shadow-sm group-hover:scale-110 group-hover:rotate-3 transition-all">
-                <DoorOpen className="w-5 h-5" />
-              </div>
-              <span className="text-xs font-bold text-gray-900 dark:text-gray-100">Rooms</span>
-            </Link>
-            <Link to="/reports" className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-violet-50/50 dark:bg-violet-500/5 hover:bg-violet-100 dark:hover:bg-violet-500/10 border border-violet-100/50 dark:border-violet-500/20 transition-all group">
-              <div className="p-3 bg-white dark:bg-white/10 text-violet-600 dark:text-violet-400 rounded-xl shadow-sm group-hover:scale-110 group-hover:rotate-3 transition-all">
-                <FileSpreadsheet className="w-5 h-5" />
-              </div>
-              <span className="text-xs font-bold text-gray-900 dark:text-gray-100">Reports</span>
-            </Link>
-          </div>
-        </motion.div>
-      ) : null}
+
 
       {isManagerial && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -524,7 +492,17 @@ export const Dashboard = () => {
               <h3 className="text-lg font-black text-gray-900 dark:text-white uppercase tracking-tight">
                 {isEmployee ? 'My Recent Tasks' : isTenant ? 'My Recent Complaints' : 'Recent Complaints'}
               </h3>
-              <Link to={isEmployee ? "/tasks" : "/complaints"} className="px-4 py-1.5 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-xs font-black uppercase tracking-widest rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-all border border-indigo-100 dark:border-indigo-500/20">View All</Link>
+              <Link 
+                to={isEmployee ? "/tasks" : "/complaints"} 
+                className="px-4 py-1.5 text-xs font-black uppercase tracking-widest rounded-full transition-all border shadow-sm hover:brightness-110 active:scale-95"
+                style={{ 
+                  borderColor: themeColor, 
+                  color: themeColor, 
+                  backgroundColor: hexToRgba(themeColor, 0.1) 
+                }}
+              >
+                View All
+              </Link>
             </div>
             <div className="divide-y divide-gray-50 dark:divide-white/5">
               {isEmployee ? (
@@ -642,7 +620,7 @@ export const Dashboard = () => {
                     <div className="space-y-4">
                       <div className="flex items-center justify-between p-4 bg-gray-50/50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/5">
                         <div className="flex items-center gap-3">
-                          <div className="p-2 bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-xl" style={{ background: `${themeColor}20`, color: themeColor }}>
+                          <div className="p-2 bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-xl" style={{ backgroundColor: hexToRgba(themeColor, 0.2), color: themeColor }}>
                             <CalendarDays className="w-5 h-5" />
                           </div>
                           <div>
@@ -673,7 +651,7 @@ export const Dashboard = () => {
                         )}
                         style={tenantData?.vacatingStatus !== 'notice_given' ? { 
                           background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)',
-                          boxShadow: `0 20px 40px -15px ${themeColor}40`
+                          boxShadow: `0 20px 40px -15px ${hexToRgba(themeColor, 0.4)}`
                         } : {}}
                       >
                          <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -721,7 +699,7 @@ export const Dashboard = () => {
                 <div className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden h-full flex flex-col transition-all hover:shadow-xl hover:shadow-indigo-500/5">
                   <div className="p-6 sm:p-8 border-b border-gray-100 dark:border-white/5 flex items-center justify-between bg-gray-50/50 dark:bg-white/[0.02]">
                     <div className="flex items-center gap-3">
-                      <div className="p-2.5 bg-indigo-50 dark:bg-indigo-500/10 rounded-xl" style={{ background: `${themeColor}15` }}>
+                      <div className="p-2.5 bg-indigo-50 dark:bg-indigo-500/10 rounded-xl" style={{ backgroundColor: hexToRgba(themeColor, 0.15) }}>
                         <ScrollText className="w-5 h-5" style={{ color: themeColor }} />
                       </div>
                       <div>
@@ -740,7 +718,7 @@ export const Dashboard = () => {
                           transition={{ delay: i * 0.05 }}
                           className="flex items-start gap-4 p-5 bg-gray-50/50 dark:bg-white/[0.02] rounded-2xl border border-gray-100/50 dark:border-white/5 group hover:border-indigo-100 dark:hover:border-indigo-500/20 transition-all hover:shadow-lg hover:shadow-indigo-500/5"
                         >
-                          <div className="mt-1 shrink-0 p-1.5 bg-emerald-500/10 rounded-lg" style={{ background: `${themeColor}15` }}>
+                          <div className="mt-1 shrink-0 p-1.5 bg-emerald-500/10 rounded-lg" style={{ backgroundColor: hexToRgba(themeColor, 0.15) }}>
                             <CheckCircle2 
                               className="w-4 h-4" 
                               style={{ color: themeColor }} 

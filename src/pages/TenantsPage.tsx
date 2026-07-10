@@ -10,6 +10,7 @@ import {
   Home,
   Filter,
   Download,
+  FileSpreadsheet,
   Shield,
   Trash2,
   Edit2,
@@ -40,6 +41,7 @@ import { cn } from '../utils';
 import { getTenantElectricityShare } from '../utils/electricityUtils';
 import { exportSingleTenantToExcel } from '../utils/exportUtils';
 import toast from 'react-hot-toast';
+import { ModernSelect } from '../components/ModernSelect';
 
 export const TenantsPage = () => {
   const navigate = useNavigate();
@@ -753,26 +755,29 @@ export const TenantsPage = () => {
             className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
           />
         </div>
-        <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0">
-          <select
+        <div className="flex gap-2 items-center">
+          <ModernSelect
             value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value as any)}
-            className="bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm px-4 py-2.5 focus:ring-2 focus:ring-indigo-500/20 whitespace-nowrap text-gray-900 dark:text-white"
-          >
-            <option value="all">All Status</option>
-            <option value="active">Active</option>
-            <option value="vacating">Vacating</option>
-            <option value="vacated">Vacated</option>
-            <option value="blacklisted">Blacklisted</option>
-          </select>
+            onChange={(val) => setFilterStatus(val as any)}
+            options={[
+              { value: "all", label: "All Status" },
+              { value: "active", label: "Active" },
+              { value: "vacating", label: "Vacating" },
+              { value: "vacated", label: "Vacated" },
+              { value: "blacklisted", label: "Blacklisted" }
+            ]}
+            className="w-44"
+          />
           <button className="p-2.5 bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors shrink-0">
             <Filter className="w-5 h-5" />
           </button>
           <button
             onClick={handleDownload}
-            className="p-2.5 bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors shrink-0"
+            className="flex items-center gap-2 px-6 py-2.5 text-white rounded-2xl text-sm font-black transition-all shadow-lg shadow-indigo-600/20 active:scale-95 hover:opacity-90 shrink-0"
+            style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
           >
-            <Download className="w-5 h-5" />
+            <FileSpreadsheet className="w-4 h-4" />
+            Export Excel
           </button>
         </div>
       </div>
@@ -906,9 +911,10 @@ export const TenantsPage = () => {
                     const branch = branches.find(b => b.id === tenantToDelete.branchId);
                     await exportSingleTenantToExcel(tenantToDelete, payments, rooms, branch?.name);
                   }}
-                  className="w-full py-3.5 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-all flex items-center justify-center gap-2"
+                  className="w-full py-3.5 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 active:scale-95 hover:opacity-90"
+                  style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
                 >
-                  <Download className="w-4 h-4" />
+                  <FileSpreadsheet className="w-4 h-4" />
                   Export Tenant Data (Excel)
                 </button>
               </div>
@@ -1052,15 +1058,15 @@ export const TenantsPage = () => {
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Deposit Status</label>
-                    <select
+                    <ModernSelect
                       value={formData.depositStatus || 'pending'}
-                      onChange={(e) => setFormData({ ...formData, depositStatus: e.target.value as any })}
-                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white capitalize"
-                    >
-                      <option value="pending">Pending</option>
-                      <option value="paid">Paid</option>
-                      <option value="refunded">Refunded</option>
-                    </select>
+                      onChange={(val) => setFormData({ ...formData, depositStatus: val as any })}
+                      options={[
+                        { value: 'pending', label: 'Pending' },
+                        { value: 'paid', label: 'Paid' },
+                        { value: 'refunded', label: 'Refunded' }
+                      ]}
+                    />
                   </div>
                   {formData.status === 'onboarding' && (
                     <>
@@ -1075,15 +1081,15 @@ export const TenantsPage = () => {
                       </div>
                       <div className="space-y-2">
                         <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Token Status</label>
-                        <select
+                        <ModernSelect
                           value={formData.tokenStatus || 'pending'}
-                          onChange={(e) => setFormData({ ...formData, tokenStatus: e.target.value as any })}
-                          className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white capitalize"
-                        >
-                          <option value="pending">Pending</option>
-                          <option value="paid">Paid</option>
-                          <option value="refunded">Refunded</option>
-                        </select>
+                          onChange={(val) => setFormData({ ...formData, tokenStatus: val as any })}
+                          options={[
+                            { value: 'pending', label: 'Pending' },
+                            { value: 'paid', label: 'Paid' },
+                            { value: 'refunded', label: 'Refunded' }
+                          ]}
+                        />
                         {(() => {
                            const todayStr = new Date().toISOString().split('T')[0];
                            if (formData.status === 'onboarding' && formData.tokenStatus === 'paid' && formData.moveInDate && formData.moveInDate <= todayStr) {
@@ -1097,99 +1103,62 @@ export const TenantsPage = () => {
 
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Select Room</label>
-                    <select
-                      required={formData.status === 'active' || formData.tokenStatus === 'paid'}
-                      disabled={formData.status === 'onboarding' && formData.tokenStatus !== 'paid'}
-                      value={formData.roomId}
-                      onChange={(e) => {
-                        const roomId = e.target.value;
-                        const room = rooms.find(r => r.id === roomId);
-                        
-                        // Smart Bed Selection: find first bed not occupied by active/onboarding tenant
-                        const firstAvailableBed = (() => {
-                          if (!room) return 1;
-                          const occupiedBeds = tenants
-                            .filter(t => t.roomId === roomId && ['active', 'onboarding'].includes(t.status) && t.id !== editingTenant?.id)
-                            .map(t => Number(t.bedNumber));
-                          for (let i = 1; i <= room.totalBeds; i++) {
-                            if (!occupiedBeds.includes(i)) return i;
-                          }
-                          return 1;
-                        })();
-
-                        setFormData({ 
-                          ...formData, 
-                          roomId,
-                          rentAmount: room?.price || 0,
-                          bedNumber: firstAvailableBed
-                        });
-                      }}
-                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                    >
-                      <option value="">Select Room</option>
-                      {rooms
-                        .filter(r => r.branchId === currentBranch?.id)
-                        .filter(room => {
-                          if (editingTenant && editingTenant.roomId === room.id) return true;
-                          
-                          const roomTenants = tenants.filter(t => 
-                            t.roomId === room.id && 
-                            t.id !== editingTenant?.id
-                          );
-
-                          const occupiedCount = roomTenants.filter(t => 
-                            ['active', 'onboarding'].includes(t.status)
-                          ).length;
-
-                          const vacatingCount = roomTenants.filter(t => 
-                            t.status === 'vacating'
-                          ).length;
-                          
-                          // Show room if it has free beds OR if someone is leaving (vacanting)
-                          return occupiedCount < room.totalBeds || vacatingCount > 0;
-                        })
-                        .sort((a, b) => a.roomNumber.localeCompare(b.roomNumber, undefined, { numeric: true }))
-                        .map((room) => {
-                          const occupiedCount = tenants.filter(t => t.roomId === room.id && ['active', 'onboarding'].includes(t.status)).length;
-                          const isFull = occupiedCount >= room.totalBeds;
-                          return (
-                            <option key={room.id} value={room.id} disabled={isFull}>
-                              {room.roomNumber} ({room.type}){editingTenant ? '' : ` - ${room.totalBeds - occupiedCount} left`}
-                            </option>
-                          );
-                        })
-                      }
-                    </select>
+                    {(() => {
+                      const roomOptions = [
+                        { value: "", label: "Select Room" },
+                        ...rooms
+                          .filter(r => r.branchId === currentBranch?.id)
+                          .filter(room => {
+                            if (editingTenant && editingTenant.roomId === room.id) return true;
+                            const roomTenants = tenants.filter(t => t.roomId === room.id && t.id !== editingTenant?.id);
+                            const occupiedCount = roomTenants.filter(t => ['active', 'onboarding'].includes(t.status)).length;
+                            const vacatingCount = roomTenants.filter(t => t.status === 'vacating').length;
+                            return occupiedCount < room.totalBeds || vacatingCount > 0;
+                          })
+                          .sort((a, b) => a.roomNumber.localeCompare(b.roomNumber, undefined, { numeric: true }))
+                          .map((room) => {
+                            const occupiedCount = tenants.filter(t => t.roomId === room.id && ['active', 'onboarding'].includes(t.status)).length;
+                            const isFull = occupiedCount >= room.totalBeds;
+                            return {
+                              value: room.id,
+                              label: `${room.roomNumber} (${room.type})${editingTenant ? '' : ` - ${room.totalBeds - occupiedCount} left`}`
+                            };
+                          })
+                      ];
+                      return (
+                        <ModernSelect
+                          disabled={formData.status === 'onboarding' && formData.tokenStatus !== 'paid'}
+                          value={formData.roomId}
+                          options={roomOptions}
+                          onChange={(roomId) => {
+                            const room = rooms.find(r => r.id === roomId);
+                            const firstAvailableBed = (() => {
+                              if (!room) return 1;
+                              const occupiedBeds = tenants
+                                .filter(t => t.roomId === roomId && ['active', 'onboarding'].includes(t.status) && t.id !== editingTenant?.id)
+                                .map(t => Number(t.bedNumber));
+                              for (let i = 1; i <= room.totalBeds; i++) {
+                                if (!occupiedBeds.includes(i)) return i;
+                              }
+                              return 1;
+                            })();
+                            setFormData({ 
+                              ...formData, 
+                              roomId,
+                              rentAmount: room?.price || 0,
+                              bedNumber: firstAvailableBed
+                            });
+                          }}
+                        />
+                      );
+                    })()}
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Bed Number</label>
-                    <select
-                      required={formData.status === 'active' || formData.tokenStatus === 'paid'}
-                      disabled={!formData.roomId || (formData.status === 'onboarding' && formData.tokenStatus !== 'paid')}
-                      value={formData.bedNumber}
-                      onChange={(e) => {
-                        const bed = Number(e.target.value);
-                        let moveInDate = formData.moveInDate;
-
-                        // If onboarding and selecting a vacating bed, suggest the vacating date as move-in date
-                        if (formData.status === 'onboarding') {
-                          const existingTenantInBed = tenants.find(t => 
-                            t.roomId === formData.roomId && 
-                            t.bedNumber === bed && 
-                            t.status === 'vacating'
-                          );
-                          if (existingTenantInBed?.vacatingDate) {
-                            moveInDate = existingTenantInBed.vacatingDate;
-                          }
-                        }
-
-                        setFormData({ ...formData, bedNumber: bed, moveInDate });
-                      }}
-                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white disabled:opacity-50"
-                    >
-                      {(() => {
-                        const room = rooms.find(r => r.id === formData.roomId);
-                        if (!room) return <option value="">Select room first</option>;
+                    {(() => {
+                      const room = rooms.find(r => r.id === formData.roomId);
+                      const bedOptions = (() => {
+                        if (!room) return [{ value: "", label: "Select room first" }];
                         const beds = Array.from({ length: room.totalBeds }, (_, i) => i + 1);
                         return beds.map(bed => {
                           const existingOccupant = tenants.find(t => 
@@ -1198,24 +1167,45 @@ export const TenantsPage = () => {
                             ['active', 'onboarding'].includes(t.status) &&
                             t.id !== editingTenant?.id
                           );
-
                           const vacatingTenant = tenants.find(t => 
                             t.roomId === room.id && 
                             Number(t.bedNumber) === Number(bed) && 
                             t.status === 'vacating' &&
                             t.id !== editingTenant?.id
                           );
-
                           if (existingOccupant) return null;
+                          return {
+                            value: String(bed),
+                            label: `Bed ${bed}${editingTenant ? '' : ` ${vacatingTenant ? '(Vacating Soon)' : '(Vacant)'}`}`
+                          };
+                        }).filter(Boolean) as { value: string, label: string }[];
+                      })();
 
-                          return (
-                            <option key={bed} value={bed}>
-                              Bed {bed}{editingTenant ? '' : ` ${vacatingTenant ? '(Vacating Soon)' : '(Vacant)'}`}
-                            </option>
-                          );
-                        });
-                      })()}
-                    </select>
+                      return (
+                        <ModernSelect
+                          disabled={!formData.roomId || (formData.status === 'onboarding' && formData.tokenStatus !== 'paid')}
+                          value={String(formData.bedNumber)}
+                          options={bedOptions}
+                          onChange={(val) => {
+                            const bed = Number(val);
+                            let moveInDate = formData.moveInDate;
+
+                            if (formData.status === 'onboarding') {
+                              const existingTenantInBed = tenants.find(t => 
+                                t.roomId === formData.roomId && 
+                                t.bedNumber === bed && 
+                                t.status === 'vacating'
+                              );
+                              if (existingTenantInBed?.vacatingDate) {
+                                moveInDate = existingTenantInBed.vacatingDate;
+                              }
+                            }
+
+                            setFormData({ ...formData, bedNumber: bed, moveInDate });
+                          }}
+                        />
+                      );
+                    })()}
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Rent Amount (₹)</label>
@@ -1266,15 +1256,15 @@ export const TenantsPage = () => {
                     <div className="space-y-2 md:col-span-2">
                       <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Identity Verification</label>
                       <div className="grid grid-cols-2 gap-6">
-                        <select
+                        <ModernSelect
                           value={kycDoc.type}
-                          onChange={(e) => setKycDoc({ ...kycDoc, type: e.target.value })}
-                          className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white transition-all font-medium min-h-[46px] box-border"
-                        >
-                          <option value="Aadhar Card">Aadhar Card</option>
-                          <option value="PAN Card">PAN Card</option>
-                          <option value="Voter ID">Voter ID</option>
-                        </select>
+                          onChange={(val) => setKycDoc({ ...kycDoc, type: val })}
+                          options={[
+                            { value: "Aadhar Card", label: "Aadhar Card" },
+                            { value: "PAN Card", label: "PAN Card" },
+                            { value: "Voter ID", label: "Voter ID" }
+                          ]}
+                        />
                         <div className="w-full relative">
                           <input
                             type="file"
@@ -1526,7 +1516,8 @@ export const TenantsPage = () => {
                   </button>
                   <button
                     onClick={handleCreateLogin}
-                    className="px-6 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
+                    className="px-6 py-2.5 text-white text-sm font-semibold rounded-xl shadow-lg transition-all active:scale-95"
+                    style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
                   >
                     Create Login
                   </button>
@@ -1695,17 +1686,17 @@ export const TenantsPage = () => {
                     Upload a valid identity document (Aadhar Card, PAN Card, etc.) to verify this tenant's identity.
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <select
+                    <ModernSelect
                       value={adminKycType}
-                      onChange={(e) => setAdminKycType(e.target.value)}
-                      className="px-4 py-3 bg-gray-50 dark:bg-white/5 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                    >
-                      <option value="Aadhar Card">Aadhar Card</option>
-                      <option value="PAN Card">PAN Card</option>
-                      <option value="Voter ID">Voter ID</option>
-                      <option value="Passport">Passport</option>
-                      <option value="Driving License">Driving License</option>
-                    </select>
+                      onChange={(val) => setAdminKycType(val)}
+                      options={[
+                        { value: "Aadhar Card", label: "Aadhar Card" },
+                        { value: "PAN Card", label: "PAN Card" },
+                        { value: "Voter ID", label: "Voter ID" },
+                        { value: "Passport", label: "Passport" },
+                        { value: "Driving License", label: "Driving License" }
+                      ]}
+                    />
                     <div className="relative">
                       <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-200 dark:border-white/10 rounded-2xl hover:border-indigo-500/50 transition-colors cursor-pointer bg-gray-50/50 dark:bg-white/[0.02]">
                         <Upload className="w-8 h-8 text-gray-400 mb-2" />

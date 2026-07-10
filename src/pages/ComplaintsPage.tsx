@@ -12,6 +12,7 @@ import {
   Search, 
   Filter, 
   Download, 
+  FileSpreadsheet, 
   Edit2, 
   Trash2,
   Calendar,
@@ -22,6 +23,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../utils';
 import toast from 'react-hot-toast';
+import { ModernSelect } from '../components/ModernSelect';
 import { ImageUpload } from '../components/ImageUpload';
 import { format, parseISO } from 'date-fns';
 
@@ -210,9 +212,11 @@ export const ComplaintsPage = () => {
         </div>
         <button
           onClick={handleDownload}
-          className="p-2.5 bg-white dark:bg-[#111111] text-gray-500 dark:text-gray-400 rounded-xl border border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors shrink-0"
+          className="flex items-center gap-2 px-6 py-2.5 text-white rounded-2xl text-sm font-black transition-all shadow-lg shadow-indigo-600/20 active:scale-95 hover:opacity-90 shrink-0"
+          style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
         >
-          <Download className="w-5 h-5" />
+          <FileSpreadsheet className="w-4 h-4" />
+          Export Excel
         </button>
       </div>
 
@@ -433,76 +437,85 @@ export const ComplaintsPage = () => {
                     {(user?.role === 'admin' || user?.role === 'partner' || user?.role === 'manager' || user?.role === 'caretaker') && !editingComplaint && (
                       <div className="space-y-2 sm:col-span-2">
                         <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Reporting For Tenant</label>
-                        <select
-                          required
-                          value={formData.tenantId}
-                          onChange={(e) => setFormData({ ...formData, tenantId: e.target.value })}
-                          className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                        >
-                          <option value="">Select Tenant</option>
-                          {tenants.map(t => {
-                            const room = rooms.find(r => r.id === t.roomId);
-                            return (
-                              <option key={t.id} value={t.id}>{t.name} (Room {room?.roomNumber || 'N/A'})</option>
-                            );
-                          })}
-                        </select>
+                        {(() => {
+                          const tenantOptions = [
+                            { value: "", label: "Select Tenant" },
+                            ...tenants.map(t => {
+                              const room = rooms.find(r => r.id === t.roomId);
+                              return {
+                                value: t.id,
+                                label: `${t.name} (Room ${room?.roomNumber || 'N/A'})`
+                              };
+                            })
+                          ];
+                          return (
+                            <ModernSelect
+                              value={formData.tenantId}
+                              onChange={(val) => setFormData({ ...formData, tenantId: val })}
+                              options={tenantOptions}
+                            />
+                          );
+                        })()}
                       </div>
                     )}
                     
                     <div className="space-y-2">
                       <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Category</label>
-                      <select
-                        required
+                      <ModernSelect
                         value={formData.category}
-                        onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                      >
-                        {(pgConfig?.complaintCategories || ['Plumbing', 'Electrical', 'Internet', 'Cleaning', 'Other']).map(cat => (
-                          <option key={cat} value={cat}>{cat}</option>
-                        ))}
-                      </select>
+                        onChange={(val) => setFormData({ ...formData, category: val })}
+                        options={(pgConfig?.complaintCategories || ['Plumbing', 'Electrical', 'Internet', 'Cleaning', 'Other']).map(cat => ({
+                          value: cat,
+                          label: cat
+                        }))}
+                      />
                     </div>
 
                     <div className="space-y-2">
                       <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Priority</label>
-                      <select
+                      <ModernSelect
                         value={formData.priority}
-                        onChange={(e) => setFormData({ ...formData, priority: e.target.value as any })}
-                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                      >
-                        <option value="low">Low</option>
-                        <option value="medium">Medium</option>
-                        <option value="high">High</option>
-                      </select>
+                        onChange={(val) => setFormData({ ...formData, priority: val as any })}
+                        options={[
+                          { value: "low", label: "Low" },
+                          { value: "medium", label: "Medium" },
+                          { value: "high", label: "High" }
+                        ]}
+                      />
                     </div>
 
                     {editingComplaint && (user?.role === 'admin' || user?.role === 'partner' || user?.role === 'manager') && (
                       <>
                         <div className="space-y-2">
                           <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Assigned To</label>
-                          <select
-                            value={formData.assignedTo || ''}
-                            onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })}
-                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                          >
-                            <option value="">Unassigned</option>
-                            {employees.map(e => (
-                              <option key={e.id} value={e.id}>{e.name} ({e.role})</option>
-                            ))}
-                          </select>
+                          {(() => {
+                            const empOptions = [
+                              { value: "", label: "Unassigned" },
+                              ...employees.map(e => ({
+                                value: e.id,
+                                label: `${e.name} (${e.role})`
+                              }))
+                            ];
+                            return (
+                              <ModernSelect
+                                value={formData.assignedTo || ''}
+                                onChange={(val) => setFormData({ ...formData, assignedTo: val })}
+                                options={empOptions}
+                              />
+                            );
+                          })()}
                         </div>
                         <div className="space-y-2">
                           <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Status</label>
-                          <select
+                          <ModernSelect
                             value={formData.status}
-                            onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                          >
-                            <option value="open">Open</option>
-                            <option value="assigned">Assigned</option>
-                            <option value="resolved">Resolved</option>
-                          </select>
+                            onChange={(val) => setFormData({ ...formData, status: val as any })}
+                            options={[
+                              { value: "open", label: "Open" },
+                              { value: "assigned", label: "Assigned" },
+                              { value: "resolved", label: "Resolved" }
+                            ]}
+                          />
                         </div>
                       </>
                     )}

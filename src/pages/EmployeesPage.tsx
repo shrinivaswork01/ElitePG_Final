@@ -894,7 +894,8 @@ export const EmployeesPage = () => {
                      setUserFormData(prev => ({ ...prev, role: user?.role === 'super' ? 'admin' : 'partner' }));
                      setIsUserModalOpen(true);
                    }}
-                   className="mt-6 px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold"
+                   className="mt-6 px-6 py-2.5 text-white rounded-xl font-bold transition-all active:scale-95 shadow-lg"
+                   style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
                 >
                   Add Your First Administrator
                 </button>
@@ -1454,7 +1455,7 @@ export const EmployeesPage = () => {
                     />
                   </div>
                 </div>
-                <button type="submit" className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all mt-4">
+                <button type="submit" className="w-full py-3 text-white rounded-xl font-bold shadow-lg transition-all mt-4 active:scale-95" style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}>
                   Assign Task
                 </button>
               </form>
@@ -1811,7 +1812,8 @@ export const EmployeesPage = () => {
       {(user?.role === 'admin' || user?.role === 'partner') && (
         <button
           onClick={() => setIsAddModalOpen(true)}
-          className="md:hidden fixed bottom-24 right-6 w-14 h-14 bg-indigo-600 text-white rounded-2xl shadow-2xl flex items-center justify-center z-40 hover:bg-indigo-700 transition-colors"
+          className="md:hidden fixed bottom-24 right-6 w-14 h-14 text-white rounded-2xl shadow-2xl flex items-center justify-center z-40 transition-all active:scale-95"
+          style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
         >
           <Plus className="w-7 h-7" />
         </button>

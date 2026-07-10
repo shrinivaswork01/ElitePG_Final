@@ -23,6 +23,7 @@ export const RentAgreementGeneratorModal: React.FC<RentAgreementGeneratorModalPr
   isOpen, onClose, tenant, user, branch, pgConfig, onAgreementGenerated
 }) => {
   const { updateTenant, rooms } = useApp();
+  const themeGradient = pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)';
   const [step, setStep] = useState(1);
   const [idFile, setIdFile] = useState<File | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -156,10 +157,18 @@ export const RentAgreementGeneratorModal: React.FC<RentAgreementGeneratorModalPr
           <div className="flex items-center px-6 py-4 bg-gray-50 dark:bg-white/5">
              {Array.from({ length: TOTAL_STEPS }, (_, i) => i + 1).map((s) => (
                 <React.Fragment key={s}>
-                   <div className={`flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold ${step >= s ? 'bg-indigo-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400'}`}>
+                   <div 
+                      className={`flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold ${step >= s ? 'text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400'}`}
+                      style={step >= s ? { background: themeGradient } : undefined}
+                   >
                       {step > s ? <CheckCircle2 className="w-4 h-4" /> : s}
                    </div>
-                   {s < TOTAL_STEPS && <div className={`flex-1 h-1 mx-2 rounded-full ${step > s ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-700'}`} />}
+                   {s < TOTAL_STEPS && (
+                      <div 
+                        className={`flex-1 h-1 mx-2 rounded-full ${step > s ? '' : 'bg-gray-200 dark:bg-gray-700'}`} 
+                        style={step > s ? { background: themeGradient } : undefined}
+                      />
+                   )}
                 </React.Fragment>
              ))}
           </div>
@@ -289,7 +298,8 @@ export const RentAgreementGeneratorModal: React.FC<RentAgreementGeneratorModalPr
                    <button 
                      onClick={handleGenerate} 
                      disabled={isGenerating} 
-                     className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-600/20 transition-all flex items-center justify-center gap-2"
+                     className="flex-1 py-3 text-white rounded-xl font-bold shadow-lg shadow-indigo-600/20 transition-all flex items-center justify-center gap-2"
+                     style={{ background: themeGradient }}
                    >
                      {isGenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
                      {isGenerating ? 'Generating & Uploading...' : 'Confirm & Generate'}

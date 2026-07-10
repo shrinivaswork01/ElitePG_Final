@@ -17,9 +17,11 @@ import {
   MapPin,
   LayoutDashboard,
   Zap,
-  Download
+  Download,
+  FileSpreadsheet
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { ModernSelect } from '../components/ModernSelect';
 import { usePaginatedData } from '../hooks/usePaginatedData';
 import { DataGrid, ColumnDef } from '../components/DataGrid';
 import { DropdownMenu, DropdownItem } from '../components/DropdownMenu';
@@ -177,7 +179,7 @@ export const RoomsPage = () => {
           </div>
           <div>
             <p className="text-sm font-bold text-gray-900 dark:text-white">Room {r.roomNumber}</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">{r.meterGroup ? `${r.meterGroup.name} (Floor ${r.floor})` : `Floor ${r.floor}`}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{r.meterGroup ? `${r.meterGroup.name} (${r.floor === 0 ? 'Ground Floor' : `Floor ${r.floor}`})` : (r.floor === 0 ? 'Ground Floor' : `Floor ${r.floor}`)}</p>
           </div>
         </div>
       )
@@ -300,7 +302,7 @@ export const RoomsPage = () => {
           </div>
           <div>
             <p className="text-sm font-bold text-gray-900 dark:text-white">{f.name}</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">Floor {f.floor}</p>
+             <p className="text-xs text-gray-500 dark:text-gray-400">{f.floor === 0 ? 'Ground Floor' : `Floor ${f.floor}`}</p>
           </div>
         </div>
       )
@@ -508,7 +510,7 @@ export const RoomsPage = () => {
     e.preventDefault();
     const isDuplicate = meterGroups.some(m => m.name.toLowerCase() === flatFormData.name.toLowerCase() && m.floor === flatFormData.floor && m.id !== editingFlat?.id);
     if (isDuplicate) {
-      toast.error(`Flat ${flatFormData.name} already exists on floor ${flatFormData.floor}.`);
+      toast.error(`Flat ${flatFormData.name} already exists on ${flatFormData.floor === 0 ? 'Ground Floor' : `floor ${flatFormData.floor}`}.`);
       return;
     }
 
@@ -670,19 +672,16 @@ export const RoomsPage = () => {
           />
         </div>
         
-        <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0">
+        <div className="flex gap-2 items-center">
           <div className="relative w-48">
-            <Layers className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <select
-              value={filterFloor}
-              onChange={(e) => setFilterFloor(e.target.value === 'all' ? 'all' : Number(e.target.value))}
-              className="w-full pl-10 pr-8 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white appearance-none cursor-pointer"
-            >
-              <option value="all">All Floors</option>
-              {availableFloors.map(f => (
-                <option key={f} value={f}>Floor {f}</option>
-              ))}
-            </select>
+            <ModernSelect
+              value={filterFloor === 'all' ? 'all' : String(filterFloor)}
+              onChange={(val) => setFilterFloor(val === 'all' ? 'all' : Number(val))}
+              options={[
+                { value: "all", label: "All Floors" },
+                ...availableFloors.map(f => ({ value: String(f), label: f === 0 ? "Ground Floor" : `Floor ${f}` }))
+              ]}
+            />
           </div>
 
           <button
@@ -700,10 +699,12 @@ export const RoomsPage = () => {
                 toast.error('Failed to generate export');
               }
             }}
-            className="p-2.5 bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors shrink-0 flex items-center justify-center"
+            className="flex items-center gap-2 px-6 py-2.5 text-white rounded-2xl text-sm font-black transition-all shadow-lg shadow-indigo-600/20 active:scale-95 hover:opacity-90 shrink-0 flex items-center justify-center"
+            style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
             title="Export to Excel"
           >
-            <Download className="w-5 h-5" />
+            <FileSpreadsheet className="w-4 h-4" />
+            Export Excel
           </button>
         </div>
       </div>
@@ -933,16 +934,22 @@ export const RoomsPage = () => {
                       </button>
                     </div>
 
-                    <select
-                      value={formData.meterGroupId}
-                      onChange={(e) => setFormData({ ...formData, meterGroupId: e.target.value })}
-                      className="w-full px-4 py-2.5 bg-white dark:bg-[#1a1a1a] border border-indigo-100 dark:border-white/5 rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                    >
-                      <option value="" disabled>Select a flat...</option>
-                      {meterGroups.map(mg => (
-                        <option key={mg.id} value={mg.id}>{mg.name} (Floor {mg.floor})</option>
-                      ))}
-                    </select>
+                    {(() => {
+                      const flatOptions = [
+                        { value: "", label: "Select a flat..." },
+                        ...meterGroups.map(mg => ({
+                          value: mg.id,
+                          label: `${mg.name} (${mg.floor === 0 ? 'Ground Floor' : `Floor ${mg.floor}`})`
+                        }))
+                      ];
+                      return (
+                        <ModernSelect
+                          value={formData.meterGroupId}
+                          onChange={(val) => setFormData({ ...formData, meterGroupId: val })}
+                          options={flatOptions}
+                        />
+                      );
+                    })()}
                     <p className="text-xs text-indigo-600/70 dark:text-indigo-400/70">
                       Rooms in the same flat share electricity bills.
                     </p>
@@ -989,11 +996,12 @@ export const RoomsPage = () => {
                           type="button"
                           onClick={() => setFormData({ ...formData, type: type as any })}
                           className={cn(
-                            "flex-1 py-3 rounded-xl text-sm font-bold transition-all",
+                            "flex-1 py-3 rounded-xl text-sm font-bold transition-all border border-transparent",
                             formData.type === type
-                              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
-                              : "bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 border border-transparent"
+                              ? "text-white shadow-lg shadow-indigo-600/20"
+                              : "bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10"
                           )}
+                          style={formData.type === type ? { background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' } : undefined}
                         >
                           {type}
                         </button>
@@ -1048,9 +1056,10 @@ export const RoomsPage = () => {
                               });
                             }}
                             className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold transition-all min-h-[44px] ${isSelected
-                              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25 scale-105'
+                              ? 'text-white shadow-lg shadow-indigo-600/25 scale-105'
                               : 'bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10'
                               }`}
+                            style={isSelected ? { background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' } : undefined}
                           >
                             <span>{emoji}</span>
                             {label}
@@ -1065,7 +1074,8 @@ export const RoomsPage = () => {
                           key={custom}
                           type="button"
                           onClick={() => setFormData({ ...formData, amenities: formData.amenities?.filter(a => a !== custom) })}
-                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold bg-violet-600 text-white shadow-lg shadow-violet-600/25 min-h-[44px] transition-all hover:bg-violet-700"
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold text-white shadow-lg shadow-violet-600/25 min-h-[44px] transition-all"
+                          style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
                         >
                           ✨ {custom} <span className="ml-1 opacity-75 text-xs">✕</span>
                         </button>
@@ -1099,7 +1109,8 @@ export const RoomsPage = () => {
                           }
                           setCustomAmenity('');
                         }}
-                        className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shrink-0 shadow-lg shadow-indigo-600/20"
+                        className="px-6 py-3 text-white rounded-xl text-sm font-bold transition-all shrink-0 shadow-lg shadow-indigo-600/20"
+                        style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
                       >
                         Add
                       </button>
@@ -1149,7 +1160,7 @@ export const RoomsPage = () => {
                   </div>
                   <div>
                     <h3 className="text-xl font-bold text-gray-900 dark:text-white">Room {selectedRoom.roomNumber}</h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Floor {selectedRoom.floor} • {selectedRoom.type}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">{selectedRoom.floor === 0 ? 'Ground Floor' : `Floor ${selectedRoom.floor}`} • {selectedRoom.type}</p>
                   </div>
                 </div>
                 <div className="flex gap-2">

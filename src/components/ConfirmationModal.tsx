@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { AlertCircle, X, Loader2 } from 'lucide-react';
 import { cn } from '../utils';
 
+import { useApp } from '../context/AppContext';
+
 interface ConfirmationModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -26,9 +28,12 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   variant = 'danger',
   isLoading = false
 }) => {
+  const { pgConfig } = useApp();
+  const themeGradient = pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)';
+
   const iconColor = variant === 'danger' ? 'text-rose-600' : variant === 'warning' ? 'text-amber-600' : 'text-indigo-600';
   const iconBg = variant === 'danger' ? 'bg-rose-50 dark:bg-rose-500/10' : variant === 'warning' ? 'bg-amber-50 dark:bg-amber-500/10' : 'bg-indigo-50 dark:bg-indigo-500/10';
-  const confirmBtnBg = variant === 'danger' ? 'bg-rose-600 hover:bg-rose-700' : variant === 'warning' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-indigo-600 hover:bg-indigo-700';
+  const confirmBtnBg = variant === 'danger' ? 'bg-rose-600 hover:bg-rose-700' : variant === 'warning' ? 'bg-amber-600 hover:bg-amber-700' : '';
   const confirmBtnShadow = variant === 'danger' ? 'shadow-rose-600/20' : variant === 'warning' ? 'shadow-amber-600/20' : 'shadow-indigo-600/20';
 
   return (
@@ -75,6 +80,7 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
                   confirmBtnBg,
                   confirmBtnShadow
                 )}
+                style={variant !== 'danger' && variant !== 'warning' ? { background: themeGradient } : undefined}
               >
                 {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                 {confirmLabel}

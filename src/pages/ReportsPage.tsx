@@ -25,6 +25,7 @@ import { MultiSelect } from '../components/MultiSelect';
 import { DataGrid, ColumnDef } from '../components/DataGrid';
 import { exportToExcel, exportTransactionLogsToExcel } from '../utils/exportUtils';
 import toast from 'react-hot-toast';
+import { ModernSelect } from '../components/ModernSelect';
 import {
   XAxis,
   YAxis,
@@ -439,30 +440,35 @@ export const ReportsPage = () => {
           )}
           {shouldRenderCombined ? (
              <MultiSelect
-               options={branches.filter(b => relevantBranchIds.includes(b.id)).map(b => ({ id: b.id, label: b.name, subLabel: b.branchName }))}
+               options={branches.filter(b => relevantBranchIds.includes(b.id)).map(b => ({
+                 id: b.id,
+                 label: b.name || b.branchName || 'Unnamed Branch',
+                 subLabel: (b.name && b.branchName && b.name !== b.branchName) ? b.branchName : ''
+               }))}
                selectedIds={selectedBranchIds}
                onChange={setSelectedBranchIds}
                placeholder="Filter Branches"
                className="sm:w-56"
              />
           ) : (
-             <select disabled className="px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm font-bold text-gray-600 dark:text-gray-400 appearance-none pointer-events-none opacity-80 sm:w-56 text-center">
-                <option>{currentBranch?.name || 'Active Branch'}</option>
-             </select>
+             <div className="sm:w-56 flex-shrink-0">
+               <ModernSelect
+                 disabled
+                 value="active"
+                 onChange={() => {}}
+                 options={[{ value: "active", label: currentBranch?.name || 'Active Branch' }]}
+                 className="text-center font-bold"
+               />
+             </div>
           )}
           {/* Month Filter Dropdown */}
-          <div className="relative">
-            <select
+          <div className="relative flex-shrink-0">
+            <ModernSelect
               value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-2xl text-sm font-bold text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 appearance-none cursor-pointer min-w-[180px]"
-            >
-              {monthOptions.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-            <Calendar className="w-4 h-4 text-indigo-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              onChange={(val) => setSelectedMonth(val)}
+              options={monthOptions}
+              className="min-w-[180px] font-bold"
+            />
           </div>
           <button onClick={handleExportExcel} className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-2xl text-sm font-black hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20 active:scale-95" style={{ background: themeColor }}>
             <FileSpreadsheet className="w-4 h-4" /> Export Excel
@@ -525,7 +531,10 @@ export const ReportsPage = () => {
           </div>
         </motion.div>
 
-        <motion.div className={cn("p-6 rounded-[2rem] border shadow-sm relative overflow-hidden transition-all group", remainingBalance > 0 ? "bg-indigo-600 text-white" : "bg-white dark:bg-[#0d0d0d] border-gray-100 dark:border-white/5")}>
+        <motion.div
+          className={cn("p-6 rounded-[2rem] border shadow-sm relative overflow-hidden transition-all group", remainingBalance > 0 ? "text-white" : "bg-white dark:bg-[#0d0d0d] border-gray-100 dark:border-white/5")}
+          style={remainingBalance > 0 ? { background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' } : undefined}
+        >
           <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-all" />
           <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center mb-4", remainingBalance > 0 ? "bg-white/20 text-white" : "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600")}>
             <ShieldCheck className="w-6 h-6" />
@@ -640,12 +649,23 @@ export const ReportsPage = () => {
             <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight font-display">Vacant Beds Overview</h3>
              <p className="text-[10px] font-bold text-gray-400 mt-1 uppercase tracking-widest italic">Total {totalVacantBedsCount} Vacant Beds Across {vacantRoomsList.length} Rooms</p>
           </div>
-          {shouldRenderCombined && (
-            <select value={vacancyFilterBranch} onChange={(e) => setVacancyFilterBranch(e.target.value)} className="px-4 py-2 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500/20">
-              <option value="all">All Branches</option>
-              {branches.filter(b => selectedBranchIds.includes(b.id)).map(b => <option key={`vac-${b.id}`} value={b.id}>{b.name}</option>)}
-            </select>
-          )}
+            {shouldRenderCombined && (() => {
+              const vacancyBranchOptions = [
+                { value: "all", label: "All Branches" },
+                ...branches.filter(b => selectedBranchIds.includes(b.id)).map(b => ({
+                  value: b.id,
+                  label: b.name
+                }))
+              ];
+              return (
+                <ModernSelect
+                  value={vacancyFilterBranch}
+                  onChange={(val) => setVacancyFilterBranch(val)}
+                  options={vacancyBranchOptions}
+                  className="w-48 font-bold"
+                />
+              );
+            })()}
         </div>
         <DataGrid columns={vacancyColumns} data={paginatedVacantRooms} isLoading={false} keyExtractor={(r) => r.id} page={vacancyPage} limit={vacancyLimit} totalCount={vacantRoomsList.length} onPageChange={setVacancyPage} onLimitChange={(newLimit) => { setVacancyLimit(newLimit); setVacancyPage(1); }} emptyStateMessage="No vacant beds currently" compact />
       </div>
@@ -702,19 +722,21 @@ export const ReportsPage = () => {
                   className={cn(
                     "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
                     transactionFilter === filter
-                      ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
+                      ? "text-white shadow-lg shadow-indigo-600/20"
                       : "bg-gray-50 text-gray-500 dark:bg-white/5 dark:text-gray-400 hover:bg-gray-100 shadow-sm"
                   )}
+                  style={transactionFilter === filter ? { background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' } : undefined}
                 >
                   {filter}
                 </button>
               ))}
               <button
                 onClick={handleExportDetailedLogs}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-emerald-600/20 transition-all shrink-0"
+                className="flex items-center gap-2 px-6 py-2.5 text-white rounded-2xl text-sm font-black transition-all shadow-lg shadow-indigo-600/20 active:scale-95 hover:opacity-90 shrink-0"
+                style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
                 title="Export Detailed Transaction Logs to Excel"
               >
-                <Download className="w-3.5 h-3.5" /> Export Excel
+                <FileSpreadsheet className="w-4 h-4" /> Export Excel
               </button>
             </div>
           </div>
@@ -775,7 +797,18 @@ export const ReportsPage = () => {
                   {Array.from({ length: totalPages }, (_, i) => i + 1).filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1).map((p, i, arr) => (
                     <React.Fragment key={p}>
                       {i > 0 && arr[i-1] !== p - 1 && <span className="text-gray-400 px-1">...</span>}
-                      <button onClick={() => setCurrentPage(p)} className={cn("w-10 h-10 rounded-xl text-xs font-black transition-all", currentPage === p ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 scale-110" : "text-gray-500 hover:bg-white dark:hover:bg-white/5")}>{p}</button>
+                      <button
+                        onClick={() => setCurrentPage(p)}
+                        className={cn(
+                          "w-10 h-10 rounded-xl text-xs font-black transition-all",
+                          currentPage === p
+                            ? "text-white shadow-lg shadow-indigo-600/20 scale-110"
+                            : "text-gray-500 hover:bg-white dark:hover:bg-white/5"
+                        )}
+                        style={currentPage === p ? { background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' } : undefined}
+                      >
+                        {p}
+                      </button>
                     </React.Fragment>
                   ))}
                 </div>

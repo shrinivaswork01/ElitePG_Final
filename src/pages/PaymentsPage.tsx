@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { Payment } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useLocation } from 'react-router-dom';
 import {
   Plus,
   Search,
@@ -9,6 +10,7 @@ import {
   TrendingUp,
   Calendar,
   Download,
+  FileSpreadsheet,
   Filter,
   CheckCircle2,
   Clock,
@@ -50,11 +52,19 @@ import { fetchElectricityBill, calculateElectricityShares, fetchElectricityBillB
 import { supabase } from '../lib/supabase';
 import { ElectricityBill, ElectricityShare } from '../types';
 import toast from 'react-hot-toast';
+import { ModernSelect } from '../components/ModernSelect';
 
 export const PaymentsPage = () => {
+  const location = useLocation();
   const { user, users } = useAuth();
   const { payments, tenants, rooms, addPayment, updatePayment, deletePayment, updateTenant, currentBranch, pgConfig, updatePGConfig, fetchData } = useApp();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (location.state?.openAddModal) {
+      setIsAddModalOpen(true);
+    }
+  }, [location.state]);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
@@ -324,9 +334,14 @@ export const PaymentsPage = () => {
               </>
             )}
             {['admin', 'manager'].includes(user?.role || '') && (
-              <DropdownItem icon={<Trash2 className="w-4 h-4" />} label="Delete Payment" onClick={() => {
-                setDeleteConfirmation({ isOpen: true, paymentId: p.id });
-              }} danger />
+              <DropdownItem 
+                icon={<Trash2 className="w-4 h-4" />} 
+                label={p.status === 'paid' ? "Void Payment" : "Delete Payment"} 
+                onClick={() => {
+                  setDeleteConfirmation({ isOpen: true, paymentId: p.id });
+                }} 
+                danger 
+              />
             )}
           </DropdownMenu>
         </div>
@@ -403,21 +418,24 @@ export const PaymentsPage = () => {
     
     // Find all months that have either a pending electricity payment or are the current month (for rent)
     // Actually, we should check for ANY month where rent or electricity is pending.
-    const pendingMonths = Array.from(new Set([
-      ...payments.filter(p => p.tenantId === tenantData.id && p.status === 'pending').map(p => p.month),
-      currentMonth
-    ])).sort().reverse();
+    const pendingMonths = filterMonth === 'all'
+      ? Array.from(new Set([
+          ...payments.filter(p => p.tenantId === tenantData.id && p.status === 'pending').map(p => p.month),
+          currentMonth
+        ])).sort().reverse()
+      : [filterMonth];
 
     for (const month of pendingMonths) {
       const isCurrent = month === currentMonth;
+      const isSelectedMonth = month === filterMonth;
       const rentPayment = payments.find(p => p.tenantId === tenantData.id && p.month === month && (p.paymentType === 'rent' || !p.paymentType));
       const electricityPayment = payments.find(p => p.tenantId === tenantData.id && p.month === month && p.paymentType === 'electricity');
 
       const isRentPaid = rentPayment?.status === 'paid';
       const isElecPaid = !electricityPayment || electricityPayment.status === 'paid';
 
-      // Always show rent for current month, or if it's pending in past months
-      if (isCurrent || (rentPayment && !isRentPaid)) {
+      // Always show rent for current month, or the selected month, or if it's pending in past months
+      if (isCurrent || isSelectedMonth || (rentPayment && !isRentPaid)) {
         dues.push({
           type: 'rent' as const,
           month,
@@ -438,6 +456,11 @@ export const PaymentsPage = () => {
       // Show electricity if it exists for this month
       if (electricityPayment) {
         const elecAmount = (electricityPayment as any).electricity_amount || electricityPayment.electricityAmount || electricityPayment.totalAmount || 0;
+        const isElecPaid = electricityPayment.status === 'paid';
+        const elecLateFee = isElecPaid 
+          ? (electricityPayment.lateFee || 0) 
+          : calculateLateFee(tenantData.id, month, undefined, 'electricity');
+
         dues.push({
           type: 'electricity' as const,
           month,
@@ -450,9 +473,9 @@ export const PaymentsPage = () => {
           unitsConsumed: electricityPayment.unitsConsumed || (electricityPayment as any).units_consumed || 0,
           costPerUnit: electricityPayment.costPerUnit || (electricityPayment as any).cost_per_unit || 0,
           amount: elecAmount,
-          dueDate: `${month}-${(tenantData.paymentDueDate || pgConfig?.defaultPaymentDueDate || 1).toString().padStart(2, '0')}`,
-          lateFee: 0, // Electricity usually doesn't have late fee in this system yet
-          isPaid: electricityPayment.status === 'paid',
+          dueDate: `${month}-${(pgConfig?.electricityDueDate || 1).toString().padStart(2, '0')}`,
+          lateFee: elecLateFee,
+          isPaid: isElecPaid,
           paymentId: electricityPayment.id,
           id: electricityPayment.id
         });
@@ -460,18 +483,18 @@ export const PaymentsPage = () => {
     }
 
     return dues;
-  }, [isTenant, tenantData, currentMonth, payments, pgConfig?.defaultPaymentDueDate]);
+  }, [isTenant, tenantData, currentMonth, payments, pgConfig?.defaultPaymentDueDate, filterMonth]);
 
   const handleOnlinePayment = async () => {
     if (isSubmitting) return;
     if (tenantData && payingDue) {
       const due = payingDue;
 
-      // For rent, check for duplicate insert
+      // For rent, check for duplicate insert — if a paid record already exists, block; if a pending record exists, we'll update it instead of inserting
       if (due.type === 'rent') {
-        const existingPayment = payments.find(p => p.tenantId === tenantData.id && p.month === due.month && p.paymentType === 'rent' && (p.status === 'paid' || p.status === 'pending'));
-        if (existingPayment) {
-          toast.error('A rent payment for this month is already recorded or in progress.');
+        const existingPaidPayment = payments.find(p => p.tenantId === tenantData.id && p.month === due.month && (p.paymentType === 'rent' || !p.paymentType) && p.status === 'paid');
+        if (existingPaidPayment) {
+          toast.error('A rent payment for this month is already recorded.');
           return;
         }
       }
@@ -486,32 +509,59 @@ export const PaymentsPage = () => {
             status: method === 'Cash' ? 'pending' : 'paid',
             method,
             transactionId: transactionId || null,
-            paymentDate: format(new Date(), 'yyyy-MM-dd')
+            paymentDate: format(new Date(), 'yyyy-MM-dd'),
+            lateFee: due.lateFee,
+            totalAmount: totalAmount
           });
           
           if (method === 'Online' && transactionId) {
-            handleDownloadReceipt({ ...payments.find(p => p.id === due.paymentId)!, status: 'paid', method: 'Online', transactionId } as Payment);
+            handleDownloadReceipt({ 
+              ...payments.find(p => p.id === due.paymentId)!, 
+              status: 'paid', 
+              method: 'Online', 
+              transactionId,
+              lateFee: due.lateFee,
+              totalAmount: totalAmount
+            } as Payment);
           }
         } else {
-          // Insert new rent record
-          const paymentRecord: Omit<Payment, 'id' | 'branchId'> = {
-            tenantId: tenantData.id,
-            amount: due.rentAmount,
-            lateFee: due.lateFee,
-            totalAmount,
-            paymentType: due.type,
-            electricityAmount: 0, // No longer merged
-            paymentDate: format(new Date(), 'yyyy-MM-dd'),
-            month: due.month,
-            status: method === 'Cash' ? 'pending' : 'paid',
-            method,
-            transactionId: transactionId || undefined
-          };
+          // Check if there's an existing pending rent record (e.g. from a voided payment)
+          const existingPendingRent = payments.find(p => p.tenantId === tenantData.id && p.month === due.month && (p.paymentType === 'rent' || !p.paymentType) && p.status === 'pending');
           
-          await addPayment(paymentRecord);
-          // If online, mock downloading receipt for the temp inserted record (ideally we wait for it to sync, but we proceed like Razorpay)
-          if (method === 'Online' && transactionId) {
-            handleDownloadReceipt({ ...paymentRecord, id: transactionId } as Payment);
+          if (existingPendingRent) {
+            // Update the existing pending record instead of inserting a new one
+            await updatePayment(existingPendingRent.id, {
+              status: method === 'Cash' ? 'pending' : 'paid',
+              method,
+              transactionId: transactionId || null,
+              paymentDate: format(new Date(), 'yyyy-MM-dd'),
+              lateFee: due.lateFee,
+              totalAmount
+            });
+            
+            if (method === 'Online' && transactionId) {
+              handleDownloadReceipt({ ...existingPendingRent, status: 'paid', method: 'Online', transactionId, lateFee: due.lateFee, totalAmount } as Payment);
+            }
+          } else {
+            // Insert new rent record
+            const paymentRecord: Omit<Payment, 'id' | 'branchId'> = {
+              tenantId: tenantData.id,
+              amount: due.rentAmount,
+              lateFee: due.lateFee,
+              totalAmount,
+              paymentType: due.type,
+              electricityAmount: 0,
+              paymentDate: format(new Date(), 'yyyy-MM-dd'),
+              month: due.month,
+              status: method === 'Cash' ? 'pending' : 'paid',
+              method,
+              transactionId: transactionId || undefined
+            };
+            
+            await addPayment(paymentRecord);
+            if (method === 'Online' && transactionId) {
+              handleDownloadReceipt({ ...paymentRecord, id: transactionId } as Payment);
+            }
           }
         }
 
@@ -993,6 +1043,12 @@ export const PaymentsPage = () => {
     setIsReceiptModalOpen(true);
   };
 
+  const isPaidPayment = React.useMemo(() => {
+    if (!deleteConfirmation?.paymentId) return false;
+    const p = payments.find(pmt => pmt.id === deleteConfirmation.paymentId);
+    return p?.status === 'paid';
+  }, [deleteConfirmation, payments]);
+
   const handleConfirmDelete = async () => {
     if (deleteConfirmation?.paymentId) {
       await deletePayment(deleteConfirmation.paymentId);
@@ -1003,7 +1059,6 @@ export const PaymentsPage = () => {
     }
     setDeleteConfirmation(null);
     refetchPayments();
-    toast.success('Successfully deleted!');
   };
 
   const handleDownloadReceipt = async (payment: Payment | null = selectedPayment) => {
@@ -1099,14 +1154,15 @@ export const PaymentsPage = () => {
          return matchesSearch;
       }
 
-      // Tenant: Only see their own
+      // Tenant: Only see their own and filter by month if selected
       if (user?.role === 'tenant') {
-        return matchesSearch && tenant?.userId === user?.id;
+        const matchesMonth = filterMonth === 'all' || p.month === filterMonth;
+        return matchesSearch && matchesMonth && tenant?.userId === user?.id;
       }
 
       return false;
     });
-  }, [payments, tenants, searchTerm, user?.role, user?.id]);
+  }, [payments, tenants, searchTerm, user?.role, user?.id, filterMonth]);
 
   const handleDownload = () => {
     const data = filteredPayments.map(p => {
@@ -1147,7 +1203,33 @@ export const PaymentsPage = () => {
     return isTenant ? payments.filter(p => p.tenantId === tenantData?.id && (filterMonth === 'all' || p.month === filterMonth)) : [];
   }, [isTenant, payments, tenantData?.id, filterMonth]);
   
-  const myPendingDuesCount = isTenant ? (hasPaidCurrentMonth ? 0 : 1) : 0;
+  const myPendingDuesCount = React.useMemo(() => {
+    if (!isTenant || !tenantData) return 0;
+    
+    const monthsToCheck = filterMonth === 'all'
+      ? Array.from(new Set([
+          ...payments.filter(p => p.tenantId === tenantData.id && p.status === 'pending').map(p => p.month),
+          currentMonth
+        ]))
+      : [filterMonth];
+      
+    let pendingCount = 0;
+    for (const month of monthsToCheck) {
+      const rentPayment = payments.find(p => p.tenantId === tenantData.id && p.month === month && (p.paymentType === 'rent' || !p.paymentType));
+      const electricityPayment = payments.find(p => p.tenantId === tenantData.id && p.month === month && p.paymentType === 'electricity');
+      
+      const isRentPaid = rentPayment?.status === 'paid';
+      const isElecPaid = !electricityPayment || electricityPayment.status === 'paid';
+      
+      if (!isRentPaid) {
+        pendingCount++;
+      }
+      if (electricityPayment && !isElecPaid) {
+        pendingCount++;
+      }
+    }
+    return pendingCount;
+  }, [isTenant, tenantData, payments, filterMonth, currentMonth]);
   
   const paidThisMonthCount = React.useMemo(() => {
     return payments.filter(p => (filterMonth === 'all' || p.month === filterMonth) && p.status === 'paid').length;
@@ -1195,7 +1277,19 @@ export const PaymentsPage = () => {
             {isTenant ? 'Manage your rent payments and view history.' : 'Track revenue, invoices, and late fees.'}
           </p>
         </div>
-        {!isTenant && (
+        {isTenant ? (
+          <div className="flex items-center gap-3">
+            <ModernSelect
+              value={filterMonth}
+              onChange={(val) => setFilterMonth(val)}
+              options={[
+                { value: "all", label: "All Months" },
+                ...monthOptions
+              ]}
+              className="w-40 font-bold"
+            />
+          </div>
+        ) : (
           <div className="flex gap-3">
             {isAdmin && (
               <button
@@ -1237,66 +1331,76 @@ export const PaymentsPage = () => {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     className={cn(
-                      "group relative rounded-[28px] p-6 border transition-all hover:scale-[1.01]",
+                      "group relative rounded-[28px] p-6 border transition-all hover:scale-[1.01] flex flex-col justify-between h-full",
                       due.isPaid 
                         ? "bg-emerald-50/50 dark:bg-emerald-500/5 border-emerald-100 dark:border-emerald-500/10" 
                         : "bg-white dark:bg-[#111111] border-gray-100 dark:border-white/5 shadow-xl shadow-black/5"
                     )}
                   >
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className={cn(
-                          "w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg",
-                          due.isPaid 
-                            ? "bg-emerald-500 text-white" 
-                            : (due.type === 'electricity' ? "bg-amber-500 text-white" : "bg-indigo-600 text-white")
-                        )}>
-                          {due.isPaid ? <CheckCircle2 className="w-6 h-6" /> : (due.type === 'electricity' ? <Zap className="w-6 h-6" /> : <CreditCard className="w-6 h-6" />)}
-                        </div>
-                        <div>
-                          <h4 className="text-base font-black text-gray-900 dark:text-white uppercase tracking-tight">
-                            {due.type === 'electricity' ? 'Electricity' : 'Monthly Rent'}
-                          </h4>
-                          <span className={cn(
-                            "text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest",
-                            due.isPaid ? "bg-emerald-500/20 text-emerald-600" : "bg-rose-500/20 text-rose-600"
-                          )}>
-                            {due.isPaid ? 'Paid' : 'Pending'}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-2xl font-black text-gray-900 dark:text-white tracking-tighter">
-                          ₹{(due.amount + due.lateFee).toLocaleString()}
-                        </p>
-                        {due.lateFee > 0 && !due.isPaid && (
-                          <p className="text-[10px] font-bold text-rose-500">Includes ₹{due.lateFee} late fee</p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="space-y-3 mb-6">
-                      {due.type === 'rent' && (
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="text-gray-500">Base Rent</span>
-                          <span className="font-bold text-gray-700 dark:text-gray-300">₹{due.rentAmount.toLocaleString()}</span>
-                        </div>
-                      )}
-                      {due.type === 'electricity' && (
-                        <>
-                          <div className="flex justify-between items-center text-xs">
-                            <span className="text-gray-500">Base Charge (Fixed)</span>
-                            <span className="font-bold text-gray-700 dark:text-gray-300">₹{due.baseAmount.toLocaleString()}</span>
+                    <div className="flex-1 flex flex-col justify-between mb-4">
+                      <div>
+                        {/* Header */}
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="flex items-center gap-3">
+                            <div className={cn(
+                              "w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg",
+                              due.isPaid 
+                                ? "bg-emerald-500 text-white" 
+                                : (due.type === 'electricity' ? "bg-amber-500 text-white" : "text-white")
+                            )}
+                            style={due.isPaid ? undefined : (due.type === 'electricity' ? undefined : { background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' })}
+                            >
+                              {due.isPaid ? <CheckCircle2 className="w-6 h-6" /> : (due.type === 'electricity' ? <Zap className="w-6 h-6" /> : <CreditCard className="w-6 h-6" />)}
+                            </div>
+                            <div>
+                              <h4 className="text-base font-black text-gray-900 dark:text-white uppercase tracking-tight">
+                                {due.type === 'electricity' ? 'Electricity' : 'Monthly Rent'}
+                              </h4>
+                              <span className={cn(
+                                "text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest",
+                                due.isPaid ? "bg-emerald-500/20 text-emerald-600" : "bg-rose-500/20 text-rose-600"
+                              )}>
+                                {due.isPaid ? 'Paid' : 'Pending'}
+                              </span>
+                            </div>
                           </div>
-                          {due.acAmount > 0 && (
+                          <div className="text-right">
+                            <p className="text-2xl font-black text-gray-900 dark:text-white tracking-tighter">
+                              ₹{(due.amount + due.lateFee).toLocaleString()}
+                            </p>
+                            {due.lateFee > 0 && !due.isPaid && (
+                              <p className="text-[10px] font-bold text-rose-500">Includes ₹{due.lateFee} late fee</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Details */}
+                        <div className="space-y-3 mt-6">
+                          {due.type === 'rent' && (
                             <div className="flex justify-between items-center text-xs">
-                              <span className="text-gray-500">AC Charge ({due.unitsConsumed} units)</span>
-                              <span className="font-bold text-gray-700 dark:text-gray-300">₹{due.acAmount.toLocaleString()}</span>
+                              <span className="text-gray-500">Base Rent</span>
+                              <span className="font-bold text-gray-700 dark:text-gray-300">₹{due.rentAmount.toLocaleString()}</span>
                             </div>
                           )}
-                        </>
-                      )}
-                      <div className="flex justify-between items-center text-[10px] pt-2 border-t border-gray-100 dark:border-white/5">
+                          {due.type === 'electricity' && (
+                            <>
+                              <div className="flex justify-between items-center text-xs">
+                                <span className="text-gray-500">Base Charge (Fixed)</span>
+                                <span className="font-bold text-gray-700 dark:text-gray-300">₹{due.baseAmount.toLocaleString()}</span>
+                              </div>
+                              {due.acAmount > 0 && (
+                                <div className="flex justify-between items-center text-xs">
+                                  <span className="text-gray-500">AC Charge ({due.unitsConsumed} units)</span>
+                                  <span className="font-bold text-gray-700 dark:text-gray-300">₹{due.acAmount.toLocaleString()}</span>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Expected By divider (pushed to the bottom of top area) */}
+                      <div className="flex justify-between items-center text-[10px] pt-3 border-t border-gray-100 dark:border-white/5 mt-6">
                         <span className="text-gray-400 font-bold uppercase tracking-widest">Expected By</span>
                         <span className="text-gray-500 font-black">{format(parseISO(`${due.month}-${due.dueDate.split('-')[2]}`), 'dd MMM yyyy')}</span>
                       </div>
@@ -1305,7 +1409,8 @@ export const PaymentsPage = () => {
                     {!due.isPaid ? (
                       <button
                         onClick={() => setPayingDue(due)}
-                        className="w-full py-3 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all hover:scale-[1.02] active:scale-95"
+                        className="w-full py-3 text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg shadow-indigo-600/20 transition-all hover:scale-[1.02] active:scale-95"
+                        style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
                       >
                         Make Payment
                       </button>
@@ -1337,7 +1442,7 @@ export const PaymentsPage = () => {
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
                 {isTenant 
-                  ? 'Total Paid to Date' 
+                  ? (filterMonth === 'all' ? 'Total Paid to Date' : `Paid in ${monthOptions.find(m => m.value === filterMonth)?.label?.split(' ')[0] || 'Selected Month'}`)
                   : filterMonth === 'all' 
                     ? 'Rent Revenue (All Time)' 
                     : `Rent Revenue (${monthOptions.find(m => m.value === filterMonth)?.label?.split(' ')[0] || 'This Month'})`}
@@ -1354,7 +1459,7 @@ export const PaymentsPage = () => {
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
                 {isTenant 
-                  ? 'Payments (This Month)' 
+                  ? (filterMonth === 'all' ? 'Payments (All Time)' : `Payments (${monthOptions.find(m => m.value === filterMonth)?.label?.split(' ')[0] || 'Selected Month'})`)
                   : filterMonth === 'all' 
                     ? 'Paid (All Time)' 
                     : `Paid in ${monthOptions.find(m => m.value === filterMonth)?.label?.split(' ')[0] || 'This Month'}`}
@@ -1373,7 +1478,7 @@ export const PaymentsPage = () => {
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
                 {isTenant 
-                  ? 'Pending Dues' 
+                  ? (filterMonth === 'all' ? 'Pending Dues' : `Pending Dues (${monthOptions.find(m => m.value === filterMonth)?.label?.split(' ')[0] || 'Selected Month'})`)
                   : filterMonth === 'all' 
                     ? 'Pending Dues (Current Month)' 
                     : `Pending Dues (${monthOptions.find(m => m.value === filterMonth)?.label?.split(' ')[0] || 'This Month'})`}
@@ -1387,7 +1492,7 @@ export const PaymentsPage = () => {
       </div>
 
       {!isTenant && (
-        <div className="flex flex-wrap items-center gap-2 mb-2">
+        <div className="flex items-center gap-2 mb-4 overflow-x-auto scrollbar-none pb-1 flex-nowrap w-full">
           {[
             { id: 'all', label: 'All Payments', icon: <HistoryIcon className="w-4 h-4" /> },
             { id: 'rent', label: 'Rent Only', icon: <CreditCard className="w-4 h-4" /> },
@@ -1399,18 +1504,19 @@ export const PaymentsPage = () => {
               key={tab.id}
               onClick={() => setFilterType(tab.id as any)}
               className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all border",
+                "flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all border min-w-[125px] flex-shrink-0",
                 filterType === tab.id
-                  ? "bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-600/20"
+                  ? "text-white border-transparent shadow-lg shadow-indigo-600/20"
                   : "bg-white dark:bg-white/5 text-gray-500 dark:text-gray-400 border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/10"
               )}
+              style={filterType === tab.id ? { background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' } : undefined}
             >
               {tab.icon}
               {tab.label}
             </button>
           ))}
           
-          <div className="h-6 w-px bg-gray-100 dark:bg-white/10 mx-2 hidden sm:block" />
+          <div className="h-6 w-px bg-gray-100 dark:bg-white/10 mx-2 flex-shrink-0 hidden sm:block" />
           
           {[
             { id: 'all', label: 'All Status' },
@@ -1421,29 +1527,27 @@ export const PaymentsPage = () => {
               key={tab.id}
               onClick={() => setFilterStatus(tab.id as any)}
               className={cn(
-                "px-4 py-2 rounded-xl text-xs font-bold transition-all uppercase tracking-wider",
+                "flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all border min-w-[125px] uppercase flex-shrink-0",
                 filterStatus === tab.id
-                  ? "bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400"
-                  : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                  ? "text-white border-transparent shadow-lg shadow-indigo-600/20"
+                  : "bg-white dark:bg-white/5 text-gray-500 dark:text-gray-400 border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/10"
               )}
+              style={filterStatus === tab.id ? { background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' } : undefined}
             >
               {tab.label}
             </button>
           ))}
 
-          <div className="relative">
-            <select
+          <div className="relative flex-shrink-0">
+            <ModernSelect
               value={filterMonth}
-              onChange={(e) => setFilterMonth(e.target.value)}
-              className="pl-10 pr-8 py-2 bg-white dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-xl text-xs font-bold text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-amber-500/20 appearance-none cursor-pointer outline-none shadow-sm min-w-[150px]"
-            >
-              <option value="all">All Months</option>
-              {monthOptions.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-            <Calendar className="w-3.5 h-3.5 text-indigo-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <ChevronDown className="w-3.5 h-3.5 text-gray-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              onChange={(val) => setFilterMonth(val)}
+              options={[
+                { value: "all", label: "All Months" },
+                ...monthOptions
+              ]}
+              className="w-40 font-bold"
+            />
           </div>
         </div>
       )}
@@ -1462,9 +1566,11 @@ export const PaymentsPage = () => {
         <div className="flex gap-2">
           <button
             onClick={handleDownload}
-            className="p-2.5 bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+            className="flex items-center gap-2 px-6 py-2.5 text-white rounded-2xl text-sm font-black transition-all shadow-lg shadow-indigo-600/20 active:scale-95 hover:opacity-90 flex-shrink-0"
+            style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
           >
-            <Download className="w-5 h-5" />
+            <FileSpreadsheet className="w-4 h-4" />
+            Export Excel
           </button>
         </div>
       </div>
@@ -1757,7 +1863,8 @@ export const PaymentsPage = () => {
 
                 <button
                   onClick={handleOnlinePayment}
-                  className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
+                  className="w-full py-4 text-white rounded-2xl font-bold shadow-lg shadow-indigo-600/20 transition-all"
+                  style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
                 >
                   Pay ₹{(payingDue.amount + payingDue.lateFee).toLocaleString()}
                 </button>
@@ -1947,56 +2054,60 @@ export const PaymentsPage = () => {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                        <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Payment Type</label>
-                      <select
-                        value={newPayment.paymentType}
-                        onChange={async (e) => {
-                          const type = e.target.value as any;
-                          const amount = await handleAutoPopulate(type, newPayment.tenantId, newPayment.month || '');
-                          const lateFee = calculateLateFee(newPayment.tenantId, newPayment.month || '', newPayment.paymentDate, type);
-                          setNewPayment({ ...newPayment, paymentType: type, amount, lateFee, totalAmount: amount + lateFee });
-                        }}
-                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                      >
-                        <option value="rent">Rent</option>
-                        <option value="electricity">Electricity</option>
-                      </select>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Select Tenant</label>
-                      <select
-                        required
-                        value={newPayment.tenantId}
-                        onChange={async (e) => {
-                          const tenantId = e.target.value;
-                          const amount = await handleAutoPopulate(newPayment.paymentType || 'rent', tenantId, newPayment.month || '');
-                          const lateFee = calculateLateFee(tenantId, newPayment.month || '', newPayment.paymentDate, newPayment.paymentType || 'rent');
-                          setNewPayment({
-                            ...newPayment,
-                            tenantId,
-                            amount,
-                            lateFee,
-                            totalAmount: amount + lateFee
-                          });
-                        }}
-                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                      >
-                        <option value="">{newPayment.paymentType === 'rent' ? 'Select Tenant' : 'Select Tenant (with bills)'}</option>
-                        {tenants
-                          .filter(t => t.status === 'active' || t.status === 'vacating')
-                          .filter(t => {
-                            const type = newPayment.paymentType || 'rent';
-                            return !payments.some((p: any) => 
-                              p.tenantId === t.id && 
-                              p.month === newPayment.month && 
-                              (p.paymentType || 'rent') === type && 
-                              (type === 'electricity' ? p.status === 'paid' : p.status !== 'rejected')
-                            );
-                          })
-                          .sort((a, b) => a.name.localeCompare(b.name))
-                          .map(t => (
-                          <option key={t.id} value={t.id}>{t.name} (Room {rooms.find(r => r.id === (t.roomId || (t as any).room_id))?.roomNumber || 'N/A'})</option>
-                        ))}
-                      </select>
+                       <ModernSelect
+                         value={newPayment.paymentType}
+                         onChange={async (val) => {
+                           const type = val as any;
+                           const amount = await handleAutoPopulate(type, newPayment.tenantId, newPayment.month || '');
+                           const lateFee = calculateLateFee(newPayment.tenantId, newPayment.month || '', newPayment.paymentDate, type);
+                           setNewPayment({ ...newPayment, paymentType: type, amount, lateFee, totalAmount: amount + lateFee });
+                         }}
+                         options={[
+                           { value: "rent", label: "Rent" },
+                           { value: "electricity", label: "Electricity" }
+                         ]}
+                       />
+                     </div>
+                     <div className="space-y-2">
+                       <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Select Tenant</label>
+                       {(() => {
+                         const tenantOptions = [
+                           { value: "", label: newPayment.paymentType === 'rent' ? 'Select Tenant' : 'Select Tenant (with bills)' },
+                           ...tenants
+                             .filter(t => t.status === 'active' || t.status === 'vacating')
+                             .filter(t => {
+                               const type = newPayment.paymentType || 'rent';
+                               return !payments.some((p: any) => 
+                                 p.tenantId === t.id && 
+                                 p.month === newPayment.month && 
+                                 (p.paymentType || 'rent') === type && 
+                                 (type === 'electricity' ? p.status === 'paid' : p.status !== 'rejected')
+                               );
+                             })
+                             .sort((a, b) => a.name.localeCompare(b.name))
+                             .map(t => ({
+                               value: t.id,
+                               label: `${t.name} (Room ${rooms.find(r => r.id === (t.roomId || (t as any).room_id))?.roomNumber || 'N/A'})`
+                             }))
+                         ];
+                         return (
+                           <ModernSelect
+                             value={newPayment.tenantId}
+                             options={tenantOptions}
+                             onChange={async (tenantId) => {
+                               const amount = await handleAutoPopulate(newPayment.paymentType || 'rent', tenantId, newPayment.month || '');
+                               const lateFee = calculateLateFee(tenantId, newPayment.month || '', newPayment.paymentDate, newPayment.paymentType || 'rent');
+                               setNewPayment({
+                                 ...newPayment,
+                                 tenantId,
+                                 amount,
+                                 lateFee,
+                                 totalAmount: amount + lateFee
+                               });
+                             }}
+                           />
+                         );
+                       })()}
                       {tenants.length === 0 && (
                         <p className="text-[10px] text-rose-500 mt-1 italic font-semibold">
                           No active tenants found.
@@ -2105,11 +2216,12 @@ export const PaymentsPage = () => {
                           type="button"
                           onClick={() => setNewPayment({ ...newPayment, method: method as any })}
                           className={cn(
-                            "flex-1 py-2.5 rounded-xl text-xs font-bold transition-all",
+                            "flex-1 py-2.5 rounded-xl text-xs font-bold transition-all border border-transparent",
                             newPayment.method === method
-                              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
+                              ? "text-white shadow-lg shadow-indigo-600/20"
                               : "bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10"
                           )}
+                          style={newPayment.method === method ? { background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' } : undefined}
                         >
                           {method}
                         </button>
@@ -2253,7 +2365,8 @@ export const PaymentsPage = () => {
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="px-6 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    className="px-6 py-2.5 text-white text-sm font-semibold rounded-xl shadow-lg shadow-indigo-600/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
                   >
                     {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
                     {isSubmitting ? 'Recording...' : 'Record Payment'}
@@ -2361,25 +2474,25 @@ export const PaymentsPage = () => {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Status</label>
-                      <select
+                      <ModernSelect
                         value={paymentToEdit.status}
-                        onChange={(e) => setPaymentToEdit({ ...paymentToEdit, status: e.target.value as any })}
-                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                      >
-                        <option value="paid">Paid</option>
-                        <option value="pending">Pending</option>
-                      </select>
+                        onChange={(val) => setPaymentToEdit({ ...paymentToEdit, status: val as any })}
+                        options={[
+                          { value: "paid", label: "Paid" },
+                          { value: "pending", label: "Pending" }
+                        ]}
+                      />
                     </div>
                     <div className="space-y-2">
                       <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Method</label>
-                      <select
+                      <ModernSelect
                         value={paymentToEdit.method}
-                        onChange={(e) => setPaymentToEdit({ ...paymentToEdit, method: e.target.value as any })}
-                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                      >
-                        <option value="Online">Online</option>
-                        <option value="Cash">Cash</option>
-                      </select>
+                        onChange={(val) => setPaymentToEdit({ ...paymentToEdit, method: val as any })}
+                        options={[
+                          { value: "Online", label: "Online" },
+                          { value: "Cash", label: "Cash" }
+                        ]}
+                      />
                     </div>
                   </div>
                   <div className="p-4 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-between">
@@ -2549,13 +2662,16 @@ export const PaymentsPage = () => {
         isOpen={deleteConfirmation?.isOpen || false}
         onClose={() => setDeleteConfirmation(null)}
         onConfirm={handleConfirmDelete}
-        title="Delete Payment Record?"
-        message={deleteConfirmation?.bulkIds 
-          ? `Are you sure you want to delete ${deleteConfirmation.bulkIds.length} selected records? This action cannot be undone.`
-          : "Are you sure you want to delete this payment record? This action cannot be undone."
+        title={isPaidPayment ? "Void Payment Record?" : "Delete Payment Record?"}
+        message={isPaidPayment
+          ? "Are you sure you want to void this payment? This will reset the status to pending, clear the payment date/transaction details, and subtract the amount from revenue."
+          : (deleteConfirmation?.bulkIds 
+            ? `Are you sure you want to delete ${deleteConfirmation.bulkIds.length} selected records? This action cannot be undone.`
+            : "Are you sure you want to delete this payment record? This action cannot be undone."
+          )
         }
-        confirmLabel={deleteConfirmation?.bulkIds ? `Delete all` : "Delete"}
-        variant="danger"
+        confirmLabel={isPaidPayment ? "Void Payment" : (deleteConfirmation?.bulkIds ? `Delete all` : "Delete")}
+        variant={isPaidPayment ? "warning" : "danger"}
       />
     </div>
   );

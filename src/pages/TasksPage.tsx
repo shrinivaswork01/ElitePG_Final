@@ -16,11 +16,13 @@ import {
   User as UserIcon,
   Calendar,
   CheckCircle2,
-  Download
+  Download,
+  FileSpreadsheet
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../utils';
 import { format, parseISO } from 'date-fns';
+import { ModernSelect } from '../components/ModernSelect';
 import { ImageUpload } from '../components/ImageUpload';
 import toast from 'react-hot-toast';
 
@@ -196,9 +198,11 @@ export const TasksPage = () => {
         </div>
         <button
           onClick={handleDownload}
-          className="p-2.5 bg-white dark:bg-[#111111] text-gray-500 dark:text-gray-400 rounded-xl border border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors shrink-0"
+          className="flex items-center gap-2 px-6 py-2.5 text-white rounded-2xl text-sm font-black transition-all shadow-lg shadow-indigo-600/20 active:scale-95 hover:opacity-90 shrink-0"
+          style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
         >
-          <Download className="w-5 h-5" />
+          <FileSpreadsheet className="w-4 h-4" />
+          Export Excel
         </button>
       </div>
 
@@ -374,29 +378,31 @@ export const TasksPage = () => {
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Assign To</label>
-                    <select
-                      required
-                      value={formData.employeeId}
-                      onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
-                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                    >
-                      <option value="">Select Employee</option>
-                      {employees.map(e => (
-                        <option key={e.id} value={e.id}>{e.name} ({e.role})</option>
-                      ))}
-                    </select>
+                    {(() => {
+                      const empOptions = [
+                        { value: "", label: "Select Employee" },
+                        ...employees.map(e => ({ value: e.id, label: `${e.name} (${e.role})` }))
+                      ];
+                      return (
+                        <ModernSelect
+                          value={formData.employeeId}
+                          onChange={(val) => setFormData({ ...formData, employeeId: val })}
+                          options={empOptions}
+                        />
+                      );
+                    })()}
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Priority</label>
-                    <select
+                    <ModernSelect
                       value={formData.priority}
-                      onChange={(e) => setFormData({ ...formData, priority: e.target.value as any })}
-                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-                    >
-                      <option value="low">Low</option>
-                      <option value="medium">Medium</option>
-                      <option value="high">High</option>
-                    </select>
+                      onChange={(val) => setFormData({ ...formData, priority: val as any })}
+                      options={[
+                        { value: "low", label: "Low" },
+                        { value: "medium", label: "Medium" },
+                        { value: "high", label: "High" }
+                      ]}
+                    />
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Due Date</label>

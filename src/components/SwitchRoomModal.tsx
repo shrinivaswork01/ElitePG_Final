@@ -18,7 +18,7 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
   tenant: rawTenant,
   onUpdate
 }) => {
-  const { rooms, tenants, updateTenant } = useApp();
+  const { rooms, tenants, updateTenant, pgConfig } = useApp();
   const [switchSearchTerm, setSwitchSearchTerm] = useState('');
   const [selectedRoomId, setSelectedRoomId] = useState<string>('');
   const [selectedBedNumber, setSelectedBedNumber] = useState<number | null>(null);
@@ -92,7 +92,8 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
                     .filter(r => r.branchId === tenant.branchId)
                     .filter(r => 
                       r.roomNumber.toLowerCase().includes(switchSearchTerm.toLowerCase()) || 
-                      `floor ${r.floor}`.includes(switchSearchTerm.toLowerCase())
+                      `floor ${r.floor}`.includes(switchSearchTerm.toLowerCase()) ||
+                      (r.floor === 0 && 'ground floor'.includes(switchSearchTerm.toLowerCase()))
                     )
                     .map(r => {
                       const liveOccupied = tenants.filter(t => t.roomId === r.id && t.status === 'active').length;
@@ -122,7 +123,7 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
                             </span>
                           </div>
                           <div className="flex justify-between items-center w-full mt-2 text-[10px] text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider">
-                            <span>Floor {r.floor}</span>
+                            <span>{r.floor === 0 ? 'Ground Floor' : `Floor ${r.floor}`}</span>
                             <span>{liveOccupied} / {r.totalBeds} Beds</span>
                           </div>
                         </button>
@@ -148,15 +149,16 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
                           type="button"
                           onClick={() => setSelectedBedNumber(bedNum)}
                           className={cn(
-                            "flex flex-col items-center justify-center p-3 rounded-2xl border transition-all text-center gap-1",
+                            "flex flex-col items-center justify-center p-3 rounded-2xl border transition-all text-center gap-1 border-transparent",
                             isSelected
-                              ? "bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-600/20"
+                              ? "text-white shadow-lg shadow-indigo-600/20"
                               : isOccupiedByCurrent
                                 ? "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-500 text-emerald-600 font-bold"
                                 : occupant
                                   ? "bg-amber-50/50 dark:bg-amber-500/5 border-amber-200/50 dark:border-amber-500/20 hover:border-amber-500 text-amber-600"
                                   : "bg-gray-50 dark:bg-white/3 border-gray-100 dark:border-white/5 hover:border-gray-200 dark:hover:border-white/10 text-gray-500 dark:text-gray-400"
                           )}
+                          style={isSelected ? { background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' } : undefined}
                         >
                           <Home className="w-5 h-5" />
                           <span className="text-xs font-bold">Bed {bedNum}</span>
@@ -342,7 +344,8 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
                     setIsSaving(false);
                   }
                 }}
-                className="flex-1 py-3 bg-indigo-600 disabled:bg-indigo-600/40 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-600/10 flex items-center justify-center gap-2"
+                className="flex-1 py-3 text-white rounded-xl font-bold text-sm opacity-90 hover:opacity-100 transition-opacity shadow-lg shadow-indigo-600/10 flex items-center justify-center gap-2 disabled:opacity-50"
+                style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
               >
                 {isSaving ? 'Processing...' : 'Confirm Switch'}
               </button>

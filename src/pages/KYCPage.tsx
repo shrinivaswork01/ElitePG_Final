@@ -14,6 +14,7 @@ import {
   Search,
   Filter,
   FileText,
+  FileSpreadsheet,
   Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -25,7 +26,8 @@ import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 
 export const KYCPage = () => {
-  const { kycs, tenants, employees, rooms, branches, currentBranch, updateKYC, deleteKYC, updateTenant, updateEmployee } = useApp();
+  const { kycs, tenants, employees, rooms, branches, currentBranch, updateKYC, deleteKYC, updateTenant, updateEmployee, pgConfig } = useApp();
+  const themeGradient = pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)';
   const { user, authorizeUser } = useAuth();
 
   if (user?.role === 'tenant') {
@@ -240,10 +242,11 @@ export const KYCPage = () => {
                 toast.error('Failed to generate export');
               }
             }}
-            className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all font-bold text-sm"
-          >
-            <FileText className="w-4 h-4" /> Export KYC Records (Excel)
-          </button>
+             className="flex items-center gap-2 px-6 py-2.5 text-white rounded-2xl text-sm font-black transition-all shadow-lg shadow-indigo-600/20 active:scale-95 hover:opacity-90 shrink-0"
+             style={{ background: themeGradient }}
+           >
+             <FileSpreadsheet className="w-4 h-4" /> Export Excel
+           </button>
         </div>
       </div>
 
@@ -266,9 +269,10 @@ export const KYCPage = () => {
               className={cn(
                 "px-4 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all",
                 personFilter === type
-                  ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
+                  ? "text-white shadow-lg shadow-indigo-600/20"
                   : "bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10"
               )}
+              style={personFilter === type ? { background: themeGradient } : undefined}
             >
               {type === 'all' ? 'All Roles' : type.charAt(0).toUpperCase() + type.slice(1) + 's'}
             </button>
@@ -282,9 +286,10 @@ export const KYCPage = () => {
               className={cn(
                 "px-4 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all",
                 filterStatus === status
-                  ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
+                  ? "text-white shadow-lg shadow-indigo-600/20"
                   : "bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10"
               )}
+              style={filterStatus === status ? { background: themeGradient } : undefined}
             >
               {status?.charAt(0).toUpperCase() + status?.slice(1)}
             </button>
@@ -451,7 +456,8 @@ export const KYCPage = () => {
                             <a
                               href={selectedKYC.documentUrl}
                               download="kyc_document.pdf"
-                              className="px-6 py-2 bg-indigo-600 text-white rounded-xl font-bold"
+                              className="px-6 py-2 text-white rounded-xl font-bold"
+                              style={{ background: themeGradient }}
                             >
                               Download PDF to View
                             </a>

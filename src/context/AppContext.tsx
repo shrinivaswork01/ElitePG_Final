@@ -1335,8 +1335,47 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const deletePayment = async (id: string) => {
     if (user?.role === 'partner') { toast.error('Partners are restricted from system operations'); return; }
-    applyOptimistic(prev => ({ ...prev, payments: prev.payments.filter((p: any) => p.id !== id) }));
-    await refetch(supabase.from('payments').delete().eq('id', id), 'Payment deleted');
+    
+    const payment = data.payments.find((p: any) => p.id === id);
+    if (!payment) return;
+
+    if (payment.status === 'paid') {
+      // Void the payment: reset status to pending, clear transaction details (preserving payment date to satisfy NOT NULL constraint)
+      applyOptimistic(prev => ({
+        ...prev,
+        payments: prev.payments.map((p: any) => p.id === id ? {
+          ...p,
+          status: 'pending',
+          transactionId: null,
+          method: 'Cash',
+          receiptUrl: null,
+          lateFee: 0,
+          totalAmount: p.amount
+        } : p)
+      }));
+
+      await refetch(
+        supabase.from('payments').update({
+          status: 'pending',
+          transaction_id: null,
+          method: 'Cash',
+          receipt_url: null,
+          late_fee: 0,
+          total_amount: payment.amount
+        }).eq('id', id),
+        'Payment voided and reset to pending'
+      );
+    } else {
+      // If it is pending electricity, we should not delete it because it links to the bill
+      if (payment.paymentType === 'electricity') {
+        toast.error('Pending electricity payments cannot be deleted. Please delete the electricity bill from the bills panel.');
+        return;
+      }
+
+      // Safe to hard delete other pending payments (rent, token, deposit, adjust)
+      applyOptimistic(prev => ({ ...prev, payments: prev.payments.filter((p: any) => p.id !== id) }));
+      await refetch(supabase.from('payments').delete().eq('id', id), 'Payment deleted');
+    }
   };
 
   const addComplaint = async (complaint: Omit<Complaint, 'id' | 'branchId'> & { branchId?: string }) => {
