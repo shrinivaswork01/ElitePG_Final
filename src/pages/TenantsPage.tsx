@@ -27,7 +27,8 @@ import {
   LogOut,
   CheckCircle,
   XCircle,
-  AlertTriangle
+  AlertTriangle,
+  Share2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePaginatedData } from '../hooks/usePaginatedData';
@@ -76,6 +77,7 @@ export const TenantsPage = () => {
   const [createUsername, setCreateUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [tenantToDelete, setTenantToDelete] = useState<Tenant | null>(null);
+  const [bulkDeleteIds, setBulkDeleteIds] = useState<string[] | null>(null);
   const [kycUploadTenant, setKycUploadTenant] = useState<Tenant | null>(null);
   const [menuTenant, setMenuTenant] = useState<Tenant | null>(null);
   const [checkoutConfirmModal, setCheckoutConfirmModal] = useState<{ isOpen: boolean, tenantId: string, tenantName: string, depositBalance: number, exitDate: string } | null>(null);
@@ -116,7 +118,61 @@ export const TenantsPage = () => {
     limit: limit
   });
 
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds(prev =>
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds((paginatedTenants || []).map((t: any) => t.id));
+    } else {
+      setSelectedIds([]);
+    }
+  };
+
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [searchTerm, filterStatus, page]);
+
   const columns: ColumnDef<any>[] = React.useMemo(() => [
+    {
+      header: (
+        <input
+          type="checkbox"
+          checked={(paginatedTenants || []).length > 0 && selectedIds.length === (paginatedTenants || []).length}
+          onChange={(e) => handleSelectAll(e.target.checked)}
+          onClick={(e) => e.stopPropagation()}
+          className={cn(
+            "rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer transition-opacity duration-200",
+            selectedIds.length === 0 && "opacity-0 group-hover:opacity-100"
+          )}
+        />
+      ),
+      accessorKey: 'id',
+      cell: (t: any) => {
+        const isSelected = selectedIds.includes(t.id);
+        return (
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={(e) => {
+              e.stopPropagation();
+              handleToggleSelect(t.id);
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className={cn(
+              "rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer transition-opacity duration-200",
+              !isSelected && "opacity-0 group-hover:opacity-100"
+            )}
+          />
+        );
+      },
+      className: "w-10"
+    },
     {
       header: 'Tenant',
       accessorKey: 'name',
@@ -292,7 +348,7 @@ export const TenantsPage = () => {
         </div>
       )
     }
-  ], [user?.role, canSendWhatsApp, tenants]);
+  ], [user?.role, canSendWhatsApp, tenants, selectedIds, paginatedTenants]);
 
 
   const handleDownload = () => {
@@ -533,6 +589,21 @@ export const TenantsPage = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Check for duplicate active/vacating tenant email
+    const duplicateEmail = tenants.find(t => 
+      t.email && 
+      t.email.toLowerCase() === formData.email.toLowerCase() && 
+      (t.status === 'active' || t.status === 'vacating') &&
+      t.id !== editingTenant?.id
+    );
+    if (duplicateEmail) {
+      const dupRoom = rooms.find(r => r.id === duplicateEmail.roomId);
+      const dupRoomNo = dupRoom?.roomNumber || 'Unassigned';
+      toast.error(`Onboarding Blocked: Email address "${formData.email}" is already registered to active/vacating tenant: ${duplicateEmail.name} (Room ${dupRoomNo})`);
+      return;
+    }
+
     if (formData.tokenStatus === 'paid' && !formData.roomId) {
       toast.error('Please select a room for the tenant since token is paid.');
       return;
@@ -650,13 +721,7 @@ export const TenantsPage = () => {
   };
 
   const handleBulkDelete = async (ids: string[]) => {
-    if (window.confirm(`Are you sure you want to delete ${ids.length} selected tenants?`)) {
-      for (const id of ids) {
-        await deleteTenant(id);
-      }
-      refetch();
-      toast.success(`${ids.length} tenants deleted.`);
-    }
+    setBulkDeleteIds(ids);
   };
 
   const handleBulkWhatsApp = (ids: string[]) => {
@@ -755,7 +820,7 @@ export const TenantsPage = () => {
             className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
           />
         </div>
-        <div className="flex gap-2 items-center">
+        <div className="flex flex-wrap sm:flex-nowrap gap-2 items-center w-full sm:w-auto">
           <ModernSelect
             value={filterStatus}
             onChange={(val) => setFilterStatus(val as any)}
@@ -766,23 +831,79 @@ export const TenantsPage = () => {
               { value: "vacated", label: "Vacated" },
               { value: "blacklisted", label: "Blacklisted" }
             ]}
-            className="w-44"
+            className="flex-1 sm:w-44 sm:flex-initial"
           />
           <button className="p-2.5 bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors shrink-0">
             <Filter className="w-5 h-5" />
           </button>
           <button
             onClick={handleDownload}
-            className="flex items-center gap-2 px-6 py-2.5 text-white rounded-2xl text-sm font-black transition-all shadow-lg shadow-indigo-600/20 active:scale-95 hover:opacity-90 shrink-0"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 text-white rounded-2xl text-sm font-black transition-all shadow-lg shadow-indigo-600/20 active:scale-95 hover:opacity-90 shrink-0"
             style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
           >
             <FileSpreadsheet className="w-4 h-4" />
-            Export Excel
+            <span className="whitespace-nowrap">Export Excel</span>
           </button>
         </div>
       </div>
 
       <div className="hidden md:block">
+        <AnimatePresence>
+          {selectedIds.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="bg-indigo-50/50 dark:bg-indigo-500/5 border border-indigo-100 dark:border-indigo-500/20 rounded-2xl p-4 flex items-center justify-between shadow-sm mb-4"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">
+                  {selectedIds.length} tenants selected
+                </span>
+                <button
+                  onClick={() => setSelectedIds([])}
+                  className="text-xs text-gray-500 hover:text-indigo-600 dark:text-gray-400 font-bold"
+                >
+                  Clear selection
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    handleShareDetails(selectedIds);
+                    setSelectedIds([]);
+                  }}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-indigo-700 active:scale-95 transition-all"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  Share Details
+                </button>
+                {canSendWhatsApp && (
+                  <button
+                    onClick={() => {
+                      handleBulkWhatsApp(selectedIds);
+                      setSelectedIds([]);
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-emerald-700 active:scale-95 transition-all"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    Bulk Reminder
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    handleBulkDelete(selectedIds);
+                    setSelectedIds([]);
+                  }}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-rose-700 active:scale-95 transition-all"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Delete Selected
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         <DataGrid 
           columns={columns}
           data={paginatedTenants}
@@ -934,6 +1055,56 @@ export const TenantsPage = () => {
                   className="flex-1 py-4 bg-rose-600 text-white rounded-2xl font-bold shadow-xl shadow-rose-600/20 hover:bg-rose-700 transition-all"
                 >
                   Delete Tenant
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Bulk Delete Confirmation Modal */}
+      <AnimatePresence>
+        {bulkDeleteIds && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setBulkDeleteIds(null)}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-md bg-white dark:bg-[#111111] rounded-3xl shadow-2xl p-6 sm:p-8 text-center border border-white/5"
+            >
+              <div className="w-16 h-16 bg-rose-50 dark:bg-rose-500/10 rounded-[2rem] flex items-center justify-center mx-auto mb-6">
+                <Trash2 className="w-8 h-8 text-rose-500" />
+              </div>
+              <h3 className="text-2xl font-black text-gray-900 dark:text-white mb-2 tracking-tight">Delete Selected Tenants?</h3>
+              <p className="text-gray-500 dark:text-gray-400 mb-6 leading-relaxed">
+                Are you sure you want to delete <span className="font-bold text-gray-900 dark:text-white">{bulkDeleteIds.length}</span> selected tenants? This action cannot be undone and will permanently erase all associated data.
+              </p>
+              <div className="flex gap-4">
+                <button
+                  onClick={() => setBulkDeleteIds(null)}
+                  className="flex-1 py-4 bg-gray-50 dark:bg-white/5 text-gray-900 dark:text-white rounded-2xl font-bold hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    for (const id of bulkDeleteIds) {
+                      await deleteTenant(id);
+                    }
+                    setBulkDeleteIds(null);
+                    refetch();
+                    toast.success(`${bulkDeleteIds.length} tenants deleted.`);
+                  }}
+                  className="flex-1 py-4 bg-rose-600 text-white rounded-2xl font-bold shadow-xl shadow-rose-600/20 hover:bg-rose-700 transition-all"
+                >
+                  Delete Tenants
                 </button>
               </div>
             </motion.div>

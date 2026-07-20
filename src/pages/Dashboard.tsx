@@ -693,64 +693,7 @@ export const Dashboard = () => {
             </div>
           ) : null}
 
-          {isTenant && tenantData ? (
-            <div className="lg:col-span-1">
-                {/* PG Rules Section for Tenants */}
-                <div className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden h-full flex flex-col transition-all hover:shadow-xl hover:shadow-indigo-500/5">
-                  <div className="p-6 sm:p-8 border-b border-gray-100 dark:border-white/5 flex items-center justify-between bg-gray-50/50 dark:bg-white/[0.02]">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2.5 bg-indigo-50 dark:bg-indigo-500/10 rounded-xl" style={{ backgroundColor: hexToRgba(themeColor, 0.15) }}>
-                        <ScrollText className="w-5 h-5" style={{ color: themeColor }} />
-                      </div>
-                      <div>
-                        <h3 className="text-lg font-black text-gray-900 dark:text-white uppercase tracking-tight">Property Guidelines</h3>
-                        <p className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest leading-none mt-1">Rules & Regulations</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className={cn("p-6 sm:p-10", !showAllRules && "overflow-hidden")}>
-                    <div className="grid grid-cols-1 gap-4 sm:gap-6">
-                      {(pgConfig?.rules || []).slice(0, showAllRules ? undefined : 5).map((rule, i) => (
-                        <motion.div
-                          key={i}
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: i * 0.05 }}
-                          className="flex items-start gap-4 p-5 bg-gray-50/50 dark:bg-white/[0.02] rounded-2xl border border-gray-100/50 dark:border-white/5 group hover:border-indigo-100 dark:hover:border-indigo-500/20 transition-all hover:shadow-lg hover:shadow-indigo-500/5"
-                        >
-                          <div className="mt-1 shrink-0 p-1.5 bg-emerald-500/10 rounded-lg" style={{ backgroundColor: hexToRgba(themeColor, 0.15) }}>
-                            <CheckCircle2 
-                              className="w-4 h-4" 
-                              style={{ color: themeColor }} 
-                            />
-                          </div>
-                          <span className="text-sm font-bold text-gray-700 dark:text-gray-300 leading-relaxed uppercase tracking-tight">
-                            {rule}
-                          </span>
-                        </motion.div>
-                      ))}
-                      {(pgConfig?.rules || []).length === 0 && (
-                        <div className="col-span-full text-center py-16">
-                          <div className="w-20 h-20 bg-gray-50 dark:bg-white/5 rounded-full flex items-center justify-center mx-auto mb-6">
-                            <ScrollText className="w-10 h-10 text-gray-200 dark:text-gray-700" />
-                          </div>
-                          <p className="text-sm font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">No specific guidelines found</p>
-                        </div>
-                      )}
-                    </div>
-                    
-                    {(pgConfig?.rules || []).length > 5 && (
-                       <button
-                         onClick={() => setShowAllRules(!showAllRules)}
-                         className="w-full mt-8 py-3 bg-gray-100 dark:bg-white/5 rounded-xl text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest hover:bg-gray-200 dark:hover:bg-white/10 transition-all"
-                       >
-                         {showAllRules ? 'Show Less' : `View All ${(pgConfig?.rules || []).length} Guidelines`}
-                       </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-          ) : null}
+
 
 
           {(isTenant || isEmployee) ? (
@@ -815,6 +758,13 @@ export const Dashboard = () => {
               </div>
             </div>
           ) : null}
+
+          {/* PG Rules Section */}
+          <RulesManager
+            rules={pgConfig?.rules || []}
+            onUpdate={(newRules) => updatePGConfig({ rules: newRules })}
+            isAdmin={isAdmin}
+          />
         </div>
       </div>
     )}

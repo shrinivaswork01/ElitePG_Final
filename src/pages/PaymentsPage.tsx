@@ -139,7 +139,7 @@ export const PaymentsPage = () => {
 
   const [limit, setLimit] = useState(10);
 
-  // Server-side paginated hook
+  // Server-side paginated hook — must be declared before selection handlers that reference paginatedPayments
   const { data: paginatedPayments, totalCount, isLoading: isPaymentsLoading, page, setPage, refetch: refetchPayments } = usePaginatedData<any>({
     table: 'payments',
     select: '*, tenants!payments_tenant_id_fkey(name, phone, rooms!tenants_room_id_fkey(room_number))',
@@ -155,8 +155,67 @@ export const PaymentsPage = () => {
     limit: limit
   });
 
+  const [selectedPaymentIds, setSelectedPaymentIds] = useState<string[]>([]);
+
+  const handleToggleSelectPayment = (id: string) => {
+    setSelectedPaymentIds(prev =>
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAllPayments = (checked: boolean) => {
+    if (checked) {
+      setSelectedPaymentIds((paginatedPayments || []).map((p: any) => p.id));
+    } else {
+      setSelectedPaymentIds([]);
+    }
+  };
+
+  useEffect(() => {
+    setSelectedPaymentIds([]);
+  }, [searchTerm, filterStatus, filterType, filterMonth, page]);
+
+  // Reset to page 1 when any filter changes to avoid empty results on stale pages
+  useEffect(() => {
+    setPage(1);
+  }, [filterMonth, filterStatus, filterType, searchTerm]);
+
   const isAdmin = ['super', 'admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '');
   const paymentColumns: ColumnDef<any>[] = React.useMemo(() => [
+    {
+      header: (
+        <input
+          type="checkbox"
+          checked={(paginatedPayments || []).length > 0 && selectedPaymentIds.length === (paginatedPayments || []).length}
+          onChange={(e) => handleSelectAllPayments(e.target.checked)}
+          onClick={(e) => e.stopPropagation()}
+          className={cn(
+            "rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer transition-opacity duration-200",
+            selectedPaymentIds.length === 0 && "opacity-0 group-hover:opacity-100"
+          )}
+        />
+      ),
+      accessorKey: 'id',
+      cell: (p: any) => {
+        const isSelected = selectedPaymentIds.includes(p.id);
+        return (
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={(e) => {
+              e.stopPropagation();
+              handleToggleSelectPayment(p.id);
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className={cn(
+              "rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer transition-opacity duration-200",
+              !isSelected && "opacity-0 group-hover:opacity-100"
+            )}
+          />
+        );
+      },
+      className: "w-10"
+    },
     {
       header: 'Tenant',
       accessorKey: 'tenant_id',
@@ -347,7 +406,7 @@ export const PaymentsPage = () => {
         </div>
       )
     }
-  ], [user, deletePayment, fetchData, setPaymentToEdit, setSelectedPayment, setIsReceiptModalOpen]);
+  ], [user, deletePayment, fetchData, setPaymentToEdit, setSelectedPayment, setIsReceiptModalOpen, selectedPaymentIds, paginatedPayments]);
 
   const calculateLateFee = (tenantId: string, month: string, overrideDate?: string, paymentType: string = 'rent') => {
     const tenant = tenants.find(t => t.id === tenantId);
@@ -918,6 +977,7 @@ export const PaymentsPage = () => {
           paymentType: 'rent'
         });
         fetchData();
+        refetchPayments();
       } catch (err) {
         console.error(err);
         toast.error("Failed to record payment.");
@@ -1492,51 +1552,53 @@ export const PaymentsPage = () => {
       </div>
 
       {!isTenant && (
-        <div className="flex items-center gap-2 mb-4 overflow-x-auto scrollbar-none pb-1 flex-nowrap w-full">
-          {[
-            { id: 'all', label: 'All Payments', icon: <HistoryIcon className="w-4 h-4" /> },
-            { id: 'rent', label: 'Rent Only', icon: <CreditCard className="w-4 h-4" /> },
-            { id: 'electricity', label: 'Electricity Only', icon: <Zap className="w-4 h-4" /> },
-            { id: 'token', label: 'Tokens', icon: <Ticket className="w-4 h-4" /> },
-            { id: 'deposit', label: 'Deposits', icon: <Shield className="w-4 h-4" /> }
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setFilterType(tab.id as any)}
-              className={cn(
-                "flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all border min-w-[125px] flex-shrink-0",
-                filterType === tab.id
-                  ? "text-white border-transparent shadow-lg shadow-indigo-600/20"
-                  : "bg-white dark:bg-white/5 text-gray-500 dark:text-gray-400 border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/10"
-              )}
-              style={filterType === tab.id ? { background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' } : undefined}
-            >
-              {tab.icon}
-              {tab.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-2 mb-4 w-full">
+          <div className="flex items-center gap-2 overflow-x-auto scrollbar-none pb-1 flex-nowrap flex-1 min-w-0">
+            {[
+              { id: 'all', label: 'All Payments', icon: <HistoryIcon className="w-4 h-4" /> },
+              { id: 'rent', label: 'Rent Only', icon: <CreditCard className="w-4 h-4" /> },
+              { id: 'electricity', label: 'Electricity Only', icon: <Zap className="w-4 h-4" /> },
+              { id: 'token', label: 'Tokens', icon: <Ticket className="w-4 h-4" /> },
+              { id: 'deposit', label: 'Deposits', icon: <Shield className="w-4 h-4" /> }
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setFilterType(tab.id as any)}
+                className={cn(
+                  "flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all border min-w-[125px] flex-shrink-0",
+                  filterType === tab.id
+                    ? "text-white border-transparent shadow-lg shadow-indigo-600/20"
+                    : "bg-white dark:bg-white/5 text-gray-500 dark:text-gray-400 border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/10"
+                )}
+                style={filterType === tab.id ? { background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' } : undefined}
+              >
+                {tab.icon}
+                {tab.label}
+              </button>
+            ))}
           
-          <div className="h-6 w-px bg-gray-100 dark:bg-white/10 mx-2 flex-shrink-0 hidden sm:block" />
+            <div className="h-6 w-px bg-gray-100 dark:bg-white/10 mx-2 flex-shrink-0 hidden sm:block" />
           
-          {[
-            { id: 'all', label: 'All Status' },
-            { id: 'paid', label: 'Paid' },
-            { id: 'pending', label: 'Pending' }
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setFilterStatus(tab.id as any)}
-              className={cn(
-                "flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all border min-w-[125px] uppercase flex-shrink-0",
-                filterStatus === tab.id
-                  ? "text-white border-transparent shadow-lg shadow-indigo-600/20"
-                  : "bg-white dark:bg-white/5 text-gray-500 dark:text-gray-400 border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/10"
-              )}
-              style={filterStatus === tab.id ? { background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' } : undefined}
-            >
-              {tab.label}
-            </button>
-          ))}
+            {[
+              { id: 'all', label: 'All Status' },
+              { id: 'paid', label: 'Paid' },
+              { id: 'pending', label: 'Pending' }
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setFilterStatus(tab.id as any)}
+                className={cn(
+                  "flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all border min-w-[125px] uppercase flex-shrink-0",
+                  filterStatus === tab.id
+                    ? "text-white border-transparent shadow-lg shadow-indigo-600/20"
+                    : "bg-white dark:bg-white/5 text-gray-500 dark:text-gray-400 border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/10"
+                )}
+                style={filterStatus === tab.id ? { background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' } : undefined}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
 
           <div className="relative flex-shrink-0">
             <ModernSelect
@@ -1577,20 +1639,55 @@ export const PaymentsPage = () => {
 
 
       <div className="hidden lg:block">
-        <DataGrid
-          columns={paymentColumns}
-          data={paginatedPayments}
-          isLoading={isPaymentsLoading}
-          keyExtractor={(p) => p.id}
-          totalCount={totalCount}
-          page={page}
-          limit={limit}
-          onPageChange={setPage}
-          onLimitChange={(newLimit) => {
-            setLimit(newLimit);
-            setPage(1);
-          }}
-          emptyStateMessage="No payment records found"
+        <>
+          <AnimatePresence>
+            {selectedPaymentIds.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="bg-indigo-50/50 dark:bg-indigo-500/5 border border-indigo-100 dark:border-indigo-500/20 rounded-2xl p-4 flex items-center justify-between shadow-sm mb-4"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">
+                    {selectedPaymentIds.length} payments selected
+                  </span>
+                  <button
+                    onClick={() => setSelectedPaymentIds([])}
+                    className="text-xs text-gray-500 hover:text-indigo-600 dark:text-gray-400 font-bold"
+                  >
+                    Clear selection
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setDeleteConfirmation({ isOpen: true, bulkIds: selectedPaymentIds });
+                      setSelectedPaymentIds([]);
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-rose-700 active:scale-95 transition-all"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Delete Selected
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+          <DataGrid
+            columns={paymentColumns}
+            data={paginatedPayments}
+            isLoading={isPaymentsLoading}
+            keyExtractor={(p) => p.id}
+            totalCount={totalCount}
+            page={page}
+            limit={limit}
+            onPageChange={setPage}
+            onLimitChange={(newLimit) => {
+              setLimit(newLimit);
+              setPage(1);
+            }}
+            emptyStateMessage="No payment records found"
           onRowClick={(p: any) => {
             const normalized = {
               id: p.id,
@@ -1629,7 +1726,8 @@ export const PaymentsPage = () => {
             }
           }}
         />
-      </div>
+      </>
+    </div>
 
       <div className="lg:hidden">
         <PaymentMobileList

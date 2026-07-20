@@ -94,6 +94,27 @@ export const RoomsPage = () => {
   const [flatPage, setFlatPage] = useState(1);
   const [flatLimit, setFlatLimit] = useState(10);
 
+  const [selectedRoomIds, setSelectedRoomIds] = useState<string[]>([]);
+  const [bulkRoomDeleteIds, setBulkRoomDeleteIds] = useState<string[] | null>(null);
+
+  const handleToggleSelectRoom = (id: string) => {
+    setSelectedRoomIds(prev =>
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAllRooms = (checked: boolean) => {
+    if (checked) {
+      setSelectedRoomIds((roomsData || []).map((r: any) => r.id));
+    } else {
+      setSelectedRoomIds([]);
+    }
+  };
+
+  useEffect(() => {
+    setSelectedRoomIds([]);
+  }, [searchTerm, filterFloor, page, activeTab]);
+
   useEffect(() => {
     setPage(1);
     setFlatPage(1);
@@ -142,6 +163,79 @@ export const RoomsPage = () => {
   const isLoading = isAppLoading || false;
   const refetch = fetchData;
 
+  const roomsData: Room[] = (paginatedRooms || []).map((r: any) => {
+    const liveOccupied = tenants.filter(t => t.roomId === r.id && t.status === 'active').length;
+    return {
+      id: r.id,
+      roomNumber: r.roomNumber ?? r.room_number,
+      floor: r.floor,
+      totalBeds: r.totalBeds ?? r.total_beds,
+      occupiedBeds: liveOccupied,
+      type: r.type,
+      price: r.price,
+      description: r.description,
+      amenities: r.amenities || [],
+      branchId: r.branchId ?? r.branch_id,
+      meterGroupId: r.meterGroupId ?? r.meter_group_id,
+      meterGroup: r.meterGroup ?? r.meter_groups
+    };
+  });
+
+  const [selectedFlatIds, setSelectedFlatIds] = useState<string[]>([]);
+  const [bulkFlatDeleteIds, setBulkFlatDeleteIds] = useState<string[] | null>(null);
+
+  const handleToggleSelectFlat = (id: string) => {
+    setSelectedFlatIds(prev =>
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAllFlats = (checked: boolean) => {
+    if (checked) {
+      setSelectedFlatIds((paginatedMeterGroups || []).map((f: any) => f.id));
+    } else {
+      setSelectedFlatIds([]);
+    }
+  };
+
+  useEffect(() => {
+    setSelectedFlatIds([]);
+  }, [searchTerm, filterFloor, flatPage, activeTab]);
+
+  const filteredMeterGroups = React.useMemo(() => {
+    return (meterGroups || []).filter(mg => {
+      if (filterFloor !== 'all' && mg.floor !== Number(filterFloor)) {
+        return false;
+      }
+
+      if (searchTerm.trim() !== '') {
+        const query = searchTerm.toLowerCase();
+        const matchesName = mg.name.toLowerCase().includes(query);
+        
+        const linkedRooms = rooms.filter(r => r.meterGroupId === mg.id);
+        const matchesRooms = linkedRooms.some(r => 
+          String(r.roomNumber || '').toLowerCase().includes(query)
+        );
+        
+        const matchesTenants = tenants.some(t => 
+          linkedRooms.some(r => r.id === t.roomId) && 
+          ['active', 'vacating'].includes(t.status) && 
+          t.name.toLowerCase().includes(query)
+        );
+
+        return matchesName || matchesRooms || matchesTenants;
+      }
+
+      return true;
+    });
+  }, [meterGroups, rooms, tenants, searchTerm, filterFloor]);
+
+  const paginatedMeterGroups = React.useMemo(() => {
+    const startIndex = (flatPage - 1) * flatLimit;
+    return filteredMeterGroups.slice(startIndex, startIndex + flatLimit);
+  }, [filteredMeterGroups, flatPage, flatLimit]);
+
+
   // Sync detail panel when paginated data updates (e.g. after edit + refetch)
   useEffect(() => {
     if (detailRoom && paginatedRooms && paginatedRooms.length > 0) {
@@ -167,6 +261,40 @@ export const RoomsPage = () => {
     }
   }, [meterGroups, detailFlat]);
   const roomColumns: ColumnDef<any>[] = React.useMemo(() => [
+    {
+      header: (
+        <input
+          type="checkbox"
+          checked={(roomsData || []).length > 0 && selectedRoomIds.length === (roomsData || []).length}
+          onChange={(e) => handleSelectAllRooms(e.target.checked)}
+          onClick={(e) => e.stopPropagation()}
+          className={cn(
+            "rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer transition-opacity duration-200",
+            selectedRoomIds.length === 0 && "opacity-0 group-hover:opacity-100"
+          )}
+        />
+      ),
+      accessorKey: 'id',
+      cell: (r: any) => {
+        const isSelected = selectedRoomIds.includes(r.id);
+        return (
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={(e) => {
+              e.stopPropagation();
+              handleToggleSelectRoom(r.id);
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className={cn(
+              "rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer transition-opacity duration-200",
+              !isSelected && "opacity-0 group-hover:opacity-100"
+            )}
+          />
+        );
+      },
+      className: "w-10"
+    },
     {
       header: 'Room',
       accessorKey: 'roomNumber',
@@ -287,9 +415,43 @@ export const RoomsPage = () => {
         </div>
       )
     }
-  ], [tenants, user?.role]);
+  ], [tenants, user?.role, selectedRoomIds, roomsData]);
 
   const flatColumns: ColumnDef<MeterGroup>[] = React.useMemo(() => [
+    {
+      header: (
+        <input
+          type="checkbox"
+          checked={(paginatedMeterGroups || []).length > 0 && selectedFlatIds.length === (paginatedMeterGroups || []).length}
+          onChange={(e) => handleSelectAllFlats(e.target.checked)}
+          onClick={(e) => e.stopPropagation()}
+          className={cn(
+            "rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer transition-opacity duration-200",
+            selectedFlatIds.length === 0 && "opacity-0 group-hover:opacity-100"
+          )}
+        />
+      ),
+      accessorKey: 'id',
+      cell: (f: any) => {
+        const isSelected = selectedFlatIds.includes(f.id);
+        return (
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={(e) => {
+              e.stopPropagation();
+              handleToggleSelectFlat(f.id);
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className={cn(
+              "rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer transition-opacity duration-200",
+              !isSelected && "opacity-0 group-hover:opacity-100"
+            )}
+          />
+        );
+      },
+      className: "w-10"
+    },
     {
       header: 'Flat / Group',
       accessorKey: 'name',
@@ -396,7 +558,7 @@ export const RoomsPage = () => {
         </div>
       )
     }
-  ], [rooms, tenants]);
+  ], [rooms, tenants, selectedFlatIds, paginatedMeterGroups]);
 
 
   const handleEditClick = (room: any) => {
@@ -421,11 +583,11 @@ export const RoomsPage = () => {
   };
 
   const handleBulkDelete = async (ids: string[]) => {
-    for (const id of ids) {
-      await deleteRoom(id);
-    }
-    toast.success(`${ids.length} rooms deleted`);
-    refetch();
+    setBulkRoomDeleteIds(ids);
+  };
+
+  const handleBulkFlatDelete = async (ids: string[]) => {
+    setBulkFlatDeleteIds(ids);
   };
 
   const handleCloseModal = () => {
@@ -533,38 +695,7 @@ export const RoomsPage = () => {
     return allFloors.length > 0 ? allFloors : Array.from({ length: 6 }, (_, i) => i);
   }, [rooms, meterGroups]);
 
-  const filteredMeterGroups = React.useMemo(() => {
-    return (meterGroups || []).filter(mg => {
-      if (filterFloor !== 'all' && mg.floor !== Number(filterFloor)) {
-        return false;
-      }
 
-      if (searchTerm.trim() !== '') {
-        const query = searchTerm.toLowerCase();
-        const matchesName = mg.name.toLowerCase().includes(query);
-        
-        const linkedRooms = rooms.filter(r => r.meterGroupId === mg.id);
-        const matchesRooms = linkedRooms.some(r => 
-          String(r.roomNumber || '').toLowerCase().includes(query)
-        );
-        
-        const matchesTenants = tenants.some(t => 
-          linkedRooms.some(r => r.id === t.roomId) && 
-          ['active', 'vacating'].includes(t.status) && 
-          t.name.toLowerCase().includes(query)
-        );
-
-        return matchesName || matchesRooms || matchesTenants;
-      }
-
-      return true;
-    });
-  }, [meterGroups, rooms, tenants, searchTerm, filterFloor]);
-
-  const paginatedMeterGroups = React.useMemo(() => {
-    const startIndex = (flatPage - 1) * flatLimit;
-    return filteredMeterGroups.slice(startIndex, startIndex + flatLimit);
-  }, [filteredMeterGroups, flatPage, flatLimit]);
 
   const roomsToExport = React.useMemo(() => {
     return (rooms || []).filter(r => {
@@ -573,24 +704,6 @@ export const RoomsPage = () => {
       return matchesSearch && matchesFloor;
     });
   }, [rooms, searchTerm, filterFloor]);
-
-  const roomsData: Room[] = (paginatedRooms || []).map((r: any) => {
-    const liveOccupied = tenants.filter(t => t.roomId === r.id && t.status === 'active').length;
-    return {
-      id: r.id,
-      roomNumber: r.roomNumber ?? r.room_number,
-      floor: r.floor,
-      totalBeds: r.totalBeds ?? r.total_beds,
-      occupiedBeds: liveOccupied,
-      type: r.type,
-      price: r.price,
-      description: r.description,
-      amenities: r.amenities || [],
-      branchId: r.branchId ?? r.branch_id,
-      meterGroupId: r.meterGroupId ?? r.meter_group_id,
-      meterGroup: r.meterGroup ?? r.meter_groups
-    };
-  });
 
   return (
     <div className="space-y-6">
@@ -753,37 +866,109 @@ export const RoomsPage = () => {
       {/* Desktop/Tablet View (Unified Grid) */}
       <div className="hidden md:block">
         {activeTab === 'rooms' ? (
-          <DataGrid
-            columns={roomColumns}
-            data={roomsData}
-            isLoading={isLoading}
-            keyExtractor={(r: any) => r.id}
-            page={page}
-            limit={limit}
-            totalCount={totalCount}
-            onPageChange={setPage}
-            onLimitChange={(newLimit) => {
-              setLimit(newLimit);
-              setPage(1);
-            }}
-            onRowClick={(r: any) => setDetailRoom(rooms.find(room => room.id === r.id) || null)}
-          />
+          <>
+            <AnimatePresence>
+              {selectedRoomIds.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="bg-indigo-50/50 dark:bg-indigo-500/5 border border-indigo-100 dark:border-indigo-500/20 rounded-2xl p-4 flex items-center justify-between shadow-sm mb-4"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">
+                      {selectedRoomIds.length} rooms selected
+                    </span>
+                    <button
+                      onClick={() => setSelectedRoomIds([])}
+                      className="text-xs text-gray-500 hover:text-indigo-600 dark:text-gray-400 font-bold"
+                    >
+                      Clear selection
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        handleBulkDelete(selectedRoomIds);
+                        setSelectedRoomIds([]);
+                      }}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-rose-700 active:scale-95 transition-all"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Delete Selected
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <DataGrid
+              columns={roomColumns}
+              data={roomsData}
+              isLoading={isLoading}
+              keyExtractor={(r: any) => r.id}
+              page={page}
+              limit={limit}
+              totalCount={totalCount}
+              onPageChange={setPage}
+              onLimitChange={(newLimit) => {
+                setLimit(newLimit);
+                setPage(1);
+              }}
+              onRowClick={(r: any) => setDetailRoom(rooms.find(room => room.id === r.id) || null)}
+            />
+          </>
         ) : (
-          <DataGrid
-            columns={flatColumns}
-            data={paginatedMeterGroups}
-            isLoading={false}
-            keyExtractor={(f: any) => f.id}
-            onRowClick={(f: any) => setDetailFlat(f)}
-            page={flatPage}
-            limit={flatLimit}
-            totalCount={filteredMeterGroups.length}
-            onPageChange={setFlatPage}
-            onLimitChange={(newLimit) => {
-              setFlatLimit(newLimit);
-              setFlatPage(1);
-            }}
-          />
+          <>
+            <AnimatePresence>
+              {selectedFlatIds.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="bg-indigo-50/50 dark:bg-indigo-500/5 border border-indigo-100 dark:border-indigo-500/20 rounded-2xl p-4 flex items-center justify-between shadow-sm mb-4"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">
+                      {selectedFlatIds.length} flats selected
+                    </span>
+                    <button
+                      onClick={() => setSelectedFlatIds([])}
+                      className="text-xs text-gray-500 hover:text-indigo-600 dark:text-gray-400 font-bold"
+                    >
+                      Clear selection
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        handleBulkFlatDelete(selectedFlatIds);
+                        setSelectedFlatIds([]);
+                      }}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-rose-700 active:scale-95 transition-all"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Delete Selected
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <DataGrid
+              columns={flatColumns}
+              data={paginatedMeterGroups}
+              isLoading={false}
+              keyExtractor={(f: any) => f.id}
+              onRowClick={(f: any) => setDetailFlat(f)}
+              page={flatPage}
+              limit={flatLimit}
+              totalCount={filteredMeterGroups.length}
+              onPageChange={setFlatPage}
+              onLimitChange={(newLimit) => {
+                setFlatLimit(newLimit);
+                setFlatPage(1);
+              }}
+            />
+          </>
         )}
       </div>
 
@@ -814,10 +999,7 @@ export const RoomsPage = () => {
             onDelete={(f) => { deleteMeterGroup(f.id); }}
             onView={setDetailFlat}
             onManageElectricity={(f) => { setElectricityFlat(f); }}
-            onBulkDelete={async (ids) => {
-              for (const id of ids) await deleteMeterGroup(id);
-              toast.success(`${ids.length} groups deleted`);
-            }}
+            onBulkDelete={handleBulkFlatDelete}
           />
         )}
       </div>
@@ -1295,6 +1477,112 @@ export const RoomsPage = () => {
                     className="flex-1 py-4 bg-rose-600 text-white rounded-2xl font-bold shadow-xl shadow-rose-600/20 hover:bg-rose-700 transition-all"
                   >
                     Delete Room
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Bulk Delete Rooms Confirmation Modal */}
+      <AnimatePresence>
+        {bulkRoomDeleteIds && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setBulkRoomDeleteIds(null)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-md"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-md bg-white dark:bg-[#0A0A0A] rounded-[2.5rem] shadow-2xl overflow-hidden border border-white/10"
+            >
+              <div className="p-8 text-center">
+                <div className="w-20 h-20 bg-rose-500/10 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                  <Trash2 className="w-10 h-10 text-rose-500" />
+                </div>
+                <h3 className="text-2xl font-black text-gray-900 dark:text-white mb-2 tracking-tight">Delete Selected Rooms?</h3>
+                <p className="text-gray-500 dark:text-gray-400 leading-relaxed mb-8 px-4">
+                  Are you sure you want to delete <span className="font-bold text-gray-900 dark:text-white">{bulkRoomDeleteIds.length}</span> selected rooms? This action cannot be undone and will permanently erase all associated data.
+                </p>
+
+                <div className="flex gap-4">
+                  <button
+                    onClick={() => setBulkRoomDeleteIds(null)}
+                    className="flex-1 py-4 bg-gray-100 dark:bg-white/5 text-gray-900 dark:text-white rounded-2xl font-bold hover:bg-gray-200 dark:hover:bg-white/10 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      for (const id of bulkRoomDeleteIds) {
+                        await deleteRoom(id);
+                      }
+                      setBulkRoomDeleteIds(null);
+                      refetch();
+                      toast.success(`${bulkRoomDeleteIds.length} rooms deleted`);
+                    }}
+                    className="flex-1 py-4 bg-rose-600 text-white rounded-2xl font-bold shadow-xl shadow-rose-600/20 hover:bg-rose-700 transition-all"
+                  >
+                    Delete Rooms
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Bulk Delete Flats Confirmation Modal */}
+      <AnimatePresence>
+        {bulkFlatDeleteIds && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setBulkFlatDeleteIds(null)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-md"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-md bg-white dark:bg-[#0A0A0A] rounded-[2.5rem] shadow-2xl overflow-hidden border border-white/10"
+            >
+              <div className="p-8 text-center">
+                <div className="w-20 h-20 bg-rose-500/10 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                  <Trash2 className="w-10 h-10 text-rose-500" />
+                </div>
+                <h3 className="text-2xl font-black text-gray-900 dark:text-white mb-2 tracking-tight">Delete Selected Flats?</h3>
+                <p className="text-gray-500 dark:text-gray-400 leading-relaxed mb-8 px-4">
+                  Are you sure you want to delete <span className="font-bold text-gray-900 dark:text-white">{bulkFlatDeleteIds.length}</span> selected flats? This action cannot be undone and will permanently erase all associated data.
+                </p>
+
+                <div className="flex gap-4">
+                  <button
+                    onClick={() => setBulkFlatDeleteIds(null)}
+                    className="flex-1 py-4 bg-gray-100 dark:bg-white/5 text-gray-900 dark:text-white rounded-2xl font-bold hover:bg-gray-200 dark:hover:bg-white/10 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      for (const id of bulkFlatDeleteIds) {
+                        await deleteMeterGroup(id);
+                      }
+                      setBulkFlatDeleteIds(null);
+                      refetch();
+                      toast.success(`${bulkFlatDeleteIds.length} flats deleted`);
+                    }}
+                    className="flex-1 py-4 bg-rose-600 text-white rounded-2xl font-bold shadow-xl shadow-rose-600/20 hover:bg-rose-700 transition-all"
+                  >
+                    Delete Flats
                   </button>
                 </div>
               </div>

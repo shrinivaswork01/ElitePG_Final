@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { Expense, ExpenseCategory, ExpenseStatus } from '../types';
@@ -62,6 +62,32 @@ export const ExpensesPage = () => {
     },
     limit: limit
   });
+
+  const [selectedExpenseIds, setSelectedExpenseIds] = useState<string[]>([]);
+  const [bulkExpenseDeleteIds, setBulkExpenseDeleteIds] = useState<string[] | null>(null);
+
+  const handleToggleSelectExpense = (id: string) => {
+    setSelectedExpenseIds(prev =>
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAllExpenses = (checked: boolean) => {
+    if (checked) {
+      setSelectedExpenseIds((paginatedExpenses || []).map((e: any) => e.id));
+    } else {
+      setSelectedExpenseIds([]);
+    }
+  };
+
+  useEffect(() => {
+    setSelectedExpenseIds([]);
+  }, [searchTerm, filterCategory, filterMonth, page]);
+
+  // Reset to page 1 when any filter changes
+  useEffect(() => {
+    setPage(1);
+  }, [filterMonth, filterCategory, searchTerm]);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -189,7 +215,41 @@ export const ExpensesPage = () => {
     );
   };
 
-  const columns: ColumnDef<any>[] = [
+  const columns: ColumnDef<any>[] = useMemo(() => [
+    {
+      header: (
+        <input
+          type="checkbox"
+          checked={(paginatedExpenses || []).length > 0 && selectedExpenseIds.length === (paginatedExpenses || []).length}
+          onChange={(e) => handleSelectAllExpenses(e.target.checked)}
+          onClick={(e) => e.stopPropagation()}
+          className={cn(
+            "rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer transition-opacity duration-200",
+            selectedExpenseIds.length === 0 && "opacity-0 group-hover:opacity-100"
+          )}
+        />
+      ),
+      accessorKey: 'id',
+      cell: (e: any) => {
+        const isSelected = selectedExpenseIds.includes(e.id);
+        return (
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={(ev) => {
+              ev.stopPropagation();
+              handleToggleSelectExpense(e.id);
+            }}
+            onClick={(ev) => ev.stopPropagation()}
+            className={cn(
+              "rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer transition-opacity duration-200",
+              !isSelected && "opacity-0 group-hover:opacity-100"
+            )}
+          />
+        );
+      },
+      className: "w-10"
+    },
     {
       header: 'Expense Details',
       accessorKey: 'title',
@@ -302,7 +362,7 @@ export const ExpensesPage = () => {
         );
       }
     }
-  ];
+  ], [user, selectedExpenseIds, paginatedExpenses, users, pgConfig]);
 
   const isAdmin = ['super', 'admin', 'partner'].includes(user?.role || '');
 
@@ -412,6 +472,39 @@ export const ExpensesPage = () => {
 
       {/* Main Data View */}
       <div className="bg-white dark:bg-[#111111] rounded-[2.5rem] border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden">
+        <AnimatePresence>
+          {selectedExpenseIds.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="bg-indigo-50/50 dark:bg-indigo-500/5 border-b border-indigo-100 dark:border-indigo-500/20 p-4 flex items-center justify-between"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">
+                  {selectedExpenseIds.length} expense{selectedExpenseIds.length > 1 ? 's' : ''} selected
+                </span>
+                <button
+                  onClick={() => setSelectedExpenseIds([])}
+                  className="text-xs text-gray-500 hover:text-indigo-600 dark:text-gray-400 font-bold"
+                >
+                  Clear selection
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setBulkExpenseDeleteIds(selectedExpenseIds);
+                  }}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-rose-700 active:scale-95 transition-all"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Delete Selected
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         <DataGrid
           data={paginatedExpenses}
           columns={columns}
@@ -427,6 +520,60 @@ export const ExpensesPage = () => {
           limit={limit}
         />
       </div>
+
+      {/* Bulk Delete Expenses Confirmation Modal */}
+      <AnimatePresence>
+        {bulkExpenseDeleteIds && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setBulkExpenseDeleteIds(null)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-md"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-md bg-white dark:bg-[#0A0A0A] rounded-[2.5rem] shadow-2xl overflow-hidden border border-white/10"
+            >
+              <div className="p-8 text-center">
+                <div className="w-20 h-20 bg-rose-500/10 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                  <Trash2 className="w-10 h-10 text-rose-500" />
+                </div>
+                <h3 className="text-2xl font-black text-gray-900 dark:text-white mb-2 tracking-tight">Delete Selected Expenses?</h3>
+                <p className="text-gray-500 dark:text-gray-400 leading-relaxed mb-8 px-4">
+                  Are you sure you want to delete <span className="font-bold text-gray-900 dark:text-white">{bulkExpenseDeleteIds.length}</span> selected expense{bulkExpenseDeleteIds.length > 1 ? 's' : ''}? This action cannot be undone.
+                </p>
+
+                <div className="flex gap-4">
+                  <button
+                    onClick={() => setBulkExpenseDeleteIds(null)}
+                    className="flex-1 py-4 bg-gray-100 dark:bg-white/5 text-gray-900 dark:text-white rounded-2xl font-bold hover:bg-gray-200 dark:hover:bg-white/10 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      for (const id of bulkExpenseDeleteIds) {
+                        await deleteExpense(id);
+                      }
+                      toast.success(`${bulkExpenseDeleteIds.length} expense${bulkExpenseDeleteIds.length > 1 ? 's' : ''} deleted`);
+                      setBulkExpenseDeleteIds(null);
+                      setSelectedExpenseIds([]);
+                      refetch();
+                    }}
+                    className="flex-1 py-4 bg-rose-600 text-white rounded-2xl font-bold shadow-xl shadow-rose-600/20 hover:bg-rose-700 transition-all"
+                  >
+                    Delete Expenses
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Add/Edit Modal */}
       <AnimatePresence>

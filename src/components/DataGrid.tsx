@@ -4,7 +4,7 @@ import { cn } from '../utils';
 
 // Core component types
 export interface ColumnDef<T> {
-  header: string;
+  header: React.ReactNode;
   accessorKey?: keyof T;
   cell?: (item: T) => React.ReactNode;
   className?: string;
@@ -138,9 +138,9 @@ const DataGridComponent = <T,>({
                   key={i}
                   onClick={() => handleSort(col)}
                   className={cn(
-                    "px-4 sm:px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider",
+                    "px-4 sm:px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider group",
                     compact && "py-3",
-                    col.sortable && "cursor-pointer select-none group hover:text-gray-700 dark:hover:text-gray-200 transition-colors",
+                    col.sortable && "cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200 transition-colors",
                     col.className
                   )}
                 >

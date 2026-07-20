@@ -667,6 +667,20 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (user?.role === 'partner') { toast.error('Partners are restricted from system operations'); return; }
     const branchId = tenant.branchId || filteredData.currentBranch?.id || user?.branchId || data.branches[0]?.id;
     if (!branchId) return;
+
+    // Check for duplicate active/vacating tenant email
+    const duplicateEmail = data.tenants.find(t => 
+      t.email && 
+      t.email.toLowerCase() === tenant.email.toLowerCase() && 
+      (t.status === 'active' || t.status === 'vacating')
+    );
+    if (duplicateEmail) {
+      const dupRoom = data.rooms.find(r => r.id === duplicateEmail.roomId);
+      const dupRoomNo = dupRoom?.roomNumber || 'Unassigned';
+      toast.error(`Operation Blocked: Email address "${tenant.email}" is already registered to active/vacating tenant: ${duplicateEmail.name} (Room ${dupRoomNo})`);
+      return;
+    }
+
     const isAdmin = ['super', 'admin', 'manager'].includes(user?.role || '');
     const kycStatus: KYCStatus = kycDoc ? (isAdmin ? 'verified' : 'pending') : 'unsubmitted';
 
@@ -810,6 +824,23 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const updateTenant = async (id: string, updates: Partial<Tenant>, kycDoc?: { type: string, file?: File, url?: string }, rentAgreementDoc?: { file?: File, url?: string }) => {
     if (user?.role === 'partner') { toast.error('Partners are restricted from system operations'); return; }
+
+    // Check for duplicate active/vacating tenant email
+    if (updates.email) {
+      const duplicateEmail = data.tenants.find(t => 
+        t.id !== id &&
+        t.email && 
+        t.email.toLowerCase() === updates.email.toLowerCase() && 
+        (t.status === 'active' || t.status === 'vacating')
+      );
+      if (duplicateEmail) {
+        const dupRoom = data.rooms.find(r => r.id === duplicateEmail.roomId);
+        const dupRoomNo = dupRoom?.roomNumber || 'Unassigned';
+        toast.error(`Update Blocked: Email address "${updates.email}" is already registered to active/vacating tenant: ${duplicateEmail.name} (Room ${dupRoomNo})`);
+        return;
+      }
+    }
+
     const isAdmin = ['super', 'admin', 'manager'].includes(user?.role || '');
     const newKycStatus = kycDoc ? (isAdmin ? 'verified' : 'pending') : undefined;
 
