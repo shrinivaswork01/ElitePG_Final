@@ -1,4 +1,4 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate, useParams, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -22,7 +22,8 @@ import {
   Zap,
   LifeBuoy,
   ClipboardList,
-  Receipt
+  Receipt,
+  Download
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, hexToRgba } from '../utils';
@@ -46,7 +47,17 @@ export const Layout = ({ children }: LayoutProps) => {
   const navigate = useNavigate();
   const { branchId: urlBranchId } = useParams<{ branchId: string }>();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [pwaPrompt, setPwaPrompt] = useState<any>(null);
   const activeBranchId = urlBranchId || user?.branchId;
+
+  useEffect(() => {
+    const handlePrompt = (e: Event) => {
+      e.preventDefault();
+      setPwaPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handlePrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handlePrompt);
+  }, []);
 
   const extractBaseColor = (colorStr?: string) => {
     if (!colorStr) return '#4f46e5';
@@ -177,13 +188,7 @@ export const Layout = ({ children }: LayoutProps) => {
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex flex-col w-64 bg-white dark:bg-[#111111] border-r border-gray-200 dark:border-white/5 sticky top-0 h-screen">
         <div className="p-6 flex items-center gap-3">
-          {pgConfig?.logoUrl ? (
-            <img src={pgConfig.logoUrl} alt="Logo" className="w-10 h-10 rounded-xl object-cover" />
-          ) : (
-            <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl" style={{ background: effectivePrimaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}>
-              {pgConfig?.pgName?.charAt(0) || rawData?.pgConfigs?.[0]?.pgName?.charAt(0) || 'E'}
-            </div>
-          )}
+          <img src={pgConfig?.logoUrl || '/logo.png'} alt="Logo" className="w-10 h-10 rounded-xl object-cover" />
           <span className="text-xl font-bold text-gray-900 dark:text-white tracking-tight truncate">
             {pgConfig?.pgName || rawData?.pgConfigs?.[0]?.pgName || 'ElitePG'}
           </span>
@@ -328,13 +333,7 @@ export const Layout = ({ children }: LayoutProps) => {
               className="fixed inset-y-0 left-0 w-72 bg-white dark:bg-[#0c0c0c] z-50 lg:hidden flex flex-col shadow-2xl border-r border-gray-200 dark:border-white/5"
             >
               <div className="p-6 flex items-center gap-3">
-                {pgConfig?.logoUrl ? (
-                  <img src={pgConfig.logoUrl} alt="Logo" className="w-10 h-10 rounded-xl object-cover" />
-                ) : (
-                  <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl" style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}>
-                    {pgConfig?.pgName?.charAt(0) || 'E'}
-                  </div>
-                )}
+                <img src={pgConfig?.logoUrl || '/logo.png'} alt="Logo" className="w-10 h-10 rounded-xl object-cover" />
                 <span className="text-xl font-bold text-gray-900 dark:text-white tracking-tight truncate">
                   {pgConfig?.pgName || 'ElitePG'}
                 </span>
@@ -429,6 +428,24 @@ export const Layout = ({ children }: LayoutProps) => {
             </h1>
           </div>
           <div className="flex items-center gap-2 sm:gap-4">
+            {pwaPrompt && (
+              <button
+                onClick={async () => {
+                  if (pwaPrompt) {
+                    pwaPrompt.prompt();
+                    const choice = await pwaPrompt.userChoice;
+                    if (choice?.outcome === 'accepted') {
+                      setPwaPrompt(null);
+                    }
+                  }
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-600/20 active:scale-95 cursor-pointer shrink-0"
+                title="Install ElitePG App on your device"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Install App</span>
+              </button>
+            )}
             <button
               onClick={toggleTheme}
               className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors text-gray-500 dark:text-gray-400"

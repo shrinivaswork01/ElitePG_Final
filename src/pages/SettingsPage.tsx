@@ -171,9 +171,9 @@ export const SettingsPage = () => {
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl overflow-hidden flex items-center justify-center">
                   {settingsForm.logoUrl ? (
-                    <img src={settingsForm.logoUrl} alt="Logo Preview" className="w-full h-full object-cover" />
+                    <img src={settingsForm.logoUrl} alt="Logo Preview" className="w-full h-full object-cover rounded-xl" />
                   ) : (
-                    <Building2 className="w-6 h-6 text-gray-400" />
+                    <img src="/logo.png" alt="Logo Preview" className="w-full h-full object-cover rounded-xl" />
                   )}
                 </div>
                 <label className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl cursor-pointer hover:bg-gray-100 dark:hover:bg-white/10 transition-all flex items-center justify-center gap-2">

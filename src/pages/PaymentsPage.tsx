@@ -1010,6 +1010,82 @@ export const PaymentsPage = () => {
     }
   };
 
+  const handleSendWhatsAppPaymentReminder = (payment: Payment) => {
+    const tenant = tenants.find(t => t.id === payment.tenantId);
+    const room = rooms.find(r => r.id === (tenant?.roomId || (tenant as any)?.room_id));
+    const phone = tenant?.phone || (payment as any)?.tenants?.phone;
+
+    if (!phone) {
+      toast.error('Tenant phone number not found');
+      return;
+    }
+
+    const cleanPhone = phone.replace(/\D/g, '');
+    const formattedPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+    const pgName = pgConfig?.pgName || currentBranch?.name || 'PG Management';
+    const monthStr = payment.month || format(new Date(), 'yyyy-MM');
+    const typeStr = (payment.paymentType || (payment as any).payment_type || 'rent').toLowerCase();
+    const typeTitle = typeStr === 'electricity' ? '⚡ Electricity Bill' : typeStr === 'rent' ? '🏠 Rent Bill' : '💳 Pending Dues';
+    
+    const amount = payment.amount ?? 0;
+    const lateFee = payment.lateFee ?? (payment as any).late_fee ?? 0;
+    const total = payment.totalAmount ?? (payment as any).total_amount ?? (amount + lateFee);
+
+    let message = `*${pgName.toUpperCase()} - PAYMENT REMINDER*\n\n`;
+    message += `Hello *${tenant?.name || 'Tenant'}* (Room ${room?.roomNumber || (room as any)?.room_number || '—'}),\n\n`;
+    message += `This is a reminder for your *${typeTitle}* for *${monthStr}*:\n`;
+    message += `• Bill Amount: *₹${amount.toLocaleString()}*\n`;
+    if (lateFee > 0) {
+      message += `• Late Fee: *₹${lateFee.toLocaleString()}*\n`;
+    }
+    message += `• *Total Amount Due: ₹${total.toLocaleString()}*\n`;
+    message += `• Status: *${(payment.status || 'PENDING').toUpperCase()}*\n\n`;
+
+    const upiId = (pgConfig as any)?.upiId || (pgConfig as any)?.upi_id;
+    if (upiId) {
+      const upiUrl = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(pgName)}&am=${total}&cu=INR&tn=${monthStr}%20${typeStr}`;
+      message += `📱 *Pay via UPI:* ${upiUrl}\n\n`;
+    }
+
+    message += `Please process the payment at your earliest convenience. If already paid, kindly share a screenshot of the payment receipt. Thank you!`;
+
+    const encodedMessage = encodeURIComponent(message);
+    const whatsappUrl = `https://wa.me/${formattedPhone}?text=${encodedMessage}`;
+    window.open(whatsappUrl, '_blank');
+    toast.success(`Opening WhatsApp reminder for ${tenant?.name || 'tenant'}`);
+  };
+
+  const handleBulkWhatsAppReminders = (ids: string[]) => {
+    const selected = (paginatedPayments || []).filter((p: any) => ids.includes(p.id));
+    if (selected.length === 0) return;
+
+    if (selected.length > 1) {
+      toast('Opening WhatsApp for selected tenants...', { icon: '📲' });
+    }
+    selected.forEach((p: any, index: number) => {
+      setTimeout(() => {
+        const normalized: Payment = {
+          id: p.id,
+          tenantId: p.tenant_id || p.tenantId || '',
+          amount: p.amount ?? 0,
+          lateFee: p.late_fee ?? p.lateFee ?? 0,
+          totalAmount: p.total_amount ?? p.totalAmount ?? p.amount ?? 0,
+          paymentType: p.payment_type || p.paymentType || 'rent',
+          paymentDate: p.payment_date || p.paymentDate || '',
+          month: p.month || '',
+          status: p.status || 'paid',
+          method: p.method || 'Cash',
+          transactionId: p.transaction_id || p.transactionId,
+          receiptUrl: p.receipt_url || p.receiptUrl,
+          electricityAmount: p.electricity_amount || p.electricityAmount || 0,
+          electricityBillId: p.electricity_bill_id || p.electricityBillId,
+          branchId: p.branch_id || p.branchId || ''
+        };
+        handleSendWhatsAppPaymentReminder(normalized);
+      }, index * 400);
+    });
+  };
+
   const handleAutoPopulate = async (type: string, tenantId: string, month: string) => {
     if (!tenantId || !month) return 0;
     
@@ -1704,6 +1780,13 @@ export const PaymentsPage = () => {
                   </button>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleBulkWhatsAppReminders(selectedPaymentIds)}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-emerald-700 active:scale-95 transition-all"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    WhatsApp Reminders
+                  </button>
                   <button
                     onClick={() => handleExportSelectedToExcel(selectedPaymentIds)}
                     className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-indigo-700 active:scale-95 transition-all"

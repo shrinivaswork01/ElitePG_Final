@@ -27,7 +27,7 @@ export const LoadingScreen = () => {
           transition={{ duration: 0.8, ease: "easeOut" }}
           className="relative flex flex-col items-center"
         >
-          <div className="w-20 h-20 bg-indigo-600 rounded-[2rem] flex items-center justify-center text-white shadow-2xl shadow-indigo-600/40 mb-8 relative group overflow-hidden">
+          <div className="w-20 h-20 bg-indigo-600/10 rounded-[2rem] flex items-center justify-center text-white shadow-2xl shadow-indigo-600/20 mb-8 relative group overflow-hidden border border-indigo-500/20">
              <motion.div
                animate={{
                  rotate: [0, 360],
@@ -39,7 +39,7 @@ export const LoadingScreen = () => {
                }}
                className="absolute inset-0 bg-gradient-to-br from-indigo-400/20 to-transparent"
              />
-             <Building2 className="w-10 h-10 relative z-10" />
+             <img src="/logo.png" alt="Logo" className="w-14 h-14 relative z-10 rounded-2xl object-cover" />
           </div>
           
           <div className="text-center">

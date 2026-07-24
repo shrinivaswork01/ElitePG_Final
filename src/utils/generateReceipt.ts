@@ -99,11 +99,12 @@ async function buildPDF(cfg: ReceiptConfig, filename: string, returnBlob: boolea
   // Logo
   let logoX = 15;
   let logoWidth = 20;
-  if (cfg.logoUrl) {
+  const logoToUse = cfg.logoUrl || '/logo.png';
+  if (logoToUse) {
     try {
-      let finalLogoStr = cfg.logoUrl;
-      if (cfg.logoUrl.startsWith('http')) {
-        const response = await fetch(cfg.logoUrl);
+      let finalLogoStr = logoToUse;
+      if (logoToUse.startsWith('http') || logoToUse.startsWith('/')) {
+        const response = await fetch(logoToUse);
         const blob = await response.blob();
         finalLogoStr = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
@@ -113,7 +114,7 @@ async function buildPDF(cfg: ReceiptConfig, filename: string, returnBlob: boolea
         });
       }
       
-      const isPNG = finalLogoStr.toLowerCase().includes('image/png') || cfg.logoUrl.toLowerCase().includes('png');
+      const isPNG = finalLogoStr.toLowerCase().includes('image/png') || logoToUse.toLowerCase().includes('png');
       doc.addImage(finalLogoStr, isPNG ? 'PNG' : 'JPEG', logoX, 10, logoWidth, logoWidth);
     } catch (e) {
       // Fallback logo

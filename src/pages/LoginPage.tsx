@@ -264,9 +264,7 @@ export const LoginPage = ({ isSignUp = false }: LoginPageProps) => {
         <div className="w-full lg:w-[45%] p-6 lg:p-8 flex flex-col justify-center overflow-hidden">
           <div className="mb-4 lg:mb-6 shrink-0">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center border border-white/10 shrink-0">
-                <Shield className="w-6 h-6 text-white" />
-              </div>
+              <img src="/logo.png" alt="ElitePG Logo" className="w-10 h-10 rounded-xl object-cover border border-white/10 shrink-0" />
               <h1 className="text-2xl font-black text-white tracking-tight font-display">
                 Elite<span className="text-indigo-500">PG</span>
               </h1>
