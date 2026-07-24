@@ -201,18 +201,23 @@ export const ExpensesPage = () => {
 
   const handleExport = () => {
     if (!expenses || !currentBranch) return;
-    const filteredForExport = expenses.filter(e => {
-      const matchesSearch = searchTerm ? e.title.toLowerCase().includes(searchTerm.toLowerCase()) : true;
-      const matchesCategory = filterCategory !== 'all' ? e.category === filterCategory : true;
-      const matchesMonth = e.month === filterMonth;
-      return matchesSearch && matchesCategory && matchesMonth;
-    });
+    const filteredForExport = selectedExpenseIds.length > 0
+      ? expenses.filter(e => selectedExpenseIds.includes(e.id))
+      : expenses.filter(e => {
+          const matchesSearch = searchTerm ? e.title.toLowerCase().includes(searchTerm.toLowerCase()) : true;
+          const matchesCategory = filterCategory !== 'all' ? e.category === filterCategory : true;
+          const matchesMonth = e.month === filterMonth;
+          return matchesSearch && matchesCategory && matchesMonth;
+        });
     
     exportExpensesExcel(
       filteredForExport, 
       [currentBranch], 
       `${filterMonth}_${filterCategory}`
     );
+    if (selectedExpenseIds.length > 0) {
+      toast.success(`Exported ${filteredForExport.length} selected expense(s) to Excel`);
+    }
   };
 
   const columns: ColumnDef<any>[] = useMemo(() => [
@@ -492,6 +497,13 @@ export const ExpensesPage = () => {
                 </button>
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={handleExport}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-indigo-700 active:scale-95 transition-all"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  Export Selected Excel
+                </button>
                 <button
                   onClick={() => {
                     setBulkExpenseDeleteIds(selectedExpenseIds);

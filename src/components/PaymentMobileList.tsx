@@ -4,7 +4,7 @@ import { useLongPress } from '../hooks/useLongPress';
 import { Payment } from '../types';
 import {
   CheckCircle2, FileText, Edit2,
-  Trash2, Share2, X, Clock, CreditCard
+  Trash2, Share2, X, Clock, CreditCard, FileSpreadsheet
 } from 'lucide-react';
 import { cn } from '../utils';
 import { format, parseISO } from 'date-fns';
@@ -19,6 +19,7 @@ interface PaymentMobileListProps {
   onDelete: (p: Payment) => void;
   onBulkDelete: (ids: string[]) => void;
   onBulkShare: (ids: string[]) => void;
+  onBulkExport?: (ids: string[]) => void;
 }
 
 const LoadingSkeleton = () => (
@@ -28,104 +29,108 @@ const LoadingSkeleton = () => (
         <div className="flex items-start gap-4 mb-3">
           <div className="w-12 h-12 rounded-2xl bg-gray-200 dark:bg-white/5 shrink-0" />
           <div className="flex-1 space-y-2">
-            <div className="h-4 bg-gray-200 dark:bg-white/5 rounded w-3/4" />
+            <div className="h-4 bg-gray-200 dark:bg-white/5 rounded w-1/3" />
             <div className="h-3 bg-gray-200 dark:bg-white/5 rounded w-1/2" />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-2 mb-3">
-          <div className="h-10 bg-gray-100 dark:bg-white/5 rounded-xl" />
-          <div className="h-10 bg-gray-100 dark:bg-white/5 rounded-xl" />
+        <div className="grid grid-cols-2 gap-2 pt-3 border-t border-gray-100 dark:border-white/5">
+          <div className="h-10 bg-gray-200 dark:bg-white/5 rounded-xl" />
+          <div className="h-10 bg-gray-200 dark:bg-white/5 rounded-xl" />
         </div>
       </div>
     ))}
   </div>
 );
 
-const PaymentMobileCard = memo(({ 
-  payment, 
-  isSelected, 
-  isSelectionMode, 
-  onSelect, 
-  onTap 
-}: { 
-  payment: any; 
-  isSelected: boolean; 
+const ActionButton = ({ icon: Icon, label, primary, danger, onClick }: {
+  icon: any;
+  label: string;
+  primary?: boolean;
+  danger?: boolean;
+  onClick: () => void;
+}) => (
+  <button
+    onClick={onClick}
+    className={cn(
+      "flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl transition-all font-bold text-xs shrink-0 min-w-[64px]",
+      primary ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/30" :
+      danger ? "bg-rose-500/10 text-rose-500 dark:text-rose-400 hover:bg-rose-500/20" :
+      "bg-white/10 text-gray-200 dark:text-gray-800 hover:bg-white/20"
+    )}
+  >
+    <Icon className="w-4 h-4" />
+    <span>{label}</span>
+  </button>
+);
+
+const PaymentMobileCard = memo(({
+  payment,
+  isSelected,
+  isSelectionMode,
+  onToggleSelect,
+  onManage
+}: {
+  payment: any;
+  isSelected: boolean;
   isSelectionMode: boolean;
-  onSelect: (id: string) => void; 
-  onTap: (p: Payment) => void; 
+  onToggleSelect: (id: string) => void;
+  onManage: (p: any) => void;
 }) => {
   const handleLongPress = useCallback(() => {
-    if ('vibrate' in navigator) navigator.vibrate(50);
-    onSelect(payment.id);
-  }, [onSelect, payment.id]);
+    onToggleSelect(payment.id);
+  }, [onToggleSelect, payment.id]);
 
   const handleClick = useCallback(() => {
     if (isSelectionMode) {
-      onSelect(payment.id);
+      onToggleSelect(payment.id);
     } else {
-      // Normalize before passing to onTap (detail panel)
-      onTap({
-        id: payment.id,
-        tenantId: payment.tenant_id || payment.tenantId,
-        amount: payment.amount ?? 0,
-        lateFee: payment.late_fee ?? payment.lateFee ?? 0,
-        totalAmount: payment.total_amount ?? payment.totalAmount ?? payment.amount ?? 0,
-        paymentType: payment.payment_type || payment.paymentType || 'rent',
-        paymentDate: payment.payment_date || payment.paymentDate,
-        month: payment.month,
-        status: payment.status,
-        method: payment.method,
-        transactionId: payment.transaction_id || payment.transactionId,
-        receiptUrl: payment.receipt_url || payment.receiptUrl,
-        tenants: payment.tenants,
-        electricityAmount: payment.electricity_amount || payment.electricityAmount || 0,
-        electricityBillId: payment.electricity_bill_id || payment.electricityBillId,
-        branchId: payment.branch_id || payment.branchId
-      } as Payment);
+      onManage(payment);
     }
-  }, [isSelectionMode, onSelect, onTap, payment]);
+  }, [isSelectionMode, onToggleSelect, payment, onManage]);
 
   const longPressProps = useLongPress(handleLongPress, handleClick, { delay: 400 });
+
+  const tenantName = payment.tenants?.name || 'Unknown Tenant';
+  const roomNumber = payment.tenants?.rooms?.room_number ? `Room ${payment.tenants.rooms.room_number}` : 'No Room';
 
   return (
     <div
       {...longPressProps}
       className={cn(
-        "relative select-none p-4 rounded-2xl border transition-all duration-200 cursor-pointer overflow-hidden",
-        isSelected
-          ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 shadow-md transform scale-[0.98]"
-          : "border-gray-100 dark:border-white/5 bg-white dark:bg-[#111111] shadow-sm active:scale-[0.98]"
+        "p-4 rounded-2xl border transition-all duration-200 select-none relative overflow-hidden active:scale-[0.98]",
+        isSelected 
+          ? "bg-indigo-50/80 dark:bg-indigo-900/20 border-indigo-500 shadow-md" 
+          : "bg-white dark:bg-[#111111] border-gray-100 dark:border-white/5 shadow-sm"
       )}
     >
-      {isSelected && (
-        <div className="absolute top-3 right-3 text-indigo-600">
-          <CheckCircle2 className="w-5 h-5 fill-indigo-100 dark:fill-indigo-900" />
+      {/* Checkbox badge */}
+      {isSelectionMode && (
+        <div className="absolute top-3 right-3 z-10">
+          <div className={cn(
+            "w-5 h-5 rounded-full flex items-center justify-center border transition-all",
+            isSelected ? "bg-indigo-600 border-indigo-600 text-white" : "border-gray-300 dark:border-gray-600 bg-white dark:bg-[#181818]"
+          )}>
+            {isSelected && <CheckCircle2 className="w-3.5 h-3.5" />}
+          </div>
         </div>
       )}
 
-      <div className="flex items-start gap-4 mb-3">
-        <div className={cn(
-          "w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg uppercase shrink-0 transition-colors shadow-lg",
-          payment.status === 'paid' 
-            ? "bg-emerald-500 text-white shadow-emerald-500/20" 
-            : "bg-amber-500 text-white shadow-amber-500/20"
-        )}>
-          {payment.status === 'paid' ? <CheckCircle2 className="w-6 h-6" /> : <Clock className="w-6 h-6" />}
+      {/* Main info header */}
+      <div className="flex items-start gap-3 mb-3">
+        <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-sm shrink-0">
+          {tenantName.charAt(0).toUpperCase()}
         </div>
-        <div className="flex-1 min-w-0 pr-8">
-          <h3 className="text-base font-bold text-gray-900 dark:text-white truncate">
-            {payment.tenants?.name || 'Unknown Tenant'}
-          </h3>
-          <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-            {payment.month ? format(parseISO(`${payment.month}-01`), 'MMMM yyyy') : '—'}
-          </p>
+        <div className="flex-1 min-w-0 pr-6">
+          <h4 className="font-bold text-sm text-gray-900 dark:text-white truncate">{tenantName}</h4>
+          <p className="text-xs font-semibold text-gray-400 truncate">{roomNumber} • {payment.month}</p>
         </div>
       </div>
 
+      {/* Grid details */}
       <div className="grid grid-cols-2 gap-2 mb-3">
         <div className="bg-gray-50 dark:bg-white/5 rounded-xl p-2.5">
           <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Amount</p>
-          <p className="text-sm font-bold text-gray-900 dark:text-white truncate">
+          <p className="text-sm font-bold text-gray-900 dark:text-white">
             ₹{(payment.total_amount || payment.totalAmount || payment.amount || 0).toLocaleString()}
           </p>
         </div>
@@ -160,7 +165,7 @@ const PaymentMobileCard = memo(({
 PaymentMobileCard.displayName = 'PaymentMobileCard';
 
 export const PaymentMobileList: React.FC<PaymentMobileListProps> = ({
-  payments, isLoading, onManage, onEdit, onDownloadReceipt, onShareReceipt, onDelete, onBulkDelete, onBulkShare
+  payments, isLoading, onManage, onEdit, onDownloadReceipt, onShareReceipt, onDelete, onBulkDelete, onBulkShare, onBulkExport
 }) => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const isSelectionMode = selectedIds.size > 0;
@@ -174,7 +179,9 @@ export const PaymentMobileList: React.FC<PaymentMobileListProps> = ({
     });
   }, []);
 
-  const clearSelection = () => setSelectedIds(new Set());
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+  }, []);
 
   const getSelectedPayments = () => payments.filter(p => selectedIds.has(p.id));
   const firstSelectedNormalized = (() => {
@@ -193,69 +200,47 @@ export const PaymentMobileList: React.FC<PaymentMobileListProps> = ({
       method: p.method,
       transactionId: p.transaction_id || p.transactionId,
       receiptUrl: p.receipt_url || p.receiptUrl,
-      tenants: p.tenants,
       electricityAmount: p.electricity_amount || p.electricityAmount || 0,
       electricityBillId: p.electricity_bill_id || p.electricityBillId,
       branchId: p.branch_id || p.branchId
     } as Payment;
   })();
 
-  if (isLoading) return <LoadingSkeleton />;
-  if (payments.length === 0) return (
-    <div className="py-12 text-center text-gray-400">
-      <div className="w-16 h-16 bg-gray-50 dark:bg-white/5 rounded-2xl flex items-center justify-center mx-auto mb-4">
-        <CreditCard className="w-8 h-8" />
-      </div>
-      <p className="text-gray-500 dark:text-gray-400 font-medium">No payment records found</p>
-    </div>
-  );
-
-  const ActionButton = ({ icon: Icon, label, onClick, primary = false, danger = false }: any) => (
-    <button
-      onClick={onClick}
-      className={cn(
-        "flex flex-col items-center justify-center min-w-[72px] p-3 rounded-2xl gap-1.5 transition-all shrink-0",
-        primary
-          ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/30"
-          : danger
-            ? "bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400"
-            : "bg-gray-50 text-gray-700 dark:bg-white/5 dark:text-gray-300 active:bg-gray-100 dark:active:bg-white/10"
-      )}
-    >
-      <Icon className="w-5 h-5" />
-      <span className="text-[10px] font-bold whitespace-nowrap">{label}</span>
-    </button>
-  );
-
   return (
-    <div className="pb-24 space-y-3">
-      {payments.map(payment => (
-        <PaymentMobileCard
-          key={payment.id}
-          payment={payment}
-          isSelected={selectedIds.has(payment.id)}
-          isSelectionMode={isSelectionMode}
-          onSelect={toggleSelection}
-          onTap={onManage}
-        />
-      ))}
+    <div className="space-y-3">
+      {isLoading ? (
+        <LoadingSkeleton />
+      ) : payments.length === 0 ? (
+        <div className="text-center py-12 text-gray-400 bg-white dark:bg-[#111111] rounded-2xl border border-gray-100 dark:border-white/5">
+          No payments found
+        </div>
+      ) : (
+        payments.map(p => (
+          <PaymentMobileCard
+            key={p.id}
+            payment={p}
+            isSelected={selectedIds.has(p.id)}
+            isSelectionMode={isSelectionMode}
+            onToggleSelect={toggleSelection}
+            onManage={onManage}
+          />
+        ))
+      )}
 
-      {/* Floating Action Bar */}
+      {/* Floating Selection Action Bar */}
       <AnimatePresence>
         {isSelectionMode && (
           <motion.div
-            initial={{ y: 200, opacity: 0 }}
+            initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 200, opacity: 0 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="fixed bottom-4 left-4 right-4 z-[100] bg-white dark:bg-[#1A1A1A] rounded-[2rem] shadow-2xl border border-gray-200 dark:border-white/10 overflow-hidden"
+            exit={{ y: 100, opacity: 0 }}
+            className="fixed bottom-20 left-4 right-4 z-40 bg-gray-900/95 dark:bg-white/95 text-white dark:text-gray-900 backdrop-blur-xl rounded-2xl p-2 shadow-2xl border border-white/10 dark:border-gray-800"
           >
-            {/* Header */}
-            <div className="flex justify-between items-center px-6 py-3 border-b border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/5">
-              <span className="text-sm font-black text-indigo-600 dark:text-indigo-400">
-                {selectedIds.size} Selected
+            <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 dark:border-gray-800">
+              <span className="text-xs font-bold">
+                {selectedIds.size} {selectedIds.size === 1 ? 'item' : 'items'} selected
               </span>
-              <button 
+              <button
                 onClick={clearSelection}
                 className="p-1.5 bg-gray-200 dark:bg-white/10 rounded-full text-gray-600 dark:text-gray-300"
               >
@@ -281,6 +266,7 @@ export const PaymentMobileList: React.FC<PaymentMobileListProps> = ({
               ) : (
                 // Multi Selection Actions
                 <>
+                  <ActionButton icon={FileSpreadsheet} label="Export" onClick={() => { onBulkExport?.(Array.from(selectedIds)); clearSelection(); }} />
                   <ActionButton icon={Share2} label="Share Basic" primary onClick={() => { onBulkShare(Array.from(selectedIds)); clearSelection(); }} />
                   <ActionButton icon={Trash2} label="Delete All" danger onClick={() => { onBulkDelete(Array.from(selectedIds)); clearSelection(); }} />
                 </>
@@ -292,4 +278,3 @@ export const PaymentMobileList: React.FC<PaymentMobileListProps> = ({
     </div>
   );
 };
-

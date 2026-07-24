@@ -33,7 +33,8 @@ import {
   Home,
   Shield,
   Ticket,
-  Activity
+  Activity,
+  Sparkles
 } from 'lucide-react';
 import { format, parseISO, differenceInDays, getDate, isAfter, subMonths } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
@@ -69,6 +70,7 @@ export const PaymentsPage = () => {
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [paymentToEdit, setPaymentToEdit] = useState<Payment | null>(null);
+  const [editCalculatedAmount, setEditCalculatedAmount] = useState<number | null>(null);
   const [receiptNotes, setReceiptNotes] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'paid' | 'pending'>('all');
@@ -325,7 +327,7 @@ export const PaymentsPage = () => {
               }} />
             )}
             {isAdmin && (
-              <DropdownItem icon={<Edit2 className="w-4 h-4" />} label="Edit Payment" onClick={() => {
+              <DropdownItem icon={<Edit2 className="w-4 h-4" />} label="Edit Payment" onClick={async () => {
                 const normalized: Payment = {
                   id: p.id,
                   tenantId: p.tenant_id || p.tenantId || '',
@@ -343,6 +345,13 @@ export const PaymentsPage = () => {
                   electricityBillId: p.electricity_bill_id || p.electricityBillId,
                   branchId: p.branch_id || p.branchId || ''
                 };
+                const calculated = await handleAutoPopulate(normalized.paymentType, normalized.tenantId, normalized.month);
+                setEditCalculatedAmount(calculated);
+                if ((!normalized.amount || normalized.amount === 0) && calculated > 0) {
+                  normalized.amount = calculated;
+                  normalized.lateFee = calculateLateFee(normalized.tenantId, normalized.month, normalized.paymentDate, normalized.paymentType);
+                  normalized.totalAmount = normalized.amount + normalized.lateFee;
+                }
                 setPaymentToEdit(normalized);
                 setIsEditModalOpen(true);
               }} />
@@ -755,6 +764,20 @@ export const PaymentsPage = () => {
     isEditModalOpen, 
     pgConfig
   ]);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (isEditModalOpen && paymentToEdit?.tenantId && paymentToEdit?.month && paymentToEdit?.paymentType) {
+      handleAutoPopulate(paymentToEdit.paymentType, paymentToEdit.tenantId, paymentToEdit.month).then(calcAmount => {
+        if (isMounted) {
+          setEditCalculatedAmount(calcAmount);
+        }
+      });
+    } else {
+      setEditCalculatedAmount(null);
+    }
+    return () => { isMounted = false; };
+  }, [isEditModalOpen, paymentToEdit?.tenantId, paymentToEdit?.month, paymentToEdit?.paymentType]);
 
   // Detect if this is a move-in first rent: tenant has a paid token and no rent payment recorded for this month yet
   const isFirstRent = React.useMemo(() => {
@@ -1224,28 +1247,49 @@ export const PaymentsPage = () => {
     });
   }, [payments, tenants, searchTerm, user?.role, user?.id, filterMonth]);
 
-  const handleDownload = () => {
-    const data = filteredPayments.map(p => {
-      const tenant = tenants.find(t => t.id === p.tenantId);
+  const handleExportSelectedToExcel = (ids?: string[]) => {
+    const targetIds = ids && ids.length > 0 ? ids : selectedPaymentIds;
+    const sourcePayments = targetIds.length > 0
+      ? (paginatedPayments || []).filter((p: any) => targetIds.includes(p.id))
+      : (paginatedPayments || []);
+
+    if (sourcePayments.length === 0) {
+      toast.error('No payment records available to export');
+      return;
+    }
+
+    const data = sourcePayments.map((p: any) => {
+      const tenant = tenants.find(t => t.id === (p.tenant_id || p.tenantId));
+      const room = rooms.find(r => r.id === (tenant?.roomId || (tenant as any)?.room_id));
       return {
-        Tenant: tenant?.name,
-        Month: p.month,
-        Amount: p.amount,
-        LateFee: p.lateFee,
-        Total: p.totalAmount,
-        Date: p.paymentDate,
-        Method: p.method
+        Tenant: tenant?.name || p.tenants?.name || 'Unknown',
+        Room: room?.roomNumber || (room as any)?.room_number || '—',
+        Month: p.month || '—',
+        Type: (p.payment_type || p.paymentType || 'rent').toUpperCase(),
+        Amount: p.amount ?? 0,
+        LateFee: p.late_fee ?? p.lateFee ?? 0,
+        Total: p.total_amount ?? p.totalAmount ?? p.amount ?? 0,
+        Date: p.payment_date || p.paymentDate || '—',
+        Status: (p.status || 'paid').toUpperCase(),
+        Method: p.method || 'Cash'
       };
     });
-    const csvContent = "data:text/csv;charset=utf-8,"
-      + ["Tenant,Month,Amount,LateFee,Total,Date,Method", ...data.map(r => Object.values(r).join(","))].join("\n");
+
+    const headers = Object.keys(data[0]).join(",");
+    const rows = data.map(r => Object.values(r).map(val => `"${val}"`).join(","));
+    const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "ElitePG_Payments.csv");
+    link.setAttribute("download", `ElitePG_Payments_${targetIds.length > 0 ? 'Selected_' : ''}${format(new Date(), 'yyyy-MM-dd')}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    toast.success(`Exported ${sourcePayments.length} payment record(s) to Excel`);
+  };
+
+  const handleDownload = () => {
+    handleExportSelectedToExcel(selectedPaymentIds.length > 0 ? selectedPaymentIds : undefined);
   };
 
   const targetMonth = React.useMemo(() => {
@@ -1661,9 +1705,15 @@ export const PaymentsPage = () => {
                 </div>
                 <div className="flex items-center gap-2">
                   <button
+                    onClick={() => handleExportSelectedToExcel(selectedPaymentIds)}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-indigo-700 active:scale-95 transition-all"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                    Export Selected Excel
+                  </button>
+                  <button
                     onClick={() => {
                       setDeleteConfirmation({ isOpen: true, bulkIds: selectedPaymentIds });
-                      setSelectedPaymentIds([]);
                     }}
                     className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-rose-700 active:scale-95 transition-all"
                   >
@@ -1769,8 +1819,32 @@ export const PaymentsPage = () => {
               });
             }
           }}
-          onEdit={(p) => {
-            setPaymentToEdit(p);
+          onEdit={async (p) => {
+            const normalized: Payment = {
+              id: p.id,
+              tenantId: (p as any).tenant_id || p.tenantId || '',
+              amount: p.amount ?? 0,
+              lateFee: (p as any).late_fee ?? p.lateFee ?? 0,
+              totalAmount: (p as any).total_amount ?? p.totalAmount ?? p.amount ?? 0,
+              paymentType: (p as any).payment_type || p.paymentType || 'rent',
+              paymentDate: (p as any).payment_date || p.paymentDate || '',
+              month: p.month || '',
+              status: p.status || 'paid',
+              method: p.method || 'Cash',
+              transactionId: (p as any).transaction_id || p.transactionId,
+              receiptUrl: (p as any).receipt_url || p.receiptUrl,
+              electricityAmount: (p as any).electricity_amount || p.electricityAmount || 0,
+              electricityBillId: (p as any).electricity_bill_id || p.electricityBillId,
+              branchId: (p as any).branch_id || p.branchId || ''
+            };
+            const calculated = await handleAutoPopulate(normalized.paymentType, normalized.tenantId, normalized.month);
+            setEditCalculatedAmount(calculated);
+            if ((!normalized.amount || normalized.amount === 0) && calculated > 0) {
+              normalized.amount = calculated;
+              normalized.lateFee = calculateLateFee(normalized.tenantId, normalized.month, normalized.paymentDate, normalized.paymentType);
+              normalized.totalAmount = normalized.amount + normalized.lateFee;
+            }
+            setPaymentToEdit(normalized);
             setIsEditModalOpen(true);
           }}
           onDownloadReceipt={(p) => handleDownloadReceipt(p)}
@@ -1793,6 +1867,7 @@ export const PaymentsPage = () => {
             }).join('\n');
             navigator.clipboard.writeText(shareText).then(() => toast.success('Payment summaries copied!'));
           }}
+          onBulkExport={(ids) => handleExportSelectedToExcel(ids)}
         />
         {paginatedPayments.length > 0 && (
           <div className="mt-4 flex justify-center pb-8">
@@ -2515,11 +2590,12 @@ export const PaymentsPage = () => {
                           onChange={async (e) => {
                             const month = e.target.value;
                             const amount = await handleAutoPopulate(paymentToEdit.paymentType, paymentToEdit.tenantId, month);
+                            setEditCalculatedAmount(amount);
                             const lateFee = calculateLateFee(paymentToEdit.tenantId, month, paymentToEdit.paymentDate, paymentToEdit.paymentType);
                             setPaymentToEdit({ 
                               ...paymentToEdit, 
                               month,
-                              amount,
+                              amount: amount > 0 ? amount : paymentToEdit.amount,
                               lateFee
                             });
                           }}
@@ -2549,7 +2625,24 @@ export const PaymentsPage = () => {
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Amount</label>
+                      <div className="flex items-center justify-between gap-1 flex-wrap">
+                        <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Amount</label>
+                        {editCalculatedAmount !== null && editCalculatedAmount !== undefined && editCalculatedAmount > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const lateFee = calculateLateFee(paymentToEdit.tenantId, paymentToEdit.month, paymentToEdit.paymentDate, paymentToEdit.paymentType);
+                              setPaymentToEdit({ ...paymentToEdit, amount: editCalculatedAmount, lateFee });
+                              toast.success(`Autofilled Calculated Bill: ₹${editCalculatedAmount.toLocaleString()}`);
+                            }}
+                            className="text-[11px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 hover:bg-amber-100 dark:hover:bg-amber-500/20 px-2 py-0.5 rounded-lg transition-colors flex items-center gap-1 cursor-pointer border border-amber-200/60 dark:border-amber-500/20 shadow-xs"
+                            title="Click to autofill calculated bill amount"
+                          >
+                            <Sparkles className="w-3 h-3 text-amber-500" />
+                            <span>Calculated Bill: ₹{editCalculatedAmount.toLocaleString()}</span>
+                          </button>
+                        )}
+                      </div>
                       <input
                         required
                         type="number"
