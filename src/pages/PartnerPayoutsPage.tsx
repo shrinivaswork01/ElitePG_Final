@@ -615,7 +615,7 @@ export const PartnerPayoutsPage = () => {
                         </div>
                      )}
                      <div className="flex items-center gap-4 mb-4">
-                        <div className="w-14 h-14 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center font-black text-indigo-600 text-xl border border-indigo-100 dark:border-indigo-500/20">
+                        <div className="w-14 h-14 rounded-2xl text-white flex items-center justify-center font-black text-xl uppercase shrink-0 shadow-md" style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}>
                            {partner.name.charAt(0)}
                         </div>
                         <div>
@@ -746,7 +746,7 @@ export const PartnerPayoutsPage = () => {
                        return (
                          <div key={s.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-5 bg-gray-50 dark:bg-white/[0.02] rounded-3xl border border-transparent hover:border-gray-200 dark:hover:border-white/10 transition-all gap-4">
                             <div className="flex items-center gap-4">
-                              <div className="w-14 h-14 rounded-2xl bg-white dark:bg-[#111111] shadow-sm flex items-center justify-center font-black text-indigo-600 text-xl">
+                              <div className="w-14 h-14 rounded-2xl text-white shadow-md flex items-center justify-center font-black text-xl uppercase shrink-0" style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}>
                                  {resolvePartnerName(s.userId).charAt(0)}
                               </div>
                               <div>

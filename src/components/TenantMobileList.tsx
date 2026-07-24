@@ -7,6 +7,7 @@ import {
   Trash2, History, Share2, X, AlertCircle, FileText, Home
 } from 'lucide-react';
 import { cn } from '../utils';
+import { useApp } from '../context/AppContext';
 
 interface TenantMobileListProps {
   tenants: any[];
@@ -57,14 +58,19 @@ const TenantMobileCard = memo(({
     blacklisted: 'bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-500/10 dark:text-rose-400'
   };
 
+  const { pgConfig } = useApp();
+
   return (
-    <div
+    <motion.div
       {...longPressProps}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileTap={{ scale: 0.98 }}
       className={cn(
-        "relative select-none p-4 rounded-2xl border transition-all duration-200 cursor-pointer overflow-hidden",
-        isSelected
-          ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 shadow-md transform scale-[0.98]"
-          : "border-gray-100 dark:border-white/5 bg-white dark:bg-[#111111] shadow-sm active:scale-[0.98]"
+        "relative p-4 rounded-3xl border transition-all duration-300 mb-3 overflow-hidden",
+        isSelected 
+          ? "bg-indigo-50 border-indigo-200 dark:bg-indigo-500/10 dark:border-indigo-500/30 ring-2 ring-indigo-500/20" 
+          : "bg-white border-gray-100 dark:bg-[#111111] dark:border-white/5 shadow-sm"
       )}
     >
       {isSelected && (
@@ -74,12 +80,10 @@ const TenantMobileCard = memo(({
       )}
 
       <div className="flex items-start gap-4 mb-3">
-        <div className={cn(
-          "w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg uppercase shrink-0 transition-colors",
-          isSelected 
-            ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/30" 
-            : "bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/20"
-        )}>
+        <div 
+          className="w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg uppercase shrink-0 transition-colors text-white shadow-md"
+          style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
+        >
           {tenant.name?.charAt(0) || '?'}
         </div>
         <div className="flex-1 min-w-0 pr-8">
@@ -121,7 +125,7 @@ const TenantMobileCard = memo(({
           </span>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 });
 

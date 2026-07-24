@@ -229,7 +229,7 @@ export const PaymentsPage = () => {
       },
       cell: (p) => (
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500 font-bold flex items-center justify-center shrink-0">
+          <div className="w-9 h-9 rounded-xl text-white font-bold flex items-center justify-center shrink-0 shadow-xs" style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}>
             {p.tenants?.name?.charAt(0) || '?'}
           </div>
           <div>

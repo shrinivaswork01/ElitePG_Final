@@ -549,7 +549,7 @@ export const EmployeesPage = () => {
                     onClick={() => setSelectedEmployee(employee)}
                   >
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center font-bold text-xl">
+                      <div className="w-12 h-12 text-white rounded-2xl flex items-center justify-center font-bold text-xl uppercase shrink-0 shadow-md" style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}>
                         {employee.name?.charAt(0) || '?'}
                       </div>
                       <div>
@@ -683,7 +683,7 @@ export const EmployeesPage = () => {
                     <tr key={payment.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-white/5 flex items-center justify-center font-bold text-xs text-gray-900 dark:text-white">
+                          <div className="w-8 h-8 rounded-xl text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs uppercase" style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}>
                             {employee?.name?.charAt(0) || '?'}
                           </div>
                           <span className="text-sm font-bold text-gray-900 dark:text-white">{employee?.name}</span>
@@ -725,7 +725,7 @@ export const EmployeesPage = () => {
                 <div key={payment.id} className="p-4 flex flex-col gap-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 shrink-0 rounded-full bg-gray-100 dark:bg-white/5 flex items-center justify-center font-bold text-xs text-gray-900 dark:text-white">
+                      <div className="w-8 h-8 shrink-0 rounded-xl text-white flex items-center justify-center font-bold text-xs shadow-xs uppercase" style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}>
                         {employee?.name?.charAt(0) || '?'}
                       </div>
                       <div>

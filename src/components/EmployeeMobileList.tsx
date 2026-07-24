@@ -7,6 +7,7 @@ import {
   Trash2, ClipboardList, X, History
 } from 'lucide-react';
 import { cn } from '../utils';
+import { useApp } from '../context/AppContext';
 
 interface EmployeeMobileListProps {
   employees: Employee[];
@@ -45,6 +46,8 @@ const EmployeeMobileCard = memo(({
 
   const longPressProps = useLongPress(handleLongPress, handleClick, { delay: 400 });
 
+  const { pgConfig } = useApp();
+
   return (
     <div
       {...longPressProps}
@@ -62,12 +65,10 @@ const EmployeeMobileCard = memo(({
       )}
 
       <div className="flex items-start gap-4 mb-3">
-        <div className={cn(
-          "w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg uppercase shrink-0 transition-colors",
-          isSelected 
-            ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/30" 
-            : "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400"
-        )}>
+        <div 
+          className="w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg uppercase shrink-0 transition-colors text-white shadow-md"
+          style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
+        >
           {employee.name?.charAt(0) || '?'}
         </div>
         <div className="flex-1 min-w-0 pr-8">

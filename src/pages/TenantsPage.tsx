@@ -58,6 +58,9 @@ export const TenantsPage = () => {
   useEffect(() => {
     if (location.state?.openAddModal) {
       setIsAddModalOpen(true);
+      if (location.state?.preselectRoomId) {
+        setFormData(prev => ({ ...prev, roomId: location.state.preselectRoomId }));
+      }
       // Clear state to prevent reopening on refresh
       window.history.replaceState({}, document.title);
     }
@@ -179,7 +182,7 @@ export const TenantsPage = () => {
       sortable: true,
       cell: (t) => (
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-black text-base shadow-lg shadow-indigo-500/20 uppercase shrink-0">
+          <div className="w-10 h-10 rounded-xl text-white flex items-center justify-center font-black text-base shadow-md uppercase shrink-0" style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}>
             {t.name?.charAt(0) || '?'}
           </div>
           <div className="min-w-0">

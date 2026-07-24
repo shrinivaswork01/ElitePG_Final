@@ -29,6 +29,9 @@ import { RoomDetailPanel } from '../components/RoomDetailPanel';
 import { FlatDetailPanel } from '../components/FlatDetailPanel';
 import { RoomMobileList } from '../components/RoomMobileList';
 import { FlatMobileList } from '../components/FlatMobileList';
+import { FloorLayoutMap } from '../components/FloorLayoutMap';
+import { QuickAllocateModal } from '../components/QuickAllocateModal';
+import { SwitchRoomModal } from '../components/SwitchRoomModal';
 import { ElectricityBillModal } from '../components/ElectricityBillModal';
 import { cn } from '../utils';
 import toast from 'react-hot-toast';
@@ -41,6 +44,8 @@ export const RoomsPage = () => {
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [roomToDelete, setRoomToDelete] = useState<Room | null>(null);
   const [electricityFlat, setElectricityFlat] = useState<MeterGroup | null>(null);
+  const [allocateRoomModal, setAllocateRoomModal] = useState<{ room: Room; bedNumber?: number } | null>(null);
+  const [switchRoomTenant, setSwitchRoomTenant] = useState<any | null>(null);
 
   const currentRoomsCount = rooms.length;
   const isAtLimit = currentPlan && currentRoomsCount >= currentPlan.maxRooms;
@@ -74,7 +79,7 @@ export const RoomsPage = () => {
   });
   const [customAmenity, setCustomAmenity] = useState('');
   
-  const [activeTab, setActiveTab] = useState<'rooms' | 'flats'>('flats');
+  const [activeTab, setActiveTab] = useState<'visual-map' | 'rooms' | 'flats'>('visual-map');
   const [isAddFlatModalOpen, setIsAddFlatModalOpen] = useState(false);
   const [editingFlat, setEditingFlat] = useState<MeterGroup | null>(null);
   const [detailFlat, setDetailFlat] = useState<MeterGroup | null>(null);
@@ -322,7 +327,7 @@ export const RoomsPage = () => {
           <div className="flex flex-col gap-3 py-1">
             {roomTenants.map(t => (
               <div key={t.id} className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-black text-xs shadow-md shadow-indigo-500/15 uppercase shrink-0">
+                <div className="w-8 h-8 rounded-xl text-white flex items-center justify-center font-black text-xs shadow-md uppercase shrink-0" style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}>
                   {t.name?.charAt(0) || '?'}
                 </div>
                 <div className="min-w-0">
@@ -714,15 +719,30 @@ export const RoomsPage = () => {
         </div>
       </div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-6 overflow-x-auto pb-1 hide-scrollbar">
+          <button 
+            onClick={() => setActiveTab('visual-map')}
+            className={cn(
+              "group relative py-2 transition-all cursor-pointer shrink-0",
+              activeTab === 'visual-map' ? "text-indigo-600 dark:text-indigo-400" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            )}
+          >
+            <span className="text-lg sm:text-xl font-bold tracking-tight flex items-center gap-2">
+              <LayoutGrid className={cn("w-5 h-5", activeTab === 'visual-map' ? "text-indigo-600" : "text-gray-400")} />
+              Interactive Bed Map
+            </span>
+            {activeTab === 'visual-map' && (
+              <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }} />
+            )}
+          </button>
           <button 
             onClick={() => setActiveTab('flats')}
             className={cn(
-              "group relative py-2 transition-all",
+              "group relative py-2 transition-all cursor-pointer shrink-0",
               activeTab === 'flats' ? "text-violet-600 dark:text-violet-400" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
             )}
           >
-            <span className="text-xl font-bold tracking-tight flex items-center gap-2">
+            <span className="text-lg sm:text-xl font-bold tracking-tight flex items-center gap-2">
               <Layers className={cn("w-5 h-5", activeTab === 'flats' ? "text-violet-600" : "text-gray-400")} />
               Flats / Groups
             </span>
@@ -733,13 +753,13 @@ export const RoomsPage = () => {
           <button 
             onClick={() => setActiveTab('rooms')}
             className={cn(
-              "group relative py-2 transition-all",
+              "group relative py-2 transition-all cursor-pointer shrink-0",
               activeTab === 'rooms' ? "text-indigo-600 dark:text-indigo-400" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
             )}
           >
-            <span className="text-xl font-bold tracking-tight flex items-center gap-2">
+            <span className="text-lg sm:text-xl font-bold tracking-tight flex items-center gap-2">
               <DoorOpen className={cn("w-5 h-5", activeTab === 'rooms' ? "text-indigo-600" : "text-gray-400")} />
-              Rooms
+              Rooms List
             </span>
             {activeTab === 'rooms' && (
               <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }} />
@@ -772,237 +792,254 @@ export const RoomsPage = () => {
           )}
         </div>
       </div>
+      {activeTab === 'visual-map' ? (
+        <FloorLayoutMap
+          rooms={rooms}
+          tenants={tenants}
+          meterGroups={meterGroups}
+          primaryColor={pgConfig?.primaryColor}
+          onSelectRoom={(room) => setDetailRoom(room)}
+          onSelectTenant={(tenant) => {
+            const activeBranchId = currentBranch?.id || user?.branchId;
+            navigate(activeBranchId ? `/branch/${activeBranchId}/tenants` : '/tenants');
+          }}
+          onAssignTenant={(room, bedNumber) => setAllocateRoomModal({ room, bedNumber })}
+          onSwitchRoom={(tenant) => setSwitchRoomTenant(tenant)}
+        />
+      ) : (
+        <>
+          <div className="bg-white dark:bg-[#111111] p-4 rounded-2xl border border-gray-100 dark:border-white/5 shadow-sm flex flex-col sm:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search room..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+              />
+            </div>
+            
+            <div className="flex gap-2 items-center">
+              <div className="relative w-48">
+                <ModernSelect
+                  value={filterFloor === 'all' ? 'all' : String(filterFloor)}
+                  onChange={(val) => setFilterFloor(val === 'all' ? 'all' : Number(val))}
+                  options={[
+                    { value: "all", label: "All Floors" },
+                    ...availableFloors.map(f => ({ value: String(f), label: f === 0 ? "Ground Floor" : `Floor ${f}` }))
+                  ]}
+                />
+              </div>
 
-      <div className="bg-white dark:bg-[#111111] p-4 rounded-2xl border border-gray-100 dark:border-white/5 shadow-sm flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search room..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-          />
-        </div>
-        
-        <div className="flex gap-2 items-center">
-          <div className="relative w-48">
-            <ModernSelect
-              value={filterFloor === 'all' ? 'all' : String(filterFloor)}
-              onChange={(val) => setFilterFloor(val === 'all' ? 'all' : Number(val))}
-              options={[
-                { value: "all", label: "All Floors" },
-                ...availableFloors.map(f => ({ value: String(f), label: f === 0 ? "Ground Floor" : `Floor ${f}` }))
-              ]}
-            />
+              <button
+                onClick={() => {
+                  try {
+                    if (activeTab === 'rooms') {
+                      exportRoomsToExcel(roomsToExport, tenants, branches, meterGroups, currentBranch);
+                      toast.success('Rooms Export Generated Successfully');
+                    } else {
+                      exportFlatsToExcel(filteredMeterGroups, rooms, tenants, branches, currentBranch);
+                      toast.success('Flats Export Generated Successfully');
+                    }
+                  } catch (err) {
+                    console.error(err);
+                    toast.error('Failed to generate export');
+                  }
+                }}
+                className="flex items-center gap-2 px-6 py-2.5 text-white rounded-2xl text-sm font-black transition-all shadow-lg shadow-indigo-600/20 active:scale-95 hover:opacity-90 shrink-0 flex items-center justify-center"
+                style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
+                title="Export to Excel"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                Export Excel
+              </button>
+            </div>
           </div>
 
-          <button
-            onClick={() => {
-              try {
-                if (activeTab === 'rooms') {
-                  exportRoomsToExcel(roomsToExport, tenants, branches, meterGroups, currentBranch);
-                  toast.success('Rooms Export Generated Successfully');
-                } else {
-                  exportFlatsToExcel(filteredMeterGroups, rooms, tenants, branches, currentBranch);
-                  toast.success('Flats Export Generated Successfully');
-                }
-              } catch (err) {
-                console.error(err);
-                toast.error('Failed to generate export');
-              }
-            }}
-            className="flex items-center gap-2 px-6 py-2.5 text-white rounded-2xl text-sm font-black transition-all shadow-lg shadow-indigo-600/20 active:scale-95 hover:opacity-90 shrink-0 flex items-center justify-center"
-            style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
-            title="Export to Excel"
-          >
-            <FileSpreadsheet className="w-4 h-4" />
-            Export Excel
-          </button>
-        </div>
-      </div>
-
-      {isNearLimit && !isAtLimit && (
-        <div className="flex justify-end">
-          <div className="px-4 py-2 bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-xl text-xs font-bold border border-amber-100 dark:border-amber-500/20">
-            {currentPlan?.maxRooms! - currentRoomsCount} rooms left on your plan
-          </div>
-        </div>
-      )}
-
-      {isNearLimit && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className={cn(
-            "p-4 rounded-2xl flex items-center justify-between gap-4 border",
-            isAtLimit
-              ? "bg-rose-50 dark:bg-rose-500/10 border-rose-100 dark:border-rose-500/20 text-rose-700 dark:text-rose-400"
-              : "bg-amber-50 dark:bg-amber-500/10 border-amber-100 dark:border-amber-500/20 text-amber-700 dark:text-amber-400"
+          {isNearLimit && !isAtLimit && (
+            <div className="flex justify-end">
+              <div className="px-4 py-2 bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-xl text-xs font-bold border border-amber-100 dark:border-amber-500/20">
+                {currentPlan?.maxRooms! - currentRoomsCount} rooms left on your plan
+              </div>
+            </div>
           )}
-        >
-          <div className="flex items-center gap-3">
-            <DoorOpen className="w-5 h-5" />
-            <p className="text-sm font-bold">
-              {isAtLimit
-                ? `Limit Reached: You have reached the maximum of ${currentPlan?.maxRooms} rooms for the ${currentPlan?.name} plan.`
-                : `Approaching Limit: You have used ${currentRoomsCount}/${currentPlan?.maxRooms} room slots.`}
-            </p>
-          </div>
-          <button
-            onClick={() => navigate('/subscription')}
-            className={cn(
-              "px-4 py-1.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all",
-              isAtLimit
-                ? "bg-rose-600 text-white hover:bg-rose-700"
-                : "bg-amber-600 text-white hover:bg-amber-700"
+
+          {isNearLimit && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={cn(
+                "p-4 rounded-2xl flex items-center justify-between gap-4 border",
+                isAtLimit
+                  ? "bg-rose-50 dark:bg-rose-500/10 border-rose-100 dark:border-rose-500/20 text-rose-700 dark:text-rose-400"
+                  : "bg-amber-50 dark:bg-amber-500/10 border-amber-100 dark:border-amber-500/20 text-amber-700 dark:text-amber-400"
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <DoorOpen className="w-5 h-5" />
+                <p className="text-sm font-bold">
+                  {isAtLimit
+                    ? `Limit Reached: You have reached the maximum of ${currentPlan?.maxRooms} rooms for the ${currentPlan?.name} plan.`
+                    : `Approaching Limit: You have used ${currentRoomsCount}/${currentPlan?.maxRooms} room slots.`}
+                </p>
+              </div>
+              <button
+                onClick={() => navigate('/subscription')}
+                className={cn(
+                  "px-4 py-1.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all",
+                  isAtLimit
+                    ? "bg-rose-600 text-white hover:bg-rose-700"
+                    : "bg-amber-600 text-white hover:bg-amber-700"
+                )}
+              >
+                Upgrade Plan
+              </button>
+            </motion.div>
+          )}
+
+          {/* Desktop/Tablet View (Unified Grid) */}
+          <div className="hidden md:block">
+            {activeTab === 'rooms' ? (
+              <>
+                <AnimatePresence>
+                  {selectedRoomIds.length > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="bg-indigo-50/50 dark:bg-indigo-500/5 border border-indigo-100 dark:border-indigo-500/20 rounded-2xl p-4 flex items-center justify-between shadow-sm mb-4"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">
+                          {selectedRoomIds.length} rooms selected
+                        </span>
+                        <button
+                          onClick={() => setSelectedRoomIds([])}
+                          className="text-xs text-gray-500 hover:text-indigo-600 dark:text-gray-400 font-bold"
+                        >
+                          Clear selection
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            handleBulkDelete(selectedRoomIds);
+                            setSelectedRoomIds([]);
+                          }}
+                          className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-rose-700 active:scale-95 transition-all"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Delete Selected
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                <DataGrid
+                  columns={roomColumns}
+                  data={roomsData}
+                  isLoading={isLoading}
+                  keyExtractor={(r: any) => r.id}
+                  page={page}
+                  limit={limit}
+                  totalCount={totalCount}
+                  onPageChange={setPage}
+                  onLimitChange={(newLimit) => {
+                    setLimit(newLimit);
+                    setPage(1);
+                  }}
+                  onRowClick={(r: any) => setDetailRoom(rooms.find(room => room.id === r.id) || null)}
+                />
+              </>
+            ) : (
+              <>
+                <AnimatePresence>
+                  {selectedFlatIds.length > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="bg-indigo-50/50 dark:bg-indigo-500/5 border border-indigo-100 dark:border-indigo-500/20 rounded-2xl p-4 flex items-center justify-between shadow-sm mb-4"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">
+                          {selectedFlatIds.length} flats selected
+                        </span>
+                        <button
+                          onClick={() => setSelectedFlatIds([])}
+                          className="text-xs text-gray-500 hover:text-indigo-600 dark:text-gray-400 font-bold"
+                        >
+                          Clear selection
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            handleBulkFlatDelete(selectedFlatIds);
+                            setSelectedFlatIds([]);
+                          }}
+                          className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-rose-700 active:scale-95 transition-all"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Delete Selected
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                <DataGrid
+                  columns={flatColumns}
+                  data={paginatedMeterGroups}
+                  isLoading={false}
+                  keyExtractor={(f: any) => f.id}
+                  onRowClick={(f: any) => setDetailFlat(f)}
+                  page={flatPage}
+                  limit={flatLimit}
+                  totalCount={filteredMeterGroups.length}
+                  onPageChange={setFlatPage}
+                  onLimitChange={(newLimit) => {
+                    setFlatLimit(newLimit);
+                    setFlatPage(1);
+                  }}
+                />
+              </>
             )}
-          >
-            Upgrade Plan
-          </button>
-        </motion.div>
+          </div>
+
+          {/* Mobile View (Below 768px) */}
+          <div className="md:hidden -mx-4 -mt-2">
+            {activeTab === 'rooms' ? (
+              <RoomMobileList
+                rooms={roomsData}
+                onAdd={() => {
+                  if (isAtLimit) {
+                    toast.error(`Limit reached! Your current plan allows only ${currentPlan?.maxRooms} rooms.`);
+                    return;
+                  }
+                  setIsAddModalOpen(true);
+                }}
+                onEdit={handleEditClick}
+                onDelete={(r) => { deleteRoom(r.id); refetch(); }}
+                onView={setDetailRoom}
+                onBulkDelete={handleBulkDelete}
+              />
+            ) : (
+              <FlatMobileList
+                meterGroups={filteredMeterGroups}
+                rooms={rooms}
+                tenants={tenants}
+                onAdd={() => setIsAddFlatModalOpen(true)}
+                onEdit={handleEditFlat}
+                onDelete={(f) => { deleteMeterGroup(f.id); }}
+                onView={setDetailFlat}
+                onManageElectricity={(f) => { setElectricityFlat(f); }}
+                onBulkDelete={handleBulkFlatDelete}
+              />
+            )}
+          </div>
+        </>
       )}
-
-      {/* Desktop/Tablet View (Unified Grid) */}
-      <div className="hidden md:block">
-        {activeTab === 'rooms' ? (
-          <>
-            <AnimatePresence>
-              {selectedRoomIds.length > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="bg-indigo-50/50 dark:bg-indigo-500/5 border border-indigo-100 dark:border-indigo-500/20 rounded-2xl p-4 flex items-center justify-between shadow-sm mb-4"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">
-                      {selectedRoomIds.length} rooms selected
-                    </span>
-                    <button
-                      onClick={() => setSelectedRoomIds([])}
-                      className="text-xs text-gray-500 hover:text-indigo-600 dark:text-gray-400 font-bold"
-                    >
-                      Clear selection
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => {
-                        handleBulkDelete(selectedRoomIds);
-                        setSelectedRoomIds([]);
-                      }}
-                      className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-rose-700 active:scale-95 transition-all"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      Delete Selected
-                    </button>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-            <DataGrid
-              columns={roomColumns}
-              data={roomsData}
-              isLoading={isLoading}
-              keyExtractor={(r: any) => r.id}
-              page={page}
-              limit={limit}
-              totalCount={totalCount}
-              onPageChange={setPage}
-              onLimitChange={(newLimit) => {
-                setLimit(newLimit);
-                setPage(1);
-              }}
-              onRowClick={(r: any) => setDetailRoom(rooms.find(room => room.id === r.id) || null)}
-            />
-          </>
-        ) : (
-          <>
-            <AnimatePresence>
-              {selectedFlatIds.length > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="bg-indigo-50/50 dark:bg-indigo-500/5 border border-indigo-100 dark:border-indigo-500/20 rounded-2xl p-4 flex items-center justify-between shadow-sm mb-4"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">
-                      {selectedFlatIds.length} flats selected
-                    </span>
-                    <button
-                      onClick={() => setSelectedFlatIds([])}
-                      className="text-xs text-gray-500 hover:text-indigo-600 dark:text-gray-400 font-bold"
-                    >
-                      Clear selection
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => {
-                        handleBulkFlatDelete(selectedFlatIds);
-                        setSelectedFlatIds([]);
-                      }}
-                      className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-rose-700 active:scale-95 transition-all"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      Delete Selected
-                    </button>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-            <DataGrid
-              columns={flatColumns}
-              data={paginatedMeterGroups}
-              isLoading={false}
-              keyExtractor={(f: any) => f.id}
-              onRowClick={(f: any) => setDetailFlat(f)}
-              page={flatPage}
-              limit={flatLimit}
-              totalCount={filteredMeterGroups.length}
-              onPageChange={setFlatPage}
-              onLimitChange={(newLimit) => {
-                setFlatLimit(newLimit);
-                setFlatPage(1);
-              }}
-            />
-          </>
-        )}
-      </div>
-
-      {/* Mobile View (Below 768px) */}
-      <div className="md:hidden -mx-4 -mt-2">
-        {activeTab === 'rooms' ? (
-          <RoomMobileList
-            rooms={roomsData}
-            onAdd={() => {
-              if (isAtLimit) {
-                toast.error(`Limit reached! Your current plan allows only ${currentPlan?.maxRooms} rooms.`);
-                return;
-              }
-              setIsAddModalOpen(true);
-            }}
-            onEdit={handleEditClick}
-            onDelete={(r) => { deleteRoom(r.id); refetch(); }}
-            onView={setDetailRoom}
-            onBulkDelete={handleBulkDelete}
-          />
-        ) : (
-          <FlatMobileList
-            meterGroups={filteredMeterGroups}
-            rooms={rooms}
-            tenants={tenants}
-            onAdd={() => setIsAddFlatModalOpen(true)}
-            onEdit={handleEditFlat}
-            onDelete={(f) => { deleteMeterGroup(f.id); }}
-            onView={setDetailFlat}
-            onManageElectricity={(f) => { setElectricityFlat(f); }}
-            onBulkDelete={handleBulkFlatDelete}
-          />
-        )}
-      </div>
 
       {/* Room Detail Panel */}
       <RoomDetailPanel
@@ -1011,6 +1048,23 @@ export const RoomsPage = () => {
         onEdit={handleEditClick}
         onDelete={(r) => { setRoomToDelete(r); }}
         canEdit={['admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '')}
+      />
+
+      {/* Quick Allocate Tenant Modal */}
+      <QuickAllocateModal
+        room={allocateRoomModal?.room || null}
+        bedNumber={allocateRoomModal?.bedNumber}
+        isOpen={!!allocateRoomModal}
+        onClose={() => setAllocateRoomModal(null)}
+        onSuccess={refetch}
+      />
+
+      {/* Switch Room Modal */}
+      <SwitchRoomModal
+        isOpen={!!switchRoomTenant}
+        onClose={() => setSwitchRoomTenant(null)}
+        tenant={switchRoomTenant}
+        onUpdate={refetch}
       />
 
       {/* Flat Detail Panel */}
@@ -1391,7 +1445,7 @@ export const RoomsPage = () => {
                       {tenants.filter(t => t.roomId === selectedRoom.id && t.status === 'active').map(tenant => (
                         <div key={tenant.id} className="p-4 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/5 flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-indigo-600 text-white rounded-xl flex items-center justify-center font-bold">
+                            <div className="w-10 h-10 text-white rounded-xl flex items-center justify-center font-bold" style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}>
                               {tenant.name.charAt(0)}
                             </div>
                             <div>

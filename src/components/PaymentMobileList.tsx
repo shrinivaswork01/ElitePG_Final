@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../utils';
 import { format, parseISO } from 'date-fns';
+import { useApp } from '../context/AppContext';
 
 interface PaymentMobileListProps {
   payments: any[];
@@ -93,31 +94,34 @@ const PaymentMobileCard = memo(({
   const tenantName = payment.tenants?.name || 'Unknown Tenant';
   const roomNumber = payment.tenants?.rooms?.room_number ? `Room ${payment.tenants.rooms.room_number}` : 'No Room';
 
+  const { pgConfig } = useApp();
+
   return (
-    <div
+    <motion.div
       {...longPressProps}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileTap={{ scale: 0.98 }}
       className={cn(
-        "p-4 rounded-2xl border transition-all duration-200 select-none relative overflow-hidden active:scale-[0.98]",
+        "relative p-4 rounded-3xl border transition-all duration-300 mb-3 overflow-hidden",
         isSelected 
-          ? "bg-indigo-50/80 dark:bg-indigo-900/20 border-indigo-500 shadow-md" 
-          : "bg-white dark:bg-[#111111] border-gray-100 dark:border-white/5 shadow-sm"
+          ? "bg-indigo-50 border-indigo-200 dark:bg-indigo-500/10 dark:border-indigo-500/30 ring-2 ring-indigo-500/20" 
+          : "bg-white border-gray-100 dark:bg-[#111111] dark:border-white/5 shadow-sm"
       )}
     >
-      {/* Checkbox badge */}
-      {isSelectionMode && (
-        <div className="absolute top-3 right-3 z-10">
-          <div className={cn(
-            "w-5 h-5 rounded-full flex items-center justify-center border transition-all",
-            isSelected ? "bg-indigo-600 border-indigo-600 text-white" : "border-gray-300 dark:border-gray-600 bg-white dark:bg-[#181818]"
-          )}>
-            {isSelected && <CheckCircle2 className="w-3.5 h-3.5" />}
-          </div>
+      {/* Selection Indicator */}
+      {isSelected && (
+        <div className="absolute top-3 right-3 text-indigo-600">
+          <CheckCircle2 className="w-5 h-5 fill-indigo-100 dark:fill-indigo-900" />
         </div>
       )}
 
       {/* Main info header */}
       <div className="flex items-start gap-3 mb-3">
-        <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-sm shrink-0">
+        <div 
+          className="w-10 h-10 rounded-xl text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-xs"
+          style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
+        >
           {tenantName.charAt(0).toUpperCase()}
         </div>
         <div className="flex-1 min-w-0 pr-6">
@@ -158,7 +162,7 @@ const PaymentMobileCard = memo(({
           {payment.payment_date || payment.paymentDate ? format(parseISO(payment.payment_date || payment.paymentDate), 'dd MMM yyyy') : '—'}
         </span>
       </div>
-    </div>
+    </motion.div>
   );
 });
 

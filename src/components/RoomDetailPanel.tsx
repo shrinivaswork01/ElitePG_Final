@@ -125,7 +125,7 @@ export const RoomDetailPanel: React.FC<RoomDetailPanelProps> = ({
                     {roomTenants.map((t: Tenant) => (
                       <div key={t.id} className="flex items-center justify-between p-3 bg-white dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/5">
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs uppercase">
+                          <div className="w-8 h-8 rounded-lg text-white font-bold text-xs flex items-center justify-center shrink-0 uppercase" style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}>
                             {t.name.charAt(0)}
                           </div>
                           <div>
