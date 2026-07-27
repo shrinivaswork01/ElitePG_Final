@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { KYCData, KYCStatus } from '../types';
@@ -39,7 +39,7 @@ export const KYCPage = () => {
   const [rejectionReason, setRejectionReason] = useState('');
   const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
 
-  const allDisplayKYCs = React.useMemo(() => {
+  const allDisplayKYCs = useMemo(() => {
     const filteredKYCs = kycs.filter(k => {
       const tenant = tenants.find(t => t.id === k.tenantId);
       const employee = employees.find(e => e.id === k.employeeId);
@@ -105,11 +105,11 @@ export const KYCPage = () => {
     });
   }, [kycs, tenants, employees, searchTerm, filterStatus, personFilter]);
 
-  const allDisplayKYCIds = React.useMemo(() => {
+  const allDisplayKYCIds = useMemo(() => {
     return allDisplayKYCs.filter(k => k.documentUrl).map(k => k.id);
   }, [allDisplayKYCs]);
 
-  const isAllKYCSelected = React.useMemo(() => {
+  const isAllKYCSelected = useMemo(() => {
     return allDisplayKYCIds.length > 0 && allDisplayKYCIds.every(id => selectedDocs.includes(id));
   }, [allDisplayKYCIds, selectedDocs]);
 
