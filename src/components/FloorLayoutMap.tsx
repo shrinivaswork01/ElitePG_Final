@@ -22,6 +22,8 @@ import {
 import { Room, Tenant, MeterGroup } from '../types';
 import { cn } from '../utils';
 import { ModernSelect } from './ModernSelect';
+import { FilterChips } from './FilterChips';
+import { SearchFilterCard } from './SearchFilterCard';
 
 interface FloorLayoutMapProps {
   rooms: Room[];
@@ -178,21 +180,13 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
         </div>
       </div>
 
-      {/* Filter and Floor Selector */}
-      <div className="bg-white dark:bg-[#111111] p-4 rounded-2xl border border-gray-100 dark:border-white/5 shadow-sm space-y-3">
-        {/* Row 1: Search (Left) + Types Dropdown (Right) */}
-        <div className="flex flex-col sm:flex-row items-center gap-3 w-full">
-          <div className="relative flex-1 w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search room, flat, or occupant..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white outline-none"
-            />
-          </div>
-
+      {/* Unified Filter Card Component */}
+      <SearchFilterCard
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Search room, flat, or occupant..."
+        primaryColor={primaryColor}
+        rightElements={
           <div className="w-full sm:w-44 shrink-0">
             <ModernSelect
               value={typeFilter}
@@ -204,43 +198,26 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
               ]}
             />
           </div>
-        </div>
-
-        {/* Row 2: Floor Chips (Left) + Status Pills (Right) */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-2 border-t border-gray-100 dark:border-white/5">
-          {/* Floor selection tabs */}
-          <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto hide-scrollbar pb-1 sm:pb-0">
-            <button
-              onClick={() => setSelectedFloor('all')}
-              style={selectedFloor === 'all' ? { background: primaryColor } : undefined}
-              className={cn(
-                "px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer text-white shadow-md",
-                selectedFloor === 'all'
-                  ? "text-white shadow-md shadow-indigo-600/20"
-                  : "bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10"
-              )}
-            >
-              All Floors ({availableFloors.length})
-            </button>
-            {availableFloors.map(floorNum => (
-              <button
-                key={floorNum}
-                onClick={() => setSelectedFloor(floorNum)}
-                style={selectedFloor === floorNum ? { background: primaryColor } : undefined}
-                className={cn(
-                  "px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1.5",
-                  selectedFloor === floorNum
-                    ? "text-white shadow-md shadow-indigo-600/20"
-                    : "bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10"
-                )}
-              >
-                <Building2 className="w-3.5 h-3.5" />
-                <span>{floorNum === 0 ? 'Ground Floor' : `Floor ${floorNum}`}</span>
-              </button>
-            ))}
+        }
+      >
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <FilterChips
+              items={[
+                { id: 'all', label: `All Floors (${availableFloors.length})` },
+                ...availableFloors.map(f => ({
+                  id: String(f),
+                  label: f === 0 ? 'Ground Floor' : `Floor ${f}`,
+                  icon: <Building2 className="w-3.5 h-3.5" />
+                }))
+              ]}
+              activeId={String(selectedFloor)}
+              onChange={(id) => setSelectedFloor(id === 'all' ? 'all' : Number(id))}
+              primaryColor={primaryColor}
+              size="sm"
+            />
           </div>
 
-          {/* Status pills */}
           <div className="flex bg-gray-100 dark:bg-white/5 p-1 rounded-xl shrink-0">
             <button
               onClick={() => setStatusFilter('all')}
@@ -263,7 +240,7 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
             </button>
           </div>
         </div>
-      </div>
+      </SearchFilterCard>
 
       {/* Floors & Rooms Visual Map View */}
       {Object.keys(roomsByFloor).length === 0 ? (

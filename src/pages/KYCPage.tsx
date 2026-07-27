@@ -19,6 +19,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../utils';
+import { FilterChips } from '../components/FilterChips';
+import { SearchFilterCard } from '../components/SearchFilterCard';
 import { Navigate } from 'react-router-dom';
 
 import { exportKYCToExcel } from '../utils/exportUtils';
@@ -250,52 +252,34 @@ export const KYCPage = () => {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-[#111111] p-4 rounded-2xl border border-gray-100 dark:border-white/5 shadow-sm flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search by tenant name..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+      <SearchFilterCard
+        searchValue={searchTerm}
+        onSearchChange={setSearchTerm}
+        searchPlaceholder="Search by tenant or employee name..."
+        primaryColor={themeGradient}
+        rightElements={
+          <FilterChips
+            items={[
+              { id: 'all', label: 'All Roles' },
+              { id: 'tenant', label: 'Tenants' },
+              { id: 'employee', label: 'Employees' }
+            ]}
+            activeId={personFilter}
+            onChange={(id) => setPersonFilter(id as any)}
+            primaryColor={themeGradient}
+            size="sm"
           />
-        </div>
-        <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0 border-r border-gray-100 dark:border-white/5 pr-4 mr-4">
-          {(['all', 'tenant', 'employee'] as const).map((type) => (
-            <button
-              key={type}
-              onClick={() => setPersonFilter(type)}
-              className={cn(
-                "px-4 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all",
-                personFilter === type
-                  ? "text-white shadow-lg shadow-indigo-600/20"
-                  : "bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10"
-              )}
-              style={personFilter === type ? { background: themeGradient } : undefined}
-            >
-              {type === 'all' ? 'All Roles' : type.charAt(0).toUpperCase() + type.slice(1) + 's'}
-            </button>
-          ))}
-        </div>
-        <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0">
-          {['all', 'pending', 'verified', 'rejected'].map((status) => (
-            <button
-              key={status}
-              onClick={() => setFilterStatus(status as any)}
-              className={cn(
-                "px-4 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all",
-                filterStatus === status
-                  ? "text-white shadow-lg shadow-indigo-600/20"
-                  : "bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10"
-              )}
-              style={filterStatus === status ? { background: themeGradient } : undefined}
-            >
-              {status?.charAt(0).toUpperCase() + status?.slice(1)}
-            </button>
-          ))}
-        </div>
-      </div>
+        }
+        chips={[
+          { id: 'all', label: 'All Status' },
+          { id: 'pending', label: 'Pending' },
+          { id: 'verified', label: 'Verified' },
+          { id: 'rejected', label: 'Rejected' }
+        ]}
+        activeChipId={filterStatus}
+        onChipChange={(id) => setFilterStatus(id as any)}
+        chipSize="sm"
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {allDisplayKYCs.map((kyc) => {

@@ -42,6 +42,8 @@ import { DataGrid, ColumnDef } from '../components/DataGrid';
 import { DropdownMenu, DropdownItem } from '../components/DropdownMenu';
 import { PaymentDetailPanel } from '../components/PaymentDetailPanel';
 import { PaymentMobileList } from '../components/PaymentMobileList';
+import { FilterChips } from '../components/FilterChips';
+import { SearchFilterCard } from '../components/SearchFilterCard';
 import { cn } from '../utils';
 import { DocumentViewerModal } from '../components/DocumentViewerModal';
 import { ConfirmationModal } from '../components/ConfirmationModal';
@@ -1580,30 +1582,20 @@ export const PaymentsPage = () => {
         <div className="mb-4 w-full">
           {/* Desktop Filter Bar (Tabs on left, Dropdowns on right) */}
           <div className="hidden sm:flex items-center gap-3 w-full">
-            {/* Payment Type Filter Tabs */}
-            <div className="flex items-center gap-2 overflow-x-auto scrollbar-none pb-1 flex-nowrap flex-1 min-w-0">
-              {[
-                { id: 'all', label: 'All Payments', icon: <HistoryIcon className="w-4 h-4" /> },
-                { id: 'rent', label: 'Rent Only', icon: <CreditCard className="w-4 h-4" /> },
-                { id: 'electricity', label: 'Electricity Only', icon: <Zap className="w-4 h-4" /> },
-                { id: 'token', label: 'Tokens', icon: <Ticket className="w-4 h-4" /> },
-                { id: 'deposit', label: 'Deposits', icon: <Shield className="w-4 h-4" /> }
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setFilterType(tab.id as any)}
-                  className={cn(
-                    "flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all border whitespace-nowrap flex-shrink-0",
-                    filterType === tab.id
-                      ? "text-white border-transparent shadow-lg shadow-indigo-600/20"
-                      : "bg-white dark:bg-white/5 text-gray-500 dark:text-gray-400 border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/10"
-                  )}
-                  style={filterType === tab.id ? { background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' } : undefined}
-                >
-                  {tab.icon}
-                  {tab.label}
-                </button>
-              ))}
+            {/* Payment Type Filter Chips */}
+            <div className="flex-1 min-w-0">
+              <FilterChips
+                items={[
+                  { id: 'all', label: 'All Payments', icon: <CreditCard className="w-4 h-4" /> },
+                  { id: 'rent', label: 'Rent Only', icon: <Home className="w-4 h-4" /> },
+                  { id: 'electricity', label: 'Electricity Only', icon: <Zap className="w-4 h-4" /> },
+                  { id: 'token', label: 'Tokens', icon: <Ticket className="w-4 h-4" /> },
+                  { id: 'deposit', label: 'Deposits', icon: <Shield className="w-4 h-4" /> }
+                ]}
+                activeId={filterType}
+                onChange={(id) => setFilterType(id as any)}
+                primaryColor={pgConfig?.primaryColor}
+              />
             </div>
 
             {/* Status + Month Dropdowns */}
@@ -1667,37 +1659,18 @@ export const PaymentsPage = () => {
         </div>
       )}
 
-      <div className="bg-white dark:bg-[#111111] p-4 rounded-2xl border border-gray-100 dark:border-white/5 shadow-sm flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search payments..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-          />
-        </div>
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <button 
-            onClick={() => {
-              const el = document.getElementById('mobile-filter-container');
-              if (el) el.scrollIntoView({ behavior: 'smooth' });
-            }}
-            className="p-2.5 bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors shrink-0 sm:hidden"
-          >
-            <Filter className="w-5 h-5" />
-          </button>
-          <button
-            onClick={handleDownload}
-            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 text-white rounded-2xl text-sm font-black transition-all shadow-lg shadow-indigo-600/20 active:scale-95 hover:opacity-90 shrink-0"
-            style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
-          >
-            <FileSpreadsheet className="w-4 h-4" />
-            <span className="whitespace-nowrap">Export Excel</span>
-          </button>
-        </div>
-      </div>
+      <SearchFilterCard
+        searchValue={searchTerm}
+        onSearchChange={setSearchTerm}
+        searchPlaceholder="Search payments..."
+        onExportExcel={handleDownload}
+        primaryColor={pgConfig?.primaryColor}
+        showMobileFilterButton={true}
+        onMobileFilterClick={() => {
+          const el = document.getElementById('mobile-filter-container');
+          if (el) el.scrollIntoView({ behavior: 'smooth' });
+        }}
+      />
 
 
       <div className="hidden lg:block">

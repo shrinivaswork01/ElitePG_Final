@@ -22,6 +22,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../utils';
+import { FilterChips } from '../components/FilterChips';
+import { SearchFilterCard } from '../components/SearchFilterCard';
 import toast from 'react-hot-toast';
 import { ModernSelect } from '../components/ModernSelect';
 import { ImageUpload } from '../components/ImageUpload';
@@ -179,46 +181,21 @@ export const ComplaintsPage = () => {
         )}
       </div>
 
-      <div className="bg-white dark:bg-[#111111] p-4 rounded-2xl border border-gray-100 dark:border-white/5 shadow-sm flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search complaints..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-          />
-        </div>
-      </div>
-
-      <div className="flex gap-2 overflow-x-auto pb-2">
-        <div className="flex gap-2 flex-1">
-          {['all', 'open', 'assigned', 'resolved'].map((status) => (
-            <button
-              key={status}
-              onClick={() => setFilterStatus(status as any)}
-              className={cn(
-                "px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-all",
-                filterStatus === status
-                  ? "text-white shadow-lg"
-                  : "bg-white dark:bg-[#111111] text-gray-500 dark:text-gray-400 border border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5"
-              )}
-              style={filterStatus === status ? { background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` } : {}}
-            >
-              {status?.charAt(0).toUpperCase() + status?.slice(1)}
-            </button>
-          ))}
-        </div>
-        <button
-          onClick={handleDownload}
-          className="flex items-center gap-2 px-6 py-2.5 text-white rounded-2xl text-sm font-black transition-all shadow-lg shadow-indigo-600/20 active:scale-95 hover:opacity-90 shrink-0"
-          style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
-        >
-          <FileSpreadsheet className="w-4 h-4" />
-          Export Excel
-        </button>
-      </div>
+      <SearchFilterCard
+        searchValue={searchTerm}
+        onSearchChange={setSearchTerm}
+        searchPlaceholder="Search complaints..."
+        onExportExcel={handleDownload}
+        primaryColor={pgConfig?.primaryColor}
+        chips={[
+          { id: 'all', label: 'All Complaints' },
+          { id: 'open', label: 'Open' },
+          { id: 'assigned', label: 'Assigned' },
+          { id: 'resolved', label: 'Resolved' }
+        ]}
+        activeChipId={filterStatus}
+        onChipChange={(id) => setFilterStatus(id as any)}
+      />
 
       <div className="grid grid-cols-1 gap-4">
         {filteredComplaints.map((complaint) => {
