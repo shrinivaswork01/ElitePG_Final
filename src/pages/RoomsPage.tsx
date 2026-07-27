@@ -800,6 +800,15 @@ export const RoomsPage = () => {
           tenants={tenants}
           meterGroups={meterGroups}
           primaryColor={pgConfig?.primaryColor}
+          onExportExcel={() => {
+            try {
+              exportRoomsToExcel(roomsToExport, tenants, branches, meterGroups, currentBranch);
+              toast.success('Rooms Export Generated Successfully');
+            } catch (err) {
+              console.error(err);
+              toast.error('Failed to generate export');
+            }
+          }}
           onSelectRoom={(room) => setDetailRoom(room)}
           onSelectTenant={(tenant) => {
             const activeBranchId = currentBranch?.id || user?.branchId;

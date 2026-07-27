@@ -34,6 +34,7 @@ interface FloorLayoutMapProps {
   onSelectTenant?: (tenant: Tenant) => void;
   onAssignTenant?: (room: Room, bedNumber?: number) => void;
   onSwitchRoom?: (tenant: Tenant) => void;
+  onExportExcel?: () => void;
 }
 
 export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
@@ -44,7 +45,8 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
   onSelectRoom,
   onSelectTenant,
   onAssignTenant,
-  onSwitchRoom
+  onSwitchRoom,
+  onExportExcel
 }) => {
   const [selectedFloor, setSelectedFloor] = useState<number | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'available' | 'occupied'>('all');
@@ -186,6 +188,7 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
         onSearchChange={setSearchQuery}
         searchPlaceholder="Search room, flat, or occupant..."
         primaryColor={primaryColor}
+        onExportExcel={onExportExcel}
         chips={[
           { id: 'all', label: `All Floors (${availableFloors.length})` },
           ...availableFloors.map(f => ({
