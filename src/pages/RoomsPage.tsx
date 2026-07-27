@@ -714,14 +714,14 @@ export const RoomsPage = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pl-12 sm:pl-0">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Rooms</h2>
-          <p className="text-gray-500 dark:text-gray-400">Configure and monitor all room and flat allocations.</p>
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Configure and monitor all room and flat allocations.</p>
         </div>
       </div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-6 overflow-x-auto pb-1 hide-scrollbar">
+        <div className="flex items-center gap-4 sm:gap-6 overflow-x-auto pb-1 scrollbar-none w-full sm:w-auto">
           <button 
             onClick={() => setActiveTab('visual-map')}
             className={cn(
@@ -729,8 +729,8 @@ export const RoomsPage = () => {
               activeTab === 'visual-map' ? "text-indigo-600 dark:text-indigo-400" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
             )}
           >
-            <span className="text-lg sm:text-xl font-bold tracking-tight flex items-center gap-2">
-              <LayoutGrid className={cn("w-5 h-5", activeTab === 'visual-map' ? "text-indigo-600" : "text-gray-400")} />
+            <span className="text-sm sm:text-lg font-bold tracking-tight flex items-center gap-2 whitespace-nowrap">
+              <LayoutGrid className={cn("w-4 h-4 sm:w-5 sm:h-5", activeTab === 'visual-map' ? "text-indigo-600" : "text-gray-400")} />
               Interactive Bed Map
             </span>
             {activeTab === 'visual-map' && (
@@ -744,8 +744,8 @@ export const RoomsPage = () => {
               activeTab === 'flats' ? "text-violet-600 dark:text-violet-400" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
             )}
           >
-            <span className="text-lg sm:text-xl font-bold tracking-tight flex items-center gap-2">
-              <Layers className={cn("w-5 h-5", activeTab === 'flats' ? "text-violet-600" : "text-gray-400")} />
+            <span className="text-sm sm:text-lg font-bold tracking-tight flex items-center gap-2 whitespace-nowrap">
+              <Layers className={cn("w-4 h-4 sm:w-5 sm:h-5", activeTab === 'flats' ? "text-violet-600" : "text-gray-400")} />
               Flats / Groups
             </span>
             {activeTab === 'flats' && (
@@ -759,8 +759,8 @@ export const RoomsPage = () => {
               activeTab === 'rooms' ? "text-indigo-600 dark:text-indigo-400" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
             )}
           >
-            <span className="text-lg sm:text-xl font-bold tracking-tight flex items-center gap-2">
-              <DoorOpen className={cn("w-5 h-5", activeTab === 'rooms' ? "text-indigo-600" : "text-gray-400")} />
+            <span className="text-sm sm:text-lg font-bold tracking-tight flex items-center gap-2 whitespace-nowrap">
+              <DoorOpen className={cn("w-4 h-4 sm:w-5 sm:h-5", activeTab === 'rooms' ? "text-indigo-600" : "text-gray-400")} />
               Rooms List
             </span>
             {activeTab === 'rooms' && (
@@ -768,7 +768,7 @@ export const RoomsPage = () => {
             )}
           </button>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="grid grid-cols-2 sm:flex items-center gap-3 w-full sm:w-auto">
           {['admin', 'manager', 'super'].includes(user?.role || '') && (
             <button
               onClick={() => {
@@ -776,20 +776,20 @@ export const RoomsPage = () => {
                 setFlatFormData({ name: '', floor: 1 });
                 setIsAddFlatModalOpen(true);
               }}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-200 border border-gray-100 dark:border-white/5 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all shadow-sm"
+              className="flex items-center justify-center gap-2 px-4 h-11 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-200 border border-gray-100 dark:border-white/5 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all shadow-sm whitespace-nowrap"
             >
-              <Layers className="w-5 h-5 text-violet-500" />
-              Add Flat
+              <Layers className="w-4 h-4 text-violet-500 shrink-0" />
+              <span>Add Flat</span>
             </button>
           )}
           {!isAtLimit && ['admin', 'manager', 'super'].includes(user?.role || '') && (
             <button
               onClick={() => setIsAddModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
+              className="flex items-center justify-center gap-2 px-4 h-11 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 transition-all active:scale-95 hover:opacity-90 whitespace-nowrap"
               style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
             >
-              <Plus className="w-5 h-5" />
-              Add Room
+              <Plus className="w-4 h-4 shrink-0" />
+              <span>Add Room</span>
             </button>
           )}
         </div>
@@ -800,6 +800,28 @@ export const RoomsPage = () => {
           tenants={tenants}
           meterGroups={meterGroups}
           primaryColor={pgConfig?.primaryColor}
+          selectedRoomIds={selectedRoomIds}
+          onToggleSelectRoom={(id) => {
+            setSelectedRoomIds(prev => 
+              prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+            );
+          }}
+          onSelectAllRooms={(ids) => setSelectedRoomIds(ids)}
+          onClearSelection={() => setSelectedRoomIds([])}
+          onBulkDeleteRooms={(ids) => {
+            handleBulkDelete(ids);
+            setSelectedRoomIds([]);
+          }}
+          onExportSelectedRooms={(ids) => {
+            try {
+              const selectedRoomsList = rooms.filter(r => ids.includes(r.id));
+              exportRoomsToExcel(selectedRoomsList, tenants, branches, meterGroups, currentBranch);
+              toast.success(`${selectedRoomsList.length} Selected Rooms Exported Successfully`);
+            } catch (err) {
+              console.error(err);
+              toast.error('Failed to generate export');
+            }
+          }}
           onExportExcel={() => {
             try {
               exportRoomsToExcel(roomsToExport, tenants, branches, meterGroups, currentBranch);
@@ -919,13 +941,29 @@ export const RoomsPage = () => {
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => {
+                            try {
+                              const selectedRoomsList = rooms.filter(r => selectedRoomIds.includes(r.id));
+                              exportRoomsToExcel(selectedRoomsList, tenants, branches, meterGroups, currentBranch);
+                              toast.success(`${selectedRoomsList.length} Selected Rooms Exported Successfully`);
+                            } catch (err) {
+                              console.error(err);
+                              toast.error('Failed to generate export');
+                            }
+                          }}
+                          className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-indigo-700 active:scale-95 transition-all cursor-pointer"
+                        >
+                          <FileSpreadsheet className="w-3.5 h-3.5" />
+                          <span>Export Selected</span>
+                        </button>
+                        <button
+                          onClick={() => {
                             handleBulkDelete(selectedRoomIds);
                             setSelectedRoomIds([]);
                           }}
-                          className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-rose-700 active:scale-95 transition-all"
+                          className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-rose-700 active:scale-95 transition-all cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
-                          Delete Selected
+                          <span>Delete Selected</span>
                         </button>
                       </div>
                     </motion.div>
@@ -971,13 +1009,29 @@ export const RoomsPage = () => {
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => {
+                            try {
+                              const selectedFlatsList = meterGroups.filter(m => selectedFlatIds.includes(m.id));
+                              exportFlatsToExcel(selectedFlatsList, rooms, tenants, currentBranch);
+                              toast.success(`${selectedFlatsList.length} Selected Flats Exported Successfully`);
+                            } catch (err) {
+                              console.error(err);
+                              toast.error('Failed to generate export');
+                            }
+                          }}
+                          className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-indigo-700 active:scale-95 transition-all cursor-pointer"
+                        >
+                          <FileSpreadsheet className="w-3.5 h-3.5" />
+                          <span>Export Selected</span>
+                        </button>
+                        <button
+                          onClick={() => {
                             handleBulkFlatDelete(selectedFlatIds);
                             setSelectedFlatIds([]);
                           }}
-                          className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-rose-700 active:scale-95 transition-all"
+                          className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-rose-700 active:scale-95 transition-all cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
-                          Delete Selected
+                          <span>Delete Selected</span>
                         </button>
                       </div>
                     </motion.div>
@@ -1212,8 +1266,13 @@ export const RoomsPage = () => {
                       <input
                         required
                         type="number"
-                        value={formData.totalBeds}
-                        onChange={(e) => setFormData({ ...formData, totalBeds: Number(e.target.value) })}
+                        min="1"
+                        value={formData.totalBeds === 0 ? '' : formData.totalBeds}
+                        onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFormData({ ...formData, totalBeds: val === '' ? 0 : Math.max(1, parseInt(val) || 1) });
+                        }}
                         className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white transition-all"
                       />
                     </div>
@@ -1244,8 +1303,13 @@ export const RoomsPage = () => {
                     <input
                       required
                       type="number"
-                      value={formData.price}
-                      onChange={(e) => setFormData({ ...formData, price: Number(e.target.value) })}
+                      min="0"
+                      value={formData.price === 0 ? '' : formData.price}
+                      onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFormData({ ...formData, price: val === '' ? 0 : Math.max(0, parseFloat(val) || 0) });
+                      }}
                       className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white transition-all"
                     />
                   </div>

@@ -752,10 +752,10 @@ export const TenantsPage = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pl-12 sm:pl-0">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Tenants</h2>
-          <p className="text-gray-500 dark:text-gray-400">Manage your residents and their details.</p>
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Manage your residents and their details.</p>
         </div>
         {['super', 'admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '') && (
           <button
@@ -769,13 +769,13 @@ export const TenantsPage = () => {
               setIsAddModalOpen(true);
             }}
             className={cn(
-              "flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all",
+              "flex items-center justify-center gap-2 px-4 sm:px-5 h-11 text-white rounded-xl text-xs sm:text-sm font-bold shadow-lg shadow-indigo-600/20 transition-all active:scale-95 hover:opacity-90 w-full sm:w-auto whitespace-nowrap",
               isAtLimit && "opacity-50 cursor-not-allowed"
             )}
             style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
           >
-            <Plus className="w-5 h-5" />
-            Add Tenant
+            <Plus className="w-4 h-4 shrink-0" />
+            <span>Add Tenant</span>
           </button>
         )}
       </div>
@@ -820,20 +820,16 @@ export const TenantsPage = () => {
         onExportExcel={handleDownload}
         primaryColor={pgConfig?.primaryColor}
         showMobileFilterButton={true}
-        rightElements={
-          <ModernSelect
-            value={filterStatus}
-            onChange={(val) => setFilterStatus(val as any)}
-            options={[
-              { value: "all", label: "All Status" },
-              { value: "active", label: "Active" },
-              { value: "vacating", label: "Vacating" },
-              { value: "vacated", label: "Vacated" },
-              { value: "blacklisted", label: "Blacklisted" }
-            ]}
-            className="flex-1 sm:w-44 sm:flex-initial"
-          />
-        }
+        chips={[
+          { id: 'all', label: 'All Status' },
+          { id: 'active', label: 'Active' },
+          { id: 'vacating', label: 'Vacating' },
+          { id: 'vacated', label: 'Vacated' },
+          { id: 'blacklisted', label: 'Blacklisted' }
+        ]}
+        activeChipId={filterStatus}
+        onChipChange={(id) => setFilterStatus(id as any)}
+        chipSize="sm"
       />
 
       <div className="hidden md:block">
@@ -1211,8 +1207,13 @@ export const TenantsPage = () => {
                     <input
                       required
                       type="number"
-                      value={formData.depositAmount}
-                      onChange={(e) => setFormData({ ...formData, depositAmount: Number(e.target.value) })}
+                      min="0"
+                      value={formData.depositAmount === 0 ? '' : formData.depositAmount}
+                      onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFormData({ ...formData, depositAmount: val === '' ? 0 : Math.max(0, parseFloat(val) || 0) });
+                      }}
                       className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                     />
                   </div>
@@ -1234,8 +1235,13 @@ export const TenantsPage = () => {
                         <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Token Amount (₹)</label>
                         <input
                           type="number"
-                          value={formData.tokenAmount || 0}
-                          onChange={(e) => setFormData({ ...formData, tokenAmount: Number(e.target.value) })}
+                          min="0"
+                          value={!formData.tokenAmount ? '' : formData.tokenAmount}
+                          onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setFormData({ ...formData, tokenAmount: val === '' ? 0 : Math.max(0, parseFloat(val) || 0) });
+                          }}
                           className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                         />
                       </div>
@@ -1372,8 +1378,13 @@ export const TenantsPage = () => {
                     <input
                       required
                       type="number"
-                      value={formData.rentAmount}
-                      onChange={(e) => setFormData({ ...formData, rentAmount: Number(e.target.value) })}
+                      min="0"
+                      value={formData.rentAmount === 0 ? '' : formData.rentAmount}
+                      onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFormData({ ...formData, rentAmount: val === '' ? 0 : Math.max(0, parseFloat(val) || 0) });
+                      }}
                       className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                     />
                   </div>
@@ -2013,9 +2024,14 @@ export const TenantsPage = () => {
                     <div className="flex gap-2">
                       <input
                         type="number"
+                        min="0"
                         placeholder="Amount"
                         value={newDeductionAmount}
-                        onChange={(e) => setNewDeductionAmount(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setNewDeductionAmount(val === '' ? '' : Math.max(0, parseFloat(val) || 0).toString());
+                        }}
                         className="px-3 py-2 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-xl text-xs text-gray-900 dark:text-white placeholder-gray-450 focus:ring-1 focus:ring-indigo-500 w-full"
                       />
                       <button

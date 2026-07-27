@@ -245,8 +245,13 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
                       <span className="text-xs font-bold text-gray-500">₹</span>
                       <input
                         type="number"
-                        value={customRent}
-                        onChange={(e) => setCustomRent(Number(e.target.value))}
+                        min="0"
+                        value={customRent === 0 ? '' : customRent}
+                        onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setCustomRent(val === '' ? 0 : Math.max(0, parseFloat(val) || 0));
+                        }}
                         className="bg-transparent border-none p-0 focus:ring-0 text-sm font-bold text-gray-900 dark:text-white flex-1"
                         placeholder="Enter rent amount..."
                       />

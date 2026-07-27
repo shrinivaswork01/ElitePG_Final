@@ -762,3 +762,42 @@ export const exportSingleTenantToExcel = async (
   saveAs(blob, `ElitePG_Tenant_${tenant.name.replace(/\s+/g, '_')}_Data.xlsx`);
 };
 
+export const exportEmployeesToExcel = async (
+  employees: Employee[],
+  branch?: PGBranch
+) => {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'ElitePG';
+
+  const sheet = workbook.addWorksheet('Employees');
+  sheet.columns = [
+    { header: 'Employee Name', key: 'name', width: 25 },
+    { header: 'Role', key: 'role', width: 18 },
+    { header: 'Email', key: 'email', width: 25 },
+    { header: 'Phone', key: 'phone', width: 18 },
+    { header: 'Monthly Salary (₹)', key: 'salary', width: 20 },
+    { header: 'KYC Status', key: 'kycStatus', width: 15 },
+    { header: 'Joining Date', key: 'joiningDate', width: 18 },
+  ];
+
+  employees.forEach(emp => {
+    sheet.addRow({
+      name: emp.name,
+      role: emp.role ? emp.role.toUpperCase() : 'NO ROLE',
+      email: emp.email || 'N/A',
+      phone: emp.phone || 'N/A',
+      salary: emp.salary || 0,
+      kycStatus: (emp.kycStatus || 'UNSUBMITTED').toUpperCase(),
+      joiningDate: emp.joiningDate || 'N/A',
+    });
+  });
+
+  applyHeaderStyle(sheet, 7);
+  sheet.getColumn('salary').numFmt = '"₹"#,##0.00';
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const fileType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8';
+  const blob = new Blob([buffer], { type: fileType });
+  saveAs(blob, `ElitePG_${branch ? branch.branchName.replace(/\s+/g, '_') : 'All'}_Employees_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
+};
+

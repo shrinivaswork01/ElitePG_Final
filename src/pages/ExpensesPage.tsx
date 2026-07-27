@@ -375,20 +375,20 @@ export const ExpensesPage = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pl-12 sm:pl-0">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Expenses</h2>
-          <p className="text-gray-500 dark:text-gray-400">Manage expenditures for {currentBranch?.branchName || 'your branch'}.</p>
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Manage expenditures for {currentBranch?.branchName || 'your branch'}.</p>
         </div>
         
         {isAdmin && (
           <button
             onClick={handleOpenAdd}
             style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
-            className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
+            className="flex items-center justify-center gap-2 px-4 sm:px-5 h-11 text-white rounded-xl text-xs sm:text-sm font-bold shadow-lg shadow-indigo-600/20 transition-all active:scale-95 hover:opacity-90 w-full sm:w-auto whitespace-nowrap"
           >
-            <Plus className="w-5 h-5" />
-            Add Expense
+            <Plus className="w-4 h-4 shrink-0" />
+            <span>Add Expense</span>
           </button>
         )}
       </div>
@@ -447,16 +447,16 @@ export const ExpensesPage = () => {
               value={filterCategory}
               onChange={(val) => setFilterCategory(val as any)}
               options={[
-                { value: "all", label: "Categories" },
-                ...CATEGORIES.map(c => ({ value: c, label: c.toUpperCase() }))
+                { value: "all", label: "All Categories" },
+                ...CATEGORIES.map(c => ({ value: c, label: c.charAt(0).toUpperCase() + c.slice(1) }))
               ]}
-              className="w-full sm:w-40 font-bold uppercase tracking-wider"
+              className="w-full sm:w-40 font-bold text-xs sm:text-sm"
             />
             <input
               type="month"
               value={filterMonth}
               onChange={(e) => setFilterMonth(e.target.value)}
-              className="w-full sm:w-auto px-4 py-2.5 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none [color-scheme:light] dark:[color-scheme:dark] text-gray-900 dark:text-white"
+              className="w-full sm:w-auto px-4 py-2.5 h-11 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl text-xs sm:text-sm font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none [color-scheme:light] dark:[color-scheme:dark] text-gray-900 dark:text-white"
             />
           </>
         }
@@ -674,8 +674,13 @@ export const ExpensesPage = () => {
                       type="number"
                       required
                       min="0"
-                      value={formData.amount}
-                      onChange={e => setFormData({ ...formData, amount: e.target.value })}
+                      value={formData.amount === 0 ? '' : formData.amount}
+                      onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                      onChange={e => {
+                        const val = e.target.value;
+                        const num = val === '' ? 0 : Math.max(0, parseFloat(val) || 0);
+                        setFormData({ ...formData, amount: num as any });
+                      }}
                       className="w-full px-5 py-4 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-2xl text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500"
                       placeholder="0.00"
                     />

@@ -108,6 +108,22 @@ export const KYCPage = () => {
     return true;
   });
 
+  const allDisplayKYCIds = React.useMemo(() => {
+    return allDisplayKYCs.filter(k => k.documentUrl).map(k => k.id);
+  }, [allDisplayKYCs]);
+
+  const isAllKYCSelected = React.useMemo(() => {
+    return allDisplayKYCIds.length > 0 && allDisplayKYCIds.every(id => selectedDocs.includes(id));
+  }, [allDisplayKYCIds, selectedDocs]);
+
+  const handleToggleSelectAllKYC = () => {
+    if (isAllKYCSelected) {
+      setSelectedDocs([]);
+    } else {
+      setSelectedDocs(allDisplayKYCIds);
+    }
+  };
+
   const handleApprove = (id: string) => {
     let personId = '';
     let isTenant = false;
@@ -219,18 +235,19 @@ export const KYCPage = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pl-12 sm:pl-0">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">KYC Verification</h2>
-          <p className="text-gray-500 dark:text-gray-400">Review and verify resident identity documents.</p>
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Review and verify resident identity documents.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           {selectedDocs.length > 0 && (
             <button
               onClick={handleDownloadSelected}
-              className="flex items-center gap-2 px-4 py-2.5 bg-gray-900 dark:bg-gray-800 text-white rounded-xl shadow-lg hover:bg-gray-800 transition-all font-bold text-sm"
+              className="flex items-center justify-center gap-2 px-4 sm:px-5 h-11 bg-gray-900 dark:bg-gray-800 text-white rounded-xl shadow-lg hover:bg-gray-800 transition-all font-bold text-xs sm:text-sm w-full sm:w-auto whitespace-nowrap"
             >
-              <ExternalLink className="w-4 h-4" /> Download Selected ({selectedDocs.length})
+              <ExternalLink className="w-4 h-4 shrink-0" />
+              <span>Download Selected ({selectedDocs.length})</span>
             </button>
           )}
         </div>
@@ -250,7 +267,38 @@ export const KYCPage = () => {
             toast.error('Failed to generate export');
           }
         }}
-        rightElements={
+        chips={[
+          { id: 'all', label: 'All Status' },
+          { id: 'pending', label: 'Pending' },
+          { id: 'verified', label: 'Verified' },
+          { id: 'rejected', label: 'Rejected' }
+        ]}
+        activeChipId={filterStatus}
+        onChipChange={(id) => setFilterStatus(id as any)}
+        chipSize="sm"
+      >
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 w-full sm:w-auto">
+          {allDisplayKYCIds.length > 0 && (
+            <button
+              type="button"
+              onClick={handleToggleSelectAllKYC}
+              className={cn(
+                "flex items-center justify-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer shrink-0 w-full sm:w-auto",
+                isAllKYCSelected
+                  ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                  : "bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/10"
+              )}
+            >
+              <input
+                type="checkbox"
+                checked={isAllKYCSelected}
+                onChange={() => {}}
+                className="w-3.5 h-3.5 rounded border-gray-300 dark:border-white/20 text-indigo-600 focus:ring-indigo-500 cursor-pointer pointer-events-none"
+              />
+              <span>{isAllKYCSelected ? "Deselect All" : "Select All"}</span>
+            </button>
+          )}
+
           <FilterChips
             items={[
               { id: 'all', label: 'All Roles' },
@@ -262,17 +310,41 @@ export const KYCPage = () => {
             primaryColor={themeGradient}
             size="sm"
           />
-        }
-        chips={[
-          { id: 'all', label: 'All Status' },
-          { id: 'pending', label: 'Pending' },
-          { id: 'verified', label: 'Verified' },
-          { id: 'rejected', label: 'Rejected' }
-        ]}
-        activeChipId={filterStatus}
-        onChipChange={(id) => setFilterStatus(id as any)}
-        chipSize="sm"
-      />
+        </div>
+      </SearchFilterCard>
+
+      {/* Multi-Selection Bar */}
+      <AnimatePresence>
+        {selectedDocs.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="bg-indigo-50/50 dark:bg-indigo-500/5 border border-indigo-100 dark:border-indigo-500/20 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-sm"
+          >
+            <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
+              <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">
+                {selectedDocs.length} documents selected
+              </span>
+              <button
+                onClick={() => setSelectedDocs([])}
+                className="text-xs text-gray-500 hover:text-indigo-600 dark:text-gray-400 font-bold cursor-pointer"
+              >
+                Clear selection
+              </button>
+            </div>
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto justify-end">
+              <button
+                onClick={handleDownloadSelected}
+                className="flex items-center justify-center gap-1.5 px-4 h-11 bg-gray-900 dark:bg-gray-800 text-white rounded-xl text-xs font-bold shadow-md hover:bg-gray-800 active:scale-95 transition-all w-full sm:w-auto cursor-pointer"
+              >
+                <Download className="w-4 h-4 shrink-0" />
+                <span>Download Selected ({selectedDocs.length})</span>
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {allDisplayKYCs.map((kyc) => {

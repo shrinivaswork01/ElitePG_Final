@@ -39,6 +39,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { EmployeeMobileList } from '../components/EmployeeMobileList';
+import { SearchFilterCard } from '../components/SearchFilterCard';
+import { exportEmployeesToExcel } from '../utils/exportUtils';
 import { cn } from '../utils';
 import toast from 'react-hot-toast';
 
@@ -79,6 +81,7 @@ export const EmployeesPage = () => {
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [roleFilter, setRoleFilter] = useState<string>('all');
   const [salarySearchTerm, setSalarySearchTerm] = useState('');
   const [kycToReject, setKycToReject] = useState<string | null>(null);
   const [salarySortColumn, setSalarySortColumn] = useState<string | null>(null);
@@ -364,10 +367,13 @@ export const EmployeesPage = () => {
     const matchesSearch = (e.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (e.role || '').toLowerCase().includes(searchTerm.toLowerCase());
 
-    if (user?.role === 'admin') return matchesSearch;
+    const empRole = (e.role || 'none').toLowerCase();
+    const matchesRole = roleFilter === 'all' || empRole === roleFilter.toLowerCase();
+
+    if (user?.role === 'admin') return matchesSearch && matchesRole;
 
     // Staff see only themselves
-    return matchesSearch && (e.userId === user?.id || e.email === user?.email);
+    return matchesSearch && matchesRole && (e.userId === user?.id || e.email === user?.email);
   });
 
   const sortedSalaries = useMemo(() => {
@@ -436,10 +442,10 @@ export const EmployeesPage = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pl-12 sm:pl-0">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Employees</h2>
-          <p className="text-gray-500 dark:text-gray-400">Manage your staff and payroll.</p>
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Manage your staff and payroll.</p>
         </div>
         {(user?.role === 'admin' || user?.role === 'super') && (
           <>
@@ -469,14 +475,14 @@ export const EmployeesPage = () => {
                 <>
                   <button
                     onClick={() => setIsRolesModalOpen(true)}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all"
+                    className="flex items-center gap-2 px-4 h-11 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all"
                   >
                     <Shield className="w-5 h-5 text-indigo-500" />
                     Manage Roles
                   </button>
                   <button
                     onClick={() => setIsVisibilityModalOpen(true)}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all"
+                    className="flex items-center gap-2 px-4 h-11 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all"
                   >
                     <UserCog className="w-5 h-5 text-amber-500" />
                     Role Visibility
@@ -486,7 +492,7 @@ export const EmployeesPage = () => {
               {checkFeatureAccess('tasks') && (
                 <button
                   onClick={() => setIsTaskModalOpen(true)}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all"
+                  className="flex items-center gap-2 px-4 h-11 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all"
                 >
                   <ClipboardList className="w-5 h-5 text-indigo-500" />
                   Add Task
@@ -495,7 +501,7 @@ export const EmployeesPage = () => {
               
               <button
                 onClick={() => (activeTab === 'admins' && user?.role === 'super') ? setIsUserModalOpen(true) : setIsAddModalOpen(true)}
-                className="flex items-center gap-2 px-4 py-2.5 text-white rounded-xl font-semibold shadow-lg transition-all"
+                className="flex items-center gap-2 px-5 h-11 text-white rounded-xl font-semibold shadow-lg transition-all active:scale-95 hover:opacity-90"
                 style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
               >
                 <Plus className="w-5 h-5" />
@@ -518,21 +524,32 @@ export const EmployeesPage = () => {
 
       {activeTab === 'list' ? (
         <>
-          <div className="bg-white dark:bg-[#111111] p-4 rounded-2xl border border-gray-100 dark:border-white/5 shadow-sm flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search employees..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-              />
-            </div>
-            <button className="p-2.5 bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors w-fit">
-              <Filter className="w-5 h-5" />
-            </button>
-          </div>
+          <SearchFilterCard
+            searchValue={searchTerm}
+            onSearchChange={setSearchTerm}
+            searchPlaceholder="Search employees..."
+            primaryColor={pgConfig?.primaryColor}
+            onExportExcel={() => {
+              try {
+                exportEmployeesToExcel(filteredEmployees, currentBranch);
+                toast.success('Employees Export Generated Successfully');
+              } catch (err) {
+                console.error(err);
+                toast.error('Failed to generate export');
+              }
+            }}
+            chips={[
+              { id: 'all', label: 'All Roles' },
+              { id: 'manager', label: 'Manager' },
+              { id: 'caretaker', label: 'Caretaker' },
+              { id: 'cleaner', label: 'Cleaner' },
+              { id: 'security', label: 'Security' },
+              { id: 'none', label: 'No Role' }
+            ]}
+            activeChipId={roleFilter}
+            onChipChange={(id) => setRoleFilter(id)}
+            chipSize="sm"
+          />
 
           <div className="hidden md:grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredEmployees.map((employee) => (
@@ -1012,8 +1029,13 @@ export const EmployeesPage = () => {
                     <input
                       required
                       type="number"
-                      value={formData.salary}
-                      onChange={(e) => setFormData({ ...formData, salary: Number(e.target.value) })}
+                      min="0"
+                      value={formData.salary === 0 ? '' : formData.salary}
+                      onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFormData({ ...formData, salary: val === '' ? 0 : Math.max(0, parseFloat(val) || 0) });
+                      }}
                       className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                     />
                   </div>
@@ -1494,8 +1516,13 @@ export const EmployeesPage = () => {
                     <input
                       required
                       type="number"
-                      value={salaryFormData.amount}
-                      onChange={(e) => setSalaryFormData({ ...salaryFormData, amount: Number(e.target.value) })}
+                      min="0"
+                      value={salaryFormData.amount === 0 ? '' : salaryFormData.amount}
+                      onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSalaryFormData({ ...salaryFormData, amount: val === '' ? 0 : Math.max(0, parseFloat(val) || 0) });
+                      }}
                       className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                     />
                   </div>

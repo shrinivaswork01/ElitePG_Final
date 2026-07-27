@@ -1357,15 +1357,15 @@ export const PaymentsPage = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pl-12 sm:pl-0">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">{isTenant || user?.role === 'receptionist' || user?.role === 'caretaker' ? 'My Payments' : 'Payments'}</h2>
-          <p className="text-gray-500 dark:text-gray-400">
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
             {isTenant ? 'Manage your rent payments and view history.' : 'Track revenue, invoices, and late fees.'}
           </p>
         </div>
         {isTenant ? (
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 w-full sm:w-auto">
             <ModernSelect
               value={filterMonth}
               onChange={(val) => setFilterMonth(val)}
@@ -1373,27 +1373,27 @@ export const PaymentsPage = () => {
                 { value: "all", label: "All Months" },
                 ...monthOptions
               ]}
-              className="w-40 font-bold"
+              className="w-full sm:w-40 font-bold"
             />
           </div>
         ) : (
-          <div className="flex gap-3">
+          <div className="grid grid-cols-2 sm:flex items-center gap-2.5 sm:gap-3 w-full sm:w-auto">
             {isAdmin && (
               <button
                 onClick={() => setIsPoliciesModalOpen(true)}
-                className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-200 border border-gray-100 dark:border-white/5 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all shadow-sm"
+                className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 h-11 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-200 border border-gray-100 dark:border-white/5 rounded-xl text-xs sm:text-sm font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all shadow-sm whitespace-nowrap"
               >
-                <Settings className="w-5 h-5 text-gray-500" />
-                Payment Policies
+                <Settings className="w-4 h-4 text-gray-500 shrink-0" />
+                <span>Policies</span>
               </button>
             )}
             <button
               onClick={() => setIsAddModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
+              className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-5 h-11 text-white rounded-xl text-xs sm:text-sm font-semibold shadow-lg shadow-indigo-600/20 transition-all active:scale-95 hover:opacity-90 whitespace-nowrap"
               style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
             >
-              <Plus className="w-5 h-5" />
-              Record Payment
+              <Plus className="w-4 h-4 shrink-0" />
+              <span>Record Payment</span>
             </button>
           </div>
         )}
@@ -1520,144 +1520,63 @@ export const PaymentsPage = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white dark:bg-[#111111] p-6 rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-2xl">
-              <TrendingUp className="w-6 h-6" />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
+        <div className="bg-white dark:bg-[#111111] p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="p-2.5 sm:p-3 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl sm:rounded-2xl shrink-0">
+              <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
                 {isTenant 
                   ? (filterMonth === 'all' ? 'Total Paid to Date' : `Paid in ${monthOptions.find(m => m.value === filterMonth)?.label?.split(' ')[0] || 'Selected Month'}`)
                   : filterMonth === 'all' 
                     ? 'Rent Revenue (All Time)' 
                     : `Rent Revenue (${monthOptions.find(m => m.value === filterMonth)?.label?.split(' ')[0] || 'This Month'})`}
               </p>
-              <h3 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">₹{totalRevenue.toLocaleString()}</h3>
+              <h3 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white tracking-tight truncate">₹{totalRevenue.toLocaleString()}</h3>
             </div>
           </div>
         </div>
-        <div className="bg-white dark:bg-[#111111] p-6 rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-2xl">
-              <CheckCircle2 className="w-6 h-6" />
+        <div className="bg-white dark:bg-[#111111] p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="p-2.5 sm:p-3 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-xl sm:rounded-2xl shrink-0">
+              <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
                 {isTenant 
                   ? (filterMonth === 'all' ? 'Payments (All Time)' : `Payments (${monthOptions.find(m => m.value === filterMonth)?.label?.split(' ')[0] || 'Selected Month'})`)
                   : filterMonth === 'all' 
                     ? 'Paid (All Time)' 
                     : `Paid in ${monthOptions.find(m => m.value === filterMonth)?.label?.split(' ')[0] || 'This Month'}`}
               </p>
-              <h3 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
+              <h3 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white tracking-tight truncate">
                 {isTenant ? myPaymentsThisMonth.length : paidThisMonthCount} Payments
               </h3>
             </div>
           </div>
         </div>
-        <div className="bg-white dark:bg-[#111111] p-6 rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-2xl">
-              <Clock className="w-6 h-6" />
+        <div className="bg-white dark:bg-[#111111] p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="p-2.5 sm:p-3 bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-xl sm:rounded-2xl shrink-0">
+              <Clock className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
                 {isTenant 
                   ? (filterMonth === 'all' ? 'Pending Dues' : `Pending Dues (${monthOptions.find(m => m.value === filterMonth)?.label?.split(' ')[0] || 'Selected Month'})`)
                   : filterMonth === 'all' 
                     ? 'Pending Dues (Current Month)' 
                     : `Pending Dues (${monthOptions.find(m => m.value === filterMonth)?.label?.split(' ')[0] || 'This Month'})`}
               </p>
-              <h3 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
+              <h3 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white tracking-tight truncate">
                 {isTenant ? myPendingDuesCount : pendingTenantsCount} {isTenant ? 'Dues' : 'Tenants'}
               </h3>
             </div>
           </div>
         </div>
       </div>
-
-      {!isTenant && (
-        <div className="mb-4 w-full">
-          {/* Desktop Filter Bar (Tabs on left, Dropdowns on right) */}
-          <div className="hidden sm:flex items-center gap-3 w-full">
-            {/* Payment Type Filter Chips */}
-            <div className="flex-1 min-w-0">
-              <FilterChips
-                items={[
-                  { id: 'all', label: 'All Payments', icon: <CreditCard className="w-4 h-4" /> },
-                  { id: 'rent', label: 'Rent Only', icon: <Home className="w-4 h-4" /> },
-                  { id: 'electricity', label: 'Electricity Only', icon: <Zap className="w-4 h-4" /> },
-                  { id: 'token', label: 'Tokens', icon: <Ticket className="w-4 h-4" /> },
-                  { id: 'deposit', label: 'Deposits', icon: <Shield className="w-4 h-4" /> }
-                ]}
-                activeId={filterType}
-                onChange={(id) => setFilterType(id as any)}
-                primaryColor={pgConfig?.primaryColor}
-              />
-            </div>
-
-            {/* Status + Month Dropdowns */}
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <ModernSelect
-                value={filterStatus}
-                onChange={(val) => setFilterStatus(val as any)}
-                options={[
-                  { value: "all", label: "All Status" },
-                  { value: "paid", label: "Paid" },
-                  { value: "pending", label: "Pending" }
-                ]}
-                className="w-36 font-bold"
-              />
-              <ModernSelect
-                value={filterMonth}
-                onChange={(val) => setFilterMonth(val)}
-                options={[
-                  { value: "all", label: "All Months" },
-                  ...monthOptions
-                ]}
-                className="w-40 font-bold"
-              />
-            </div>
-          </div>
-
-          {/* Mobile Filter Bar (3 Clean Dropdowns, No Scrolling Required) */}
-          <div className="grid grid-cols-1 xs:grid-cols-3 sm:hidden gap-2 w-full">
-            <ModernSelect
-              value={filterType}
-              onChange={(val) => setFilterType(val as any)}
-              options={[
-                { value: "all", label: "All Payments" },
-                { value: "rent", label: "Rent Only" },
-                { value: "electricity", label: "Electricity Only" },
-                { value: "token", label: "Tokens" },
-                { value: "deposit", label: "Deposits" }
-              ]}
-              className="w-full font-bold"
-            />
-            <ModernSelect
-              value={filterStatus}
-              onChange={(val) => setFilterStatus(val as any)}
-              options={[
-                { value: "all", label: "All Status" },
-                { value: "paid", label: "Paid" },
-                { value: "pending", label: "Pending" }
-              ]}
-              className="w-full font-bold"
-            />
-            <ModernSelect
-              value={filterMonth}
-              onChange={(val) => setFilterMonth(val)}
-              options={[
-                { value: "all", label: "All Months" },
-                ...monthOptions
-              ]}
-              className="w-full font-bold"
-            />
-          </div>
-        </div>
-      )}
 
       <SearchFilterCard
         searchValue={searchTerm}
@@ -1670,6 +1589,38 @@ export const PaymentsPage = () => {
           const el = document.getElementById('mobile-filter-container');
           if (el) el.scrollIntoView({ behavior: 'smooth' });
         }}
+        rightElements={
+          <div className="hidden sm:flex items-center gap-2">
+            <ModernSelect
+              value={filterStatus}
+              onChange={(val) => setFilterStatus(val as any)}
+              options={[
+                { value: "all", label: "All Status" },
+                { value: "paid", label: "Paid" },
+                { value: "pending", label: "Pending" }
+              ]}
+              className="w-36 font-bold"
+            />
+            <ModernSelect
+              value={filterMonth}
+              onChange={(val) => setFilterMonth(val)}
+              options={[
+                { value: "all", label: "All Months" },
+                ...monthOptions
+              ]}
+              className="w-40 font-bold"
+            />
+          </div>
+        }
+        chips={!isTenant ? [
+          { id: 'all', label: 'All Payments', icon: <CreditCard className="w-4 h-4" /> },
+          { id: 'rent', label: 'Rent Only', icon: <Home className="w-4 h-4" /> },
+          { id: 'electricity', label: 'Electricity Only', icon: <Zap className="w-4 h-4" /> },
+          { id: 'token', label: 'Tokens', icon: <Ticket className="w-4 h-4" /> },
+          { id: 'deposit', label: 'Deposits', icon: <Shield className="w-4 h-4" /> }
+        ] : undefined}
+        activeChipId={filterType}
+        onChipChange={(id) => setFilterType(id as any)}
       />
 
 
@@ -2296,10 +2247,13 @@ export const PaymentsPage = () => {
                       <input
                         required
                         type="number"
-                        value={newPayment.amount}
+                        min="0"
+                        value={newPayment.amount === 0 ? '' : newPayment.amount}
+                        onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
                         onChange={(e) => {
-                          const val = Number(e.target.value);
-                          setNewPayment({ ...newPayment, amount: val, totalAmount: val + (newPayment.lateFee || 0) });
+                          const val = e.target.value;
+                          const num = val === '' ? 0 : Math.max(0, parseFloat(val) || 0);
+                          setNewPayment({ ...newPayment, amount: num, totalAmount: num + (newPayment.lateFee || 0) });
                         }}
                         readOnly={newPayment.paymentType === 'rent'}
                         className={cn(
@@ -2592,8 +2546,13 @@ export const PaymentsPage = () => {
                       <input
                         required
                         type="number"
-                        value={paymentToEdit.amount}
-                        onChange={(e) => setPaymentToEdit({ ...paymentToEdit, amount: Number(e.target.value) })}
+                        min="0"
+                        value={paymentToEdit.amount === 0 ? '' : paymentToEdit.amount}
+                        onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setPaymentToEdit({ ...paymentToEdit, amount: val === '' ? 0 : Math.max(0, parseFloat(val) || 0) });
+                        }}
                         className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                       />
                     </div>
@@ -2602,8 +2561,13 @@ export const PaymentsPage = () => {
                       <input
                         required
                         type="number"
-                        value={paymentToEdit.lateFee}
-                        onChange={(e) => setPaymentToEdit({ ...paymentToEdit, lateFee: Number(e.target.value) })}
+                        min="0"
+                        value={paymentToEdit.lateFee === 0 ? '' : paymentToEdit.lateFee}
+                        onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setPaymentToEdit({ ...paymentToEdit, lateFee: val === '' ? 0 : Math.max(0, parseFloat(val) || 0) });
+                        }}
                         className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                       />
                     </div>

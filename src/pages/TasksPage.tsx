@@ -144,24 +144,24 @@ export const TasksPage = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pl-12 sm:pl-0">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
             {isAdminOrManager ? 'Task Management' : 'My Tasks'}
           </h2>
-          <p className="text-gray-500 dark:text-gray-400">
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
             {isAdminOrManager ? 'Assign and track staff tasks.' : 'View and manage your assigned tasks.'}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 w-full sm:w-auto">
           {isAdminOrManager && (
             <button
               onClick={() => setIsModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"
+              className="flex items-center justify-center gap-2 px-4 sm:px-5 h-11 text-white rounded-xl text-xs sm:text-sm font-bold shadow-lg shadow-indigo-600/20 transition-all active:scale-95 hover:opacity-90 w-full sm:w-auto whitespace-nowrap"
               style={{ background: pgConfig?.primaryColor }}
             >
-              <Plus className="w-5 h-5" />
-              Assign Task
+              <Plus className="w-4 h-4 shrink-0" />
+              <span>Assign Task</span>
             </button>
           )}
         </div>

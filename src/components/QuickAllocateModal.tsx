@@ -361,8 +361,13 @@ export const QuickAllocateModal: React.FC<QuickAllocateModalProps> = ({
                   <input
                     type="number"
                     required
-                    value={newTenantForm.rentAmount}
-                    onChange={(e) => setNewTenantForm({ ...newTenantForm, rentAmount: e.target.value })}
+                    min="0"
+                    value={newTenantForm.rentAmount === '' || newTenantForm.rentAmount === '0' ? '' : newTenantForm.rentAmount}
+                    onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setNewTenantForm({ ...newTenantForm, rentAmount: val === '' ? '' : Math.max(0, parseFloat(val) || 0).toString() });
+                    }}
                     className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-xl text-xs font-semibold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/20"
                   />
                 </div>

@@ -443,8 +443,13 @@ export const ElectricityBillModal: React.FC<ElectricityBillModalProps> = ({
                   <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Total Bill Amount (₹)</label>
                   <input
                     type="number"
+                    min="0"
                     value={totalAmount}
-                    onChange={(e) => setTotalAmount(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setTotalAmount(val === '' ? '' : Math.max(0, parseFloat(val) || 0).toString());
+                    }}
                     placeholder="e.g. 2000"
                     className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                   />
@@ -453,8 +458,13 @@ export const ElectricityBillModal: React.FC<ElectricityBillModalProps> = ({
                   <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Total Units (Meter)</label>
                   <input
                     type="number"
+                    min="0"
                     value={totalUnits}
-                    onChange={(e) => setTotalUnits(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setTotalUnits(val === '' ? '' : Math.max(0, parseFloat(val) || 0).toString());
+                    }}
                     placeholder="e.g. 200"
                     className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
                   />
@@ -526,8 +536,13 @@ export const ElectricityBillModal: React.FC<ElectricityBillModalProps> = ({
                               <label className="text-[10px] font-bold text-gray-400 uppercase">Previous</label>
                               <input
                                 type="number"
+                                min="0"
                                 value={reading.previousReading}
-                                onChange={(e) => updateAcReading(idx, 'previousReading', e.target.value)}
+                                onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  updateAcReading(idx, 'previousReading', val === '' ? '' : Math.max(0, parseFloat(val) || 0).toString());
+                                }}
                                 className="w-full px-3 py-2 bg-white dark:bg-white/5 rounded-lg text-sm font-semibold text-gray-900 dark:text-white border border-gray-100 dark:border-white/5 focus:ring-2 focus:ring-indigo-500/20"
                               />
                             </div>
@@ -535,8 +550,13 @@ export const ElectricityBillModal: React.FC<ElectricityBillModalProps> = ({
                               <label className="text-[10px] font-bold text-gray-400 uppercase">Current</label>
                               <input
                                 type="number"
+                                min="0"
                                 value={reading.currentReading}
-                                onChange={(e) => updateAcReading(idx, 'currentReading', e.target.value)}
+                                onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  updateAcReading(idx, 'currentReading', val === '' ? '' : Math.max(0, parseFloat(val) || 0).toString());
+                                }}
                                 placeholder="Enter"
                                 className="w-full px-3 py-2 bg-white dark:bg-white/5 rounded-lg text-sm font-semibold text-gray-900 dark:text-white border border-gray-100 dark:border-white/5 focus:ring-2 focus:ring-indigo-500/20"
                               />

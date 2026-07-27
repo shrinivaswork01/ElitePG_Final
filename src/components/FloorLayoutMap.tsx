@@ -17,7 +17,9 @@ import {
   Phone,
   Calendar,
   IndianRupee,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Trash2,
+  FileSpreadsheet
 } from 'lucide-react';
 import { Room, Tenant, MeterGroup } from '../types';
 import { cn } from '../utils';
@@ -35,6 +37,12 @@ interface FloorLayoutMapProps {
   onAssignTenant?: (room: Room, bedNumber?: number) => void;
   onSwitchRoom?: (tenant: Tenant) => void;
   onExportExcel?: () => void;
+  selectedRoomIds?: string[];
+  onToggleSelectRoom?: (roomId: string) => void;
+  onSelectAllRooms?: (roomIds: string[]) => void;
+  onClearSelection?: () => void;
+  onBulkDeleteRooms?: (roomIds: string[]) => void;
+  onExportSelectedRooms?: (roomIds: string[]) => void;
 }
 
 export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
@@ -46,7 +54,13 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
   onSelectTenant,
   onAssignTenant,
   onSwitchRoom,
-  onExportExcel
+  onExportExcel,
+  selectedRoomIds = [],
+  onToggleSelectRoom,
+  onSelectAllRooms,
+  onClearSelection,
+  onBulkDeleteRooms,
+  onExportSelectedRooms
 }) => {
   const [selectedFloor, setSelectedFloor] = useState<number | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'available' | 'occupied'>('all');
@@ -133,51 +147,67 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
     return grouped;
   }, [rooms, tenants, selectedFloor, statusFilter, typeFilter, searchQuery]);
 
+  const allVisibleRoomIds = useMemo(() => {
+    return Object.values(roomsByFloor).flat().map(r => r.id);
+  }, [roomsByFloor]);
+
+  const isAllSelected = useMemo(() => {
+    return allVisibleRoomIds.length > 0 && allVisibleRoomIds.every(id => selectedRoomIds.includes(id));
+  }, [allVisibleRoomIds, selectedRoomIds]);
+
+  const handleToggleSelectAll = () => {
+    if (isAllSelected) {
+      onClearSelection?.();
+    } else {
+      onSelectAllRooms?.(allVisibleRoomIds);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Interactive Metric Summary Bar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {/* Total Beds */}
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#111111] border border-gray-100 dark:border-white/5 shadow-sm flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold shrink-0">
-            <Users className="w-5 h-5" />
+        <div className="p-3 sm:p-4 rounded-2xl bg-white dark:bg-[#111111] border border-gray-100 dark:border-white/5 shadow-sm flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold shrink-0">
+            <Users className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
-          <div>
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Total Capacity</p>
-            <p className="text-lg font-black text-gray-900 dark:text-white">{metrics.totalBeds} Beds ({metrics.totalRooms} Rooms)</p>
+          <div className="min-w-0 flex-1">
+            <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase tracking-wider truncate">Total Capacity</p>
+            <p className="text-xs sm:text-base font-black text-gray-900 dark:text-white truncate">{metrics.totalBeds} Beds ({metrics.totalRooms} Rms)</p>
           </div>
         </div>
 
         {/* Vacant / Available Beds */}
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#111111] border border-gray-100 dark:border-white/5 shadow-sm flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold shrink-0">
-            <CheckCircle2 className="w-5 h-5" />
+        <div className="p-3 sm:p-4 rounded-2xl bg-white dark:bg-[#111111] border border-gray-100 dark:border-white/5 shadow-sm flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold shrink-0">
+            <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
-          <div>
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Vacant Beds</p>
-            <p className="text-lg font-black text-emerald-600 dark:text-emerald-400">{metrics.vacantBeds} Available</p>
+          <div className="min-w-0 flex-1">
+            <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase tracking-wider truncate">Vacant Beds</p>
+            <p className="text-xs sm:text-base font-black text-emerald-600 dark:text-emerald-400 truncate">{metrics.vacantBeds} Available</p>
           </div>
         </div>
 
         {/* Occupied Beds */}
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#111111] border border-gray-100 dark:border-white/5 shadow-sm flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold shrink-0">
-            <User className="w-5 h-5" />
+        <div className="p-3 sm:p-4 rounded-2xl bg-white dark:bg-[#111111] border border-gray-100 dark:border-white/5 shadow-sm flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold shrink-0">
+            <User className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
-          <div>
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Occupied Beds</p>
-            <p className="text-lg font-black text-amber-600 dark:text-amber-400">{metrics.occupiedBeds} Filled ({metrics.occupancyRate}%)</p>
+          <div className="min-w-0 flex-1">
+            <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase tracking-wider truncate">Occupied Beds</p>
+            <p className="text-xs sm:text-base font-black text-amber-600 dark:text-amber-400 truncate">{metrics.occupiedBeds} Filled ({metrics.occupancyRate}%)</p>
           </div>
         </div>
 
         {/* AC vs Non-AC */}
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#111111] border border-gray-100 dark:border-white/5 shadow-sm flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center font-bold shrink-0">
-            <Wind className="w-5 h-5" />
+        <div className="p-3 sm:p-4 rounded-2xl bg-white dark:bg-[#111111] border border-gray-100 dark:border-white/5 shadow-sm flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center font-bold shrink-0">
+            <Wind className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
-          <div>
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">AC / Non-AC</p>
-            <p className="text-lg font-black text-purple-600 dark:text-purple-400">{metrics.acCount} AC • {metrics.nonAcCount} Non-AC</p>
+          <div className="min-w-0 flex-1">
+            <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase tracking-wider truncate">AC / Non-AC</p>
+            <p className="text-xs sm:text-base font-black text-purple-600 dark:text-purple-400 truncate">{metrics.acCount} AC • {metrics.nonAcCount} Non-AC</p>
           </div>
         </div>
       </div>
@@ -201,46 +231,112 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
         onChipChange={(id) => setSelectedFloor(id === 'all' ? 'all' : Number(id))}
         chipSize="sm"
         rightElements={
-          <>
-            <div className="flex bg-gray-100 dark:bg-white/5 p-1 rounded-xl shrink-0">
-              <button
-                type="button"
-                onClick={() => setStatusFilter('all')}
-                className={cn("px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer", statusFilter === 'all' ? "bg-white dark:bg-[#1f1f1f] text-gray-900 dark:text-white shadow-xs" : "text-gray-500")}
-              >
-                All
-              </button>
-              <button
-                type="button"
-                onClick={() => setStatusFilter('available')}
-                className={cn("px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1", statusFilter === 'available' ? "bg-emerald-500 text-white shadow-xs" : "text-emerald-600 dark:text-emerald-400")}
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
-                Vacant
-              </button>
-              <button
-                type="button"
-                onClick={() => setStatusFilter('occupied')}
-                className={cn("px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1", statusFilter === 'occupied' ? "bg-amber-500 text-white shadow-xs" : "text-amber-600 dark:text-amber-400")}
-              >
-                Full
-              </button>
-            </div>
-
-            <div className="w-36 shrink-0">
-              <ModernSelect
-                value={typeFilter}
-                onChange={(val) => setTypeFilter(val as any)}
-                options={[
-                  { value: 'all', label: 'All Types' },
-                  { value: 'AC', label: 'AC Rooms' },
-                  { value: 'Non-AC', label: 'Non-AC Rooms' }
-                ]}
-              />
-            </div>
-          </>
+          <div className="w-36 shrink-0">
+            <ModernSelect
+              value={typeFilter}
+              onChange={(val) => setTypeFilter(val as any)}
+              options={[
+                { value: 'all', label: 'All Types' },
+                { value: 'AC', label: 'AC Rooms' },
+                { value: 'Non-AC', label: 'Non-AC Rooms' }
+              ]}
+            />
+          </div>
         }
-      />
+      >
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 w-full sm:w-auto">
+          {onSelectAllRooms && allVisibleRoomIds.length > 0 && (
+            <button
+              type="button"
+              onClick={handleToggleSelectAll}
+              className={cn(
+                "flex items-center justify-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer shrink-0 w-full sm:w-auto",
+                isAllSelected
+                  ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                  : "bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/10"
+              )}
+            >
+              <input
+                type="checkbox"
+                checked={isAllSelected}
+                onChange={() => {}}
+                className="w-3.5 h-3.5 rounded border-gray-300 dark:border-white/20 text-indigo-600 focus:ring-indigo-500 cursor-pointer pointer-events-none"
+              />
+              <span>{isAllSelected ? "Deselect All" : "Select All"}</span>
+            </button>
+          )}
+
+          <div className="flex items-center justify-between sm:justify-start flex-1 sm:flex-none w-full sm:w-auto bg-gray-100 dark:bg-white/5 p-1 rounded-xl shrink-0">
+            <button
+              type="button"
+              onClick={() => setStatusFilter('all')}
+              className={cn("flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer text-center", statusFilter === 'all' ? "bg-white dark:bg-[#1f1f1f] text-gray-900 dark:text-white shadow-xs" : "text-gray-500")}
+            >
+              All
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('available')}
+              className={cn("flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1", statusFilter === 'available' ? "bg-emerald-500 text-white shadow-xs" : "text-emerald-600 dark:text-emerald-400")}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse shrink-0" />
+              <span>Vacant</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('occupied')}
+              className={cn("flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1", statusFilter === 'occupied' ? "bg-amber-500 text-white shadow-xs" : "text-amber-600 dark:text-amber-400")}
+            >
+              <span>Full</span>
+            </button>
+          </div>
+        </div>
+      </SearchFilterCard>
+
+      {/* Multi-Selection Bar */}
+      <AnimatePresence>
+        {selectedRoomIds.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="bg-indigo-50/50 dark:bg-indigo-500/5 border border-indigo-100 dark:border-indigo-500/20 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-sm"
+          >
+            <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
+              <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">
+                {selectedRoomIds.length} rooms selected
+              </span>
+              <button
+                onClick={onClearSelection}
+                className="text-xs text-gray-500 hover:text-indigo-600 dark:text-gray-400 font-bold cursor-pointer"
+              >
+                Clear selection
+              </button>
+            </div>
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto justify-end">
+              {onExportSelectedRooms && (
+                <button
+                  onClick={() => onExportSelectedRooms(selectedRoomIds)}
+                  className="flex items-center justify-center gap-1.5 px-4 h-11 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-indigo-700 active:scale-95 transition-all w-full sm:w-auto cursor-pointer"
+                  style={{ background: primaryColor }}
+                >
+                  <FileSpreadsheet className="w-4 h-4 shrink-0" />
+                  <span>Export Selected ({selectedRoomIds.length})</span>
+                </button>
+              )}
+              {onBulkDeleteRooms && (
+                <button
+                  onClick={() => onBulkDeleteRooms(selectedRoomIds)}
+                  className="flex items-center justify-center gap-1.5 px-4 h-11 bg-rose-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-rose-700 active:scale-95 transition-all w-full sm:w-auto cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4 shrink-0" />
+                  <span>Delete Selected ({selectedRoomIds.length})</span>
+                </button>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Floors & Rooms Visual Map View */}
       {Object.keys(roomsByFloor).length === 0 ? (
@@ -278,6 +374,7 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
                   const isFull = vacantCount === 0;
 
                   const flat = meterGroups.find(m => m.id === (room.meterGroupId || (room as any).meter_group_id));
+                  const isSelected = selectedRoomIds.includes(room.id);
 
                   return (
                     <motion.div
@@ -286,17 +383,30 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
                       animate={{ opacity: 1, y: 0 }}
                       className={cn(
                         "bg-white dark:bg-[#111111] rounded-2xl border transition-all duration-200 p-4 shadow-sm hover:shadow-md relative overflow-hidden flex flex-col justify-between",
-                        isFull 
-                          ? "border-amber-200/60 dark:border-amber-500/20" 
-                          : vacantCount > 0 
-                            ? "border-emerald-200/60 dark:border-emerald-500/20" 
-                            : "border-gray-100 dark:border-white/5"
+                        isSelected
+                          ? "border-indigo-500 ring-2 ring-indigo-500/20 bg-indigo-50/10 dark:bg-indigo-500/5"
+                          : isFull 
+                            ? "border-amber-200/60 dark:border-amber-500/20" 
+                            : vacantCount > 0 
+                              ? "border-emerald-200/60 dark:border-emerald-500/20" 
+                              : "border-gray-100 dark:border-white/5"
                       )}
                     >
                       {/* Room Header Info */}
                       <div>
                         <div className="flex items-start justify-between gap-2 mb-3">
                           <div className="flex items-center gap-2">
+                            {onToggleSelectRoom && (
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(e) => {
+                                  e.stopPropagation();
+                                  onToggleSelectRoom(room.id);
+                                }}
+                                className="w-4 h-4 rounded border-gray-300 dark:border-white/10 text-indigo-600 focus:ring-indigo-500 cursor-pointer shrink-0"
+                              />
+                            )}
                             <button
                               onClick={() => onSelectRoom?.(room)}
                               className="font-black text-base text-gray-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center gap-1 cursor-pointer"

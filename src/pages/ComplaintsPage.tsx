@@ -155,30 +155,32 @@ export const ComplaintsPage = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pl-12 sm:pl-0">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Complaints</h2>
-          <p className="text-gray-500 dark:text-gray-400">Track and resolve resident issues.</p>
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Track and resolve resident issues.</p>
         </div>
-        {['admin', 'manager', 'tenant'].includes(user?.role || '') && (
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 text-white rounded-xl font-semibold shadow-lg transition-all"
-            style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
-          >
-            <Plus className="w-5 h-5" />
-            Raise Complaint
-          </button>
-        )}
-        {['admin', 'manager'].includes(user?.role || '') && (
-          <button
-            onClick={() => setIsCategoryModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white dark:hover:text-black focus:text-black transition-all"
-          >
-            <Edit2 className="w-5 h-5" />
-            Manage Categories
-          </button>
-        )}
+        <div className="grid grid-cols-2 sm:flex items-center gap-2.5 sm:gap-3 w-full sm:w-auto">
+          {['admin', 'manager', 'tenant'].includes(user?.role || '') && (
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-5 h-11 text-white rounded-xl text-xs sm:text-sm font-semibold shadow-lg transition-all active:scale-95 hover:opacity-90 whitespace-nowrap"
+              style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
+            >
+              <Plus className="w-4 h-4 shrink-0" />
+              <span>Raise Complaint</span>
+            </button>
+          )}
+          {['admin', 'manager'].includes(user?.role || '') && (
+            <button
+              onClick={() => setIsCategoryModalOpen(true)}
+              className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 h-11 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-xl text-xs sm:text-sm font-semibold hover:bg-gray-50 dark:hover:bg-white dark:hover:text-black focus:text-black transition-all whitespace-nowrap"
+            >
+              <Edit2 className="w-4 h-4 shrink-0" />
+              <span>Categories</span>
+            </button>
+          )}
+        </div>
       </div>
 
       <SearchFilterCard

@@ -901,10 +901,14 @@ export const PartnerPayoutsPage = () => {
                            <div className="flex items-center gap-2">
                               <input 
                                  type="number" 
-                                 value={item.ratio} 
+                                 min="0"
+                                 max="100"
+                                 value={item.ratio === 0 ? '' : item.ratio} 
+                                 onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
                                  onChange={e => {
+                                    const val = e.target.value;
                                     const newRatios = [...ratioFormData];
-                                    newRatios[idx].ratio = parseFloat(e.target.value) || 0;
+                                    newRatios[idx].ratio = val === '' ? 0 : Math.max(0, Math.min(100, parseFloat(val) || 0));
                                     setRatioFormData(newRatios);
                                  }}
                                  className="w-24 px-3 py-2 bg-white dark:bg-[#111111] border border-gray-200 dark:border-white/10 rounded-xl text-right font-black"
