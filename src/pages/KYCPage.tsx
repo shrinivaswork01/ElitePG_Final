@@ -32,9 +32,6 @@ export const KYCPage = () => {
   const themeGradient = pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)';
   const { user, authorizeUser } = useAuth();
 
-  if (user?.role === 'tenant') {
-    return <Navigate to="/" replace />;
-  }
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<KYCStatus | 'all'>('all');
   const [personFilter, setPersonFilter] = useState<'all' | 'tenant' | 'employee'>('all');
@@ -42,55 +39,8 @@ export const KYCPage = () => {
   const [rejectionReason, setRejectionReason] = useState('');
   const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
 
-  const filteredKYCs = kycs.filter(k => {
-    const tenant = tenants.find(t => t.id === k.tenantId);
-    const employee = employees.find(e => e.id === k.employeeId);
-    const person = tenant || employee;
-
-    const matchesSearch = searchTerm === '' || (
-      person?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      person?.email?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-    const matchesStatus = filterStatus === 'all' || k.status === filterStatus;
-    const matchesPersonType = personFilter === 'all' || 
-      (personFilter === 'tenant' && !!k.tenantId) || 
-      (personFilter === 'employee' && !!k.employeeId);
-    return matchesSearch && matchesStatus && matchesPersonType;
-  });
-
-  // Add "virtual" KYC records for tenants/employees who are pending but have no record in kycs
-  const pendingTenantsWithoutKYC = tenants.filter(t =>
-    t.kycStatus === 'pending' && !kycs.some(k => k.tenantId === t.id)
-  );
-  const pendingEmployeesWithoutKYC = employees.filter(e =>
-    e.kycStatus === 'pending' && !kycs.some(k => k.employeeId === e.id)
-  );
-
-  const allDisplayKYCs = ([
-    ...filteredKYCs,
-    ...pendingTenantsWithoutKYC.map(t => ({
-      id: `virtual-t-${t.id}`,
-      tenantId: t.id,
-      employeeId: undefined,
-      documentType: 'Unknown (Missing Record)',
-      documentUrl: '',
-      status: 'pending' as KYCStatus,
-      submittedAt: 'Unknown',
-      isVirtual: true
-    })),
-    ...pendingEmployeesWithoutKYC.map(e => ({
-      id: `virtual-e-${e.id}`,
-      tenantId: undefined,
-      employeeId: e.id,
-      documentType: 'Unknown (Missing Record)',
-      documentUrl: '',
-      status: 'pending' as KYCStatus,
-      submittedAt: 'Unknown',
-      isVirtual: true
-    }))
-  ] as (KYCData & { isVirtual?: boolean })[]).filter(k => {
-    // Re-apply filters to virtual records
-    if (k.id.startsWith('virtual-')) {
+  const allDisplayKYCs = React.useMemo(() => {
+    const filteredKYCs = kycs.filter(k => {
       const tenant = tenants.find(t => t.id === k.tenantId);
       const employee = employees.find(e => e.id === k.employeeId);
       const person = tenant || employee;
@@ -99,14 +49,61 @@ export const KYCPage = () => {
         person?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         person?.email?.toLowerCase().includes(searchTerm.toLowerCase())
       );
-      const matchesStatus = filterStatus === 'all' || filterStatus === 'pending';
+      const matchesStatus = filterStatus === 'all' || k.status === filterStatus;
       const matchesPersonType = personFilter === 'all' || 
         (personFilter === 'tenant' && !!k.tenantId) || 
         (personFilter === 'employee' && !!k.employeeId);
       return matchesSearch && matchesStatus && matchesPersonType;
-    }
-    return true;
-  });
+    });
+
+    const pendingTenantsWithoutKYC = tenants.filter(t =>
+      t.kycStatus === 'pending' && !kycs.some(k => k.tenantId === t.id)
+    );
+    const pendingEmployeesWithoutKYC = employees.filter(e =>
+      e.kycStatus === 'pending' && !kycs.some(k => k.employeeId === e.id)
+    );
+
+    return ([
+      ...filteredKYCs,
+      ...pendingTenantsWithoutKYC.map(t => ({
+        id: `virtual-t-${t.id}`,
+        tenantId: t.id,
+        employeeId: undefined,
+        documentType: 'Unknown (Missing Record)',
+        documentUrl: '',
+        status: 'pending' as KYCStatus,
+        submittedAt: 'Unknown',
+        isVirtual: true
+      })),
+      ...pendingEmployeesWithoutKYC.map(e => ({
+        id: `virtual-e-${e.id}`,
+        tenantId: undefined,
+        employeeId: e.id,
+        documentType: 'Unknown (Missing Record)',
+        documentUrl: '',
+        status: 'pending' as KYCStatus,
+        submittedAt: 'Unknown',
+        isVirtual: true
+      }))
+    ] as (KYCData & { isVirtual?: boolean })[]).filter(k => {
+      if (k.id.startsWith('virtual-')) {
+        const tenant = tenants.find(t => t.id === k.tenantId);
+        const employee = employees.find(e => e.id === k.employeeId);
+        const person = tenant || employee;
+
+        const matchesSearch = searchTerm === '' || (
+          person?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          person?.email?.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+        const matchesStatus = filterStatus === 'all' || filterStatus === 'pending';
+        const matchesPersonType = personFilter === 'all' || 
+          (personFilter === 'tenant' && !!k.tenantId) || 
+          (personFilter === 'employee' && !!k.employeeId);
+        return matchesSearch && matchesStatus && matchesPersonType;
+      }
+      return true;
+    });
+  }, [kycs, tenants, employees, searchTerm, filterStatus, personFilter]);
 
   const allDisplayKYCIds = React.useMemo(() => {
     return allDisplayKYCs.filter(k => k.documentUrl).map(k => k.id);
@@ -232,6 +229,10 @@ export const KYCPage = () => {
       toast.error("Failed to create zip file.", { id: "zip-toast" });
     }
   };
+
+  if (user?.role === 'tenant') {
+    return <Navigate to="/" replace />;
+  }
 
   return (
     <div className="space-y-6">
