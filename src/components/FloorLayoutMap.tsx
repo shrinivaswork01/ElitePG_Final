@@ -90,12 +90,16 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
   // Group rooms by floor
   const roomsByFloor = useMemo(() => {
     const filtered = rooms.filter(r => {
+      const q = searchQuery.trim().toLowerCase();
       const roomNum = (r.roomNumber || (r as any).room_number || '').toString().toLowerCase();
-      const matchesSearch = searchQuery ? roomNum.includes(searchQuery.toLowerCase()) : true;
+      const flatName = (r.flatName || (r as any).flat_name || '').toString().toLowerCase();
+      const activeTenants = tenants.filter(t => (t.roomId || (t as any).room_id) === r.id && t.status === 'active');
+      const tenantMatch = activeTenants.some(t => (t.name || '').toLowerCase().includes(q) || (t.phone || '').includes(q));
+
+      const matchesSearch = q ? (roomNum.includes(q) || flatName.includes(q) || tenantMatch) : true;
       const matchesFloor = selectedFloor === 'all' ? true : r.floor === selectedFloor;
       const matchesType = typeFilter === 'all' ? true : r.type === typeFilter;
       
-      const activeTenants = tenants.filter(t => (t.roomId || (t as any).room_id) === r.id && t.status === 'active');
       const beds = r.totalBeds || (r as any).total_beds || 0;
       const vacant = Math.max(0, beds - activeTenants.length);
 
@@ -175,10 +179,37 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
       </div>
 
       {/* Filter and Floor Selector */}
-      <div className="bg-white dark:bg-[#111111] p-4 rounded-2xl border border-gray-100 dark:border-white/5 shadow-sm space-y-4">
-        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+      <div className="bg-white dark:bg-[#111111] p-4 rounded-2xl border border-gray-100 dark:border-white/5 shadow-sm space-y-3">
+        {/* Row 1: Search (Left) + Types Dropdown (Right) */}
+        <div className="flex flex-col sm:flex-row items-center gap-3 w-full">
+          <div className="relative flex-1 w-full">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search room, flat, or occupant..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white outline-none"
+            />
+          </div>
+
+          <div className="w-full sm:w-44 shrink-0">
+            <ModernSelect
+              value={typeFilter}
+              onChange={(val) => setTypeFilter(val as any)}
+              options={[
+                { value: 'all', label: 'All Types' },
+                { value: 'AC', label: 'AC Rooms' },
+                { value: 'Non-AC', label: 'Non-AC Rooms' }
+              ]}
+            />
+          </div>
+        </div>
+
+        {/* Row 2: Floor Chips (Left) + Status Pills (Right) */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-2 border-t border-gray-100 dark:border-white/5">
           {/* Floor selection tabs */}
-          <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto hide-scrollbar pb-1 md:pb-0">
+          <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto hide-scrollbar pb-1 sm:pb-0">
             <button
               onClick={() => setSelectedFloor('all')}
               style={selectedFloor === 'all' ? { background: primaryColor } : undefined}
@@ -209,43 +240,27 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
             ))}
           </div>
 
-          {/* Quick status & search filters */}
-          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-            {/* Status pills */}
-            <div className="flex bg-gray-100 dark:bg-white/5 p-1 rounded-xl">
-              <button
-                onClick={() => setStatusFilter('all')}
-                className={cn("px-3 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer", statusFilter === 'all' ? "bg-white dark:bg-[#1f1f1f] text-gray-900 dark:text-white shadow-xs" : "text-gray-500")}
-              >
-                All
-              </button>
-              <button
-                onClick={() => setStatusFilter('available')}
-                className={cn("px-3 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1", statusFilter === 'available' ? "bg-emerald-500 text-white shadow-xs" : "text-emerald-600 dark:text-emerald-400")}
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
-                Vacant
-              </button>
-              <button
-                onClick={() => setStatusFilter('occupied')}
-                className={cn("px-3 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1", statusFilter === 'occupied' ? "bg-amber-500 text-white shadow-xs" : "text-amber-600 dark:text-amber-400")}
-              >
-                Full
-              </button>
-            </div>
-
-            {/* Type selector */}
-            <div className="w-36">
-              <ModernSelect
-                value={typeFilter}
-                onChange={(val) => setTypeFilter(val as any)}
-                options={[
-                  { value: 'all', label: 'All Types' },
-                  { value: 'AC', label: 'AC Rooms' },
-                  { value: 'Non-AC', label: 'Non-AC Rooms' }
-                ]}
-              />
-            </div>
+          {/* Status pills */}
+          <div className="flex bg-gray-100 dark:bg-white/5 p-1 rounded-xl shrink-0">
+            <button
+              onClick={() => setStatusFilter('all')}
+              className={cn("px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer", statusFilter === 'all' ? "bg-white dark:bg-[#1f1f1f] text-gray-900 dark:text-white shadow-xs" : "text-gray-500")}
+            >
+              All
+            </button>
+            <button
+              onClick={() => setStatusFilter('available')}
+              className={cn("px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1", statusFilter === 'available' ? "bg-emerald-500 text-white shadow-xs" : "text-emerald-600 dark:text-emerald-400")}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
+              Vacant
+            </button>
+            <button
+              onClick={() => setStatusFilter('occupied')}
+              className={cn("px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1", statusFilter === 'occupied' ? "bg-amber-500 text-white shadow-xs" : "text-amber-600 dark:text-amber-400")}
+            >
+              Full
+            </button>
           </div>
         </div>
       </div>

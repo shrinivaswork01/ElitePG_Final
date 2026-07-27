@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { Payment } from '../types';
 import { useAuth } from '../context/AuthContext';
@@ -33,8 +33,7 @@ import {
   Home,
   Shield,
   Ticket,
-  Activity,
-  Sparkles
+  Activity
 } from 'lucide-react';
 import { format, parseISO, differenceInDays, getDate, isAfter, subMonths } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
@@ -70,7 +69,6 @@ export const PaymentsPage = () => {
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [paymentToEdit, setPaymentToEdit] = useState<Payment | null>(null);
-  const [editCalculatedAmount, setEditCalculatedAmount] = useState<number | null>(null);
   const [receiptNotes, setReceiptNotes] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'paid' | 'pending'>('all');
@@ -229,7 +227,7 @@ export const PaymentsPage = () => {
       },
       cell: (p) => (
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl text-white font-bold flex items-center justify-center shrink-0 shadow-xs" style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}>
+          <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500 font-bold flex items-center justify-center shrink-0">
             {p.tenants?.name?.charAt(0) || '?'}
           </div>
           <div>
@@ -255,7 +253,7 @@ export const PaymentsPage = () => {
       sortable: true,
       cell: (p) => (
         <div>
-          <p className="text-sm font-bold text-gray-900 dark:text-white">₹{Number(p.total_amount).toLocaleString()}</p>
+          <p className="text-sm font-bold text-gray-900 dark:text-white">₹{Number(p.total_amount || 0).toLocaleString()}</p>
           <div className="flex items-center gap-1.5 mt-0.5">
             {(() => {
               const type = p.payment_type || 'rent';
@@ -273,7 +271,7 @@ export const PaymentsPage = () => {
               }
             })()}
           </div>
-          {p.late_fee > 0 && <p className="text-[10px] text-rose-500">+₹{p.late_fee} late fee</p>}
+          {(p.late_fee || 0) > 0 && <p className="text-[10px] text-rose-500">+₹{p.late_fee} late fee</p>}
         </div>
       )
     },
@@ -312,11 +310,13 @@ export const PaymentsPage = () => {
           <DropdownMenu>
             {p.status === 'pending' && (p.payment_type === 'electricity' || (p as any).paymentType === 'electricity') && (
               <DropdownItem icon={<CreditCard className="w-4 h-4 text-emerald-500" />} label="Pay Now" onClick={() => {
+                const baseAmount = p.electricity_amount || p.electricityAmount || p.amount || 0;
+                const lateFee = p.late_fee || p.lateFee || 0;
                 setNewPayment({
                   tenantId: p.tenant_id || p.tenantId || '',
-                  amount: p.amount || 0,
-                  lateFee: p.late_fee || p.lateFee || 0,
-                  totalAmount: p.total_amount || p.totalAmount || p.amount || 0,
+                  amount: baseAmount,
+                  lateFee: lateFee,
+                  totalAmount: baseAmount + lateFee,
                   paymentDate: new Date().toISOString().split('T')[0],
                   month: p.month || '',
                   status: 'paid',
@@ -327,11 +327,13 @@ export const PaymentsPage = () => {
               }} />
             )}
             {isAdmin && (
-              <DropdownItem icon={<Edit2 className="w-4 h-4" />} label="Edit Payment" onClick={async () => {
+              <DropdownItem icon={<Edit2 className="w-4 h-4" />} label="Edit Payment" onClick={() => {
                 const normalized: Payment = {
                   id: p.id,
                   tenantId: p.tenant_id || p.tenantId || '',
-                  amount: p.amount ?? 0,
+                  amount: (p.payment_type === 'electricity' || p.paymentType === 'electricity')
+                    ? (p.electricity_amount || p.electricityAmount || p.amount || 0)
+                    : (p.amount ?? 0),
                   lateFee: p.late_fee ?? p.lateFee ?? 0,
                   totalAmount: p.total_amount ?? p.totalAmount ?? p.amount ?? 0,
                   paymentType: p.payment_type || p.paymentType || 'rent',
@@ -345,13 +347,6 @@ export const PaymentsPage = () => {
                   electricityBillId: p.electricity_bill_id || p.electricityBillId,
                   branchId: p.branch_id || p.branchId || ''
                 };
-                const calculated = await handleAutoPopulate(normalized.paymentType, normalized.tenantId, normalized.month);
-                setEditCalculatedAmount(calculated);
-                if ((!normalized.amount || normalized.amount === 0) && calculated > 0) {
-                  normalized.amount = calculated;
-                  normalized.lateFee = calculateLateFee(normalized.tenantId, normalized.month, normalized.paymentDate, normalized.paymentType);
-                  normalized.totalAmount = normalized.amount + normalized.lateFee;
-                }
                 setPaymentToEdit(normalized);
                 setIsEditModalOpen(true);
               }} />
@@ -362,7 +357,9 @@ export const PaymentsPage = () => {
                   const normalized: Payment = {
                     id: p.id,
                     tenantId: p.tenant_id || p.tenantId,
-                    amount: p.amount,
+                    amount: (p.payment_type === 'electricity' || p.paymentType === 'electricity')
+                      ? (p.electricity_amount || p.electricityAmount || p.amount || 0)
+                      : (p.amount ?? 0),
                     lateFee: p.late_fee ?? p.lateFee ?? 0,
                     totalAmount: p.total_amount ?? p.totalAmount ?? p.amount,
                     paymentType: p.payment_type || p.paymentType || 'rent',
@@ -382,7 +379,9 @@ export const PaymentsPage = () => {
                   const normalized: Payment = {
                     id: p.id,
                     tenantId: p.tenant_id || p.tenantId,
-                    amount: p.amount,
+                    amount: (p.payment_type === 'electricity' || p.paymentType === 'electricity')
+                      ? (p.electricity_amount || p.electricityAmount || p.amount || 0)
+                      : (p.amount ?? 0),
                     lateFee: p.late_fee ?? p.lateFee ?? 0,
                     totalAmount: p.total_amount ?? p.totalAmount ?? p.amount,
                     paymentType: p.payment_type || p.paymentType || 'rent',
@@ -459,6 +458,23 @@ export const PaymentsPage = () => {
     return 0;
   };
 
+  // Enrich paginatedPayments with live-calculated late fees for pending payments
+  // This ensures the grid + mobile list show the same values as the Record Payment modal
+  const enrichedPayments = useMemo(() => {
+    if (!paginatedPayments) return [];
+    return paginatedPayments.map((p: any) => {
+      if (p.status !== 'pending' || !p.tenant_id || !p.month) return p;
+      const baseAmount = (p.payment_type === 'electricity')
+        ? (p.electricity_amount || p.amount || 0)
+        : (p.amount || 0);
+      const liveLateFee = calculateLateFee(p.tenant_id, p.month, undefined, p.payment_type || 'rent');
+      return {
+        ...p,
+        late_fee: liveLateFee,
+        total_amount: baseAmount + liveLateFee
+      };
+    });
+  }, [paginatedPayments, tenants, pgConfig]);
 
 
   const [payingDue, setPayingDue] = useState<any | null>(null);
@@ -765,20 +781,6 @@ export const PaymentsPage = () => {
     pgConfig
   ]);
 
-  useEffect(() => {
-    let isMounted = true;
-    if (isEditModalOpen && paymentToEdit?.tenantId && paymentToEdit?.month && paymentToEdit?.paymentType) {
-      handleAutoPopulate(paymentToEdit.paymentType, paymentToEdit.tenantId, paymentToEdit.month).then(calcAmount => {
-        if (isMounted) {
-          setEditCalculatedAmount(calcAmount);
-        }
-      });
-    } else {
-      setEditCalculatedAmount(null);
-    }
-    return () => { isMounted = false; };
-  }, [isEditModalOpen, paymentToEdit?.tenantId, paymentToEdit?.month, paymentToEdit?.paymentType]);
-
   // Detect if this is a move-in first rent: tenant has a paid token and no rent payment recorded for this month yet
   const isFirstRent = React.useMemo(() => {
     if (!newPayment.tenantId || newPayment.paymentType !== 'rent') return false;
@@ -1008,82 +1010,6 @@ export const PaymentsPage = () => {
         setIsSubmitting(false);
       }
     }
-  };
-
-  const handleSendWhatsAppPaymentReminder = (payment: Payment) => {
-    const tenant = tenants.find(t => t.id === payment.tenantId);
-    const room = rooms.find(r => r.id === (tenant?.roomId || (tenant as any)?.room_id));
-    const phone = tenant?.phone || (payment as any)?.tenants?.phone;
-
-    if (!phone) {
-      toast.error('Tenant phone number not found');
-      return;
-    }
-
-    const cleanPhone = phone.replace(/\D/g, '');
-    const formattedPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
-    const pgName = pgConfig?.pgName || currentBranch?.name || 'PG Management';
-    const monthStr = payment.month || format(new Date(), 'yyyy-MM');
-    const typeStr = (payment.paymentType || (payment as any).payment_type || 'rent').toLowerCase();
-    const typeTitle = typeStr === 'electricity' ? '⚡ Electricity Bill' : typeStr === 'rent' ? '🏠 Rent Bill' : '💳 Pending Dues';
-    
-    const amount = payment.amount ?? 0;
-    const lateFee = payment.lateFee ?? (payment as any).late_fee ?? 0;
-    const total = payment.totalAmount ?? (payment as any).total_amount ?? (amount + lateFee);
-
-    let message = `*${pgName.toUpperCase()} - PAYMENT REMINDER*\n\n`;
-    message += `Hello *${tenant?.name || 'Tenant'}* (Room ${room?.roomNumber || (room as any)?.room_number || '—'}),\n\n`;
-    message += `This is a reminder for your *${typeTitle}* for *${monthStr}*:\n`;
-    message += `• Bill Amount: *₹${amount.toLocaleString()}*\n`;
-    if (lateFee > 0) {
-      message += `• Late Fee: *₹${lateFee.toLocaleString()}*\n`;
-    }
-    message += `• *Total Amount Due: ₹${total.toLocaleString()}*\n`;
-    message += `• Status: *${(payment.status || 'PENDING').toUpperCase()}*\n\n`;
-
-    const upiId = (pgConfig as any)?.upiId || (pgConfig as any)?.upi_id;
-    if (upiId) {
-      const upiUrl = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(pgName)}&am=${total}&cu=INR&tn=${monthStr}%20${typeStr}`;
-      message += `📱 *Pay via UPI:* ${upiUrl}\n\n`;
-    }
-
-    message += `Please process the payment at your earliest convenience. If already paid, kindly share a screenshot of the payment receipt. Thank you!`;
-
-    const encodedMessage = encodeURIComponent(message);
-    const whatsappUrl = `https://wa.me/${formattedPhone}?text=${encodedMessage}`;
-    window.open(whatsappUrl, '_blank');
-    toast.success(`Opening WhatsApp reminder for ${tenant?.name || 'tenant'}`);
-  };
-
-  const handleBulkWhatsAppReminders = (ids: string[]) => {
-    const selected = (paginatedPayments || []).filter((p: any) => ids.includes(p.id));
-    if (selected.length === 0) return;
-
-    if (selected.length > 1) {
-      toast('Opening WhatsApp for selected tenants...', { icon: '📲' });
-    }
-    selected.forEach((p: any, index: number) => {
-      setTimeout(() => {
-        const normalized: Payment = {
-          id: p.id,
-          tenantId: p.tenant_id || p.tenantId || '',
-          amount: p.amount ?? 0,
-          lateFee: p.late_fee ?? p.lateFee ?? 0,
-          totalAmount: p.total_amount ?? p.totalAmount ?? p.amount ?? 0,
-          paymentType: p.payment_type || p.paymentType || 'rent',
-          paymentDate: p.payment_date || p.paymentDate || '',
-          month: p.month || '',
-          status: p.status || 'paid',
-          method: p.method || 'Cash',
-          transactionId: p.transaction_id || p.transactionId,
-          receiptUrl: p.receipt_url || p.receiptUrl,
-          electricityAmount: p.electricity_amount || p.electricityAmount || 0,
-          electricityBillId: p.electricity_bill_id || p.electricityBillId,
-          branchId: p.branch_id || p.branchId || ''
-        };
-        handleSendWhatsAppPaymentReminder(normalized);
-      }, index * 400);
-    });
   };
 
   const handleAutoPopulate = async (type: string, tenantId: string, month: string) => {
@@ -1323,49 +1249,28 @@ export const PaymentsPage = () => {
     });
   }, [payments, tenants, searchTerm, user?.role, user?.id, filterMonth]);
 
-  const handleExportSelectedToExcel = (ids?: string[]) => {
-    const targetIds = ids && ids.length > 0 ? ids : selectedPaymentIds;
-    const sourcePayments = targetIds.length > 0
-      ? (paginatedPayments || []).filter((p: any) => targetIds.includes(p.id))
-      : (paginatedPayments || []);
-
-    if (sourcePayments.length === 0) {
-      toast.error('No payment records available to export');
-      return;
-    }
-
-    const data = sourcePayments.map((p: any) => {
-      const tenant = tenants.find(t => t.id === (p.tenant_id || p.tenantId));
-      const room = rooms.find(r => r.id === (tenant?.roomId || (tenant as any)?.room_id));
+  const handleDownload = () => {
+    const data = filteredPayments.map(p => {
+      const tenant = tenants.find(t => t.id === p.tenantId);
       return {
-        Tenant: tenant?.name || p.tenants?.name || 'Unknown',
-        Room: room?.roomNumber || (room as any)?.room_number || '—',
-        Month: p.month || '—',
-        Type: (p.payment_type || p.paymentType || 'rent').toUpperCase(),
-        Amount: p.amount ?? 0,
-        LateFee: p.late_fee ?? p.lateFee ?? 0,
-        Total: p.total_amount ?? p.totalAmount ?? p.amount ?? 0,
-        Date: p.payment_date || p.paymentDate || '—',
-        Status: (p.status || 'paid').toUpperCase(),
-        Method: p.method || 'Cash'
+        Tenant: tenant?.name,
+        Month: p.month,
+        Amount: p.amount,
+        LateFee: p.lateFee,
+        Total: p.totalAmount,
+        Date: p.paymentDate,
+        Method: p.method
       };
     });
-
-    const headers = Object.keys(data[0]).join(",");
-    const rows = data.map(r => Object.values(r).map(val => `"${val}"`).join(","));
-    const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].join("\n");
+    const csvContent = "data:text/csv;charset=utf-8,"
+      + ["Tenant,Month,Amount,LateFee,Total,Date,Method", ...data.map(r => Object.values(r).join(","))].join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `ElitePG_Payments_${targetIds.length > 0 ? 'Selected_' : ''}${format(new Date(), 'yyyy-MM-dd')}.csv`);
+    link.setAttribute("download", "ElitePG_Payments.csv");
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success(`Exported ${sourcePayments.length} payment record(s) to Excel`);
-  };
-
-  const handleDownload = () => {
-    handleExportSelectedToExcel(selectedPaymentIds.length > 0 ? selectedPaymentIds : undefined);
   };
 
   const targetMonth = React.useMemo(() => {
@@ -1672,55 +1577,83 @@ export const PaymentsPage = () => {
       </div>
 
       {!isTenant && (
-        <div className="flex items-center gap-2 mb-4 w-full">
-          <div className="flex items-center gap-2 overflow-x-auto scrollbar-none pb-1 flex-nowrap flex-1 min-w-0">
-            {[
-              { id: 'all', label: 'All Payments', icon: <HistoryIcon className="w-4 h-4" /> },
-              { id: 'rent', label: 'Rent Only', icon: <CreditCard className="w-4 h-4" /> },
-              { id: 'electricity', label: 'Electricity Only', icon: <Zap className="w-4 h-4" /> },
-              { id: 'token', label: 'Tokens', icon: <Ticket className="w-4 h-4" /> },
-              { id: 'deposit', label: 'Deposits', icon: <Shield className="w-4 h-4" /> }
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setFilterType(tab.id as any)}
-                className={cn(
-                  "flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all border min-w-[125px] flex-shrink-0",
-                  filterType === tab.id
-                    ? "text-white border-transparent shadow-lg shadow-indigo-600/20"
-                    : "bg-white dark:bg-white/5 text-gray-500 dark:text-gray-400 border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/10"
-                )}
-                style={filterType === tab.id ? { background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' } : undefined}
-              >
-                {tab.icon}
-                {tab.label}
-              </button>
-            ))}
-          
-            <div className="h-6 w-px bg-gray-100 dark:bg-white/10 mx-2 flex-shrink-0 hidden sm:block" />
-          
-            {[
-              { id: 'all', label: 'All Status' },
-              { id: 'paid', label: 'Paid' },
-              { id: 'pending', label: 'Pending' }
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setFilterStatus(tab.id as any)}
-                className={cn(
-                  "flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all border min-w-[125px] uppercase flex-shrink-0",
-                  filterStatus === tab.id
-                    ? "text-white border-transparent shadow-lg shadow-indigo-600/20"
-                    : "bg-white dark:bg-white/5 text-gray-500 dark:text-gray-400 border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/10"
-                )}
-                style={filterStatus === tab.id ? { background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' } : undefined}
-              >
-                {tab.label}
-              </button>
-            ))}
+        <div className="mb-4 w-full">
+          {/* Desktop Filter Bar (Tabs on left, Dropdowns on right) */}
+          <div className="hidden sm:flex items-center gap-3 w-full">
+            {/* Payment Type Filter Tabs */}
+            <div className="flex items-center gap-2 overflow-x-auto scrollbar-none pb-1 flex-nowrap flex-1 min-w-0">
+              {[
+                { id: 'all', label: 'All Payments', icon: <HistoryIcon className="w-4 h-4" /> },
+                { id: 'rent', label: 'Rent Only', icon: <CreditCard className="w-4 h-4" /> },
+                { id: 'electricity', label: 'Electricity Only', icon: <Zap className="w-4 h-4" /> },
+                { id: 'token', label: 'Tokens', icon: <Ticket className="w-4 h-4" /> },
+                { id: 'deposit', label: 'Deposits', icon: <Shield className="w-4 h-4" /> }
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setFilterType(tab.id as any)}
+                  className={cn(
+                    "flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all border whitespace-nowrap flex-shrink-0",
+                    filterType === tab.id
+                      ? "text-white border-transparent shadow-lg shadow-indigo-600/20"
+                      : "bg-white dark:bg-white/5 text-gray-500 dark:text-gray-400 border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/10"
+                  )}
+                  style={filterType === tab.id ? { background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' } : undefined}
+                >
+                  {tab.icon}
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Status + Month Dropdowns */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <ModernSelect
+                value={filterStatus}
+                onChange={(val) => setFilterStatus(val as any)}
+                options={[
+                  { value: "all", label: "All Status" },
+                  { value: "paid", label: "Paid" },
+                  { value: "pending", label: "Pending" }
+                ]}
+                className="w-36 font-bold"
+              />
+              <ModernSelect
+                value={filterMonth}
+                onChange={(val) => setFilterMonth(val)}
+                options={[
+                  { value: "all", label: "All Months" },
+                  ...monthOptions
+                ]}
+                className="w-40 font-bold"
+              />
+            </div>
           </div>
 
-          <div className="relative flex-shrink-0">
+          {/* Mobile Filter Bar (3 Clean Dropdowns, No Scrolling Required) */}
+          <div className="grid grid-cols-1 xs:grid-cols-3 sm:hidden gap-2 w-full">
+            <ModernSelect
+              value={filterType}
+              onChange={(val) => setFilterType(val as any)}
+              options={[
+                { value: "all", label: "All Payments" },
+                { value: "rent", label: "Rent Only" },
+                { value: "electricity", label: "Electricity Only" },
+                { value: "token", label: "Tokens" },
+                { value: "deposit", label: "Deposits" }
+              ]}
+              className="w-full font-bold"
+            />
+            <ModernSelect
+              value={filterStatus}
+              onChange={(val) => setFilterStatus(val as any)}
+              options={[
+                { value: "all", label: "All Status" },
+                { value: "paid", label: "Paid" },
+                { value: "pending", label: "Pending" }
+              ]}
+              className="w-full font-bold"
+            />
             <ModernSelect
               value={filterMonth}
               onChange={(val) => setFilterMonth(val)}
@@ -1728,7 +1661,7 @@ export const PaymentsPage = () => {
                 { value: "all", label: "All Months" },
                 ...monthOptions
               ]}
-              className="w-40 font-bold"
+              className="w-full font-bold"
             />
           </div>
         </div>
@@ -1745,14 +1678,23 @@ export const PaymentsPage = () => {
             className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
           />
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <button 
+            onClick={() => {
+              const el = document.getElementById('mobile-filter-container');
+              if (el) el.scrollIntoView({ behavior: 'smooth' });
+            }}
+            className="p-2.5 bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors shrink-0 sm:hidden"
+          >
+            <Filter className="w-5 h-5" />
+          </button>
           <button
             onClick={handleDownload}
-            className="flex items-center gap-2 px-6 py-2.5 text-white rounded-2xl text-sm font-black transition-all shadow-lg shadow-indigo-600/20 active:scale-95 hover:opacity-90 flex-shrink-0"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 text-white rounded-2xl text-sm font-black transition-all shadow-lg shadow-indigo-600/20 active:scale-95 hover:opacity-90 shrink-0"
             style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
           >
             <FileSpreadsheet className="w-4 h-4" />
-            Export Excel
+            <span className="whitespace-nowrap">Export Excel</span>
           </button>
         </div>
       </div>
@@ -1781,22 +1723,9 @@ export const PaymentsPage = () => {
                 </div>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => handleBulkWhatsAppReminders(selectedPaymentIds)}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-emerald-700 active:scale-95 transition-all"
-                  >
-                    <MessageCircle className="w-3.5 h-3.5" />
-                    WhatsApp Reminders
-                  </button>
-                  <button
-                    onClick={() => handleExportSelectedToExcel(selectedPaymentIds)}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-indigo-700 active:scale-95 transition-all"
-                  >
-                    <FileSpreadsheet className="w-3.5 h-3.5" />
-                    Export Selected Excel
-                  </button>
-                  <button
                     onClick={() => {
                       setDeleteConfirmation({ isOpen: true, bulkIds: selectedPaymentIds });
+                      setSelectedPaymentIds([]);
                     }}
                     className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-rose-700 active:scale-95 transition-all"
                   >
@@ -1809,7 +1738,7 @@ export const PaymentsPage = () => {
           </AnimatePresence>
           <DataGrid
             columns={paymentColumns}
-            data={paginatedPayments}
+            data={enrichedPayments}
             isLoading={isPaymentsLoading}
             keyExtractor={(p) => p.id}
             totalCount={totalCount}
@@ -1825,7 +1754,9 @@ export const PaymentsPage = () => {
             const normalized = {
               id: p.id,
               tenantId: p.tenant_id || p.tenantId,
-              amount: p.amount ?? 0,
+              amount: (p.payment_type === 'electricity' || p.paymentType === 'electricity')
+                ? (p.electricity_amount || p.electricityAmount || p.amount || 0)
+                : (p.amount ?? 0),
               lateFee: p.late_fee ?? p.lateFee ?? 0,
               totalAmount: p.total_amount ?? p.totalAmount ?? p.amount ?? 0,
               paymentDate: p.payment_date || p.paymentDate,
@@ -1864,13 +1795,15 @@ export const PaymentsPage = () => {
 
       <div className="lg:hidden">
         <PaymentMobileList
-          payments={paginatedPayments}
+          payments={enrichedPayments}
           isLoading={isPaymentsLoading}
           onManage={(p: any) => {
             const normalized = {
               ...p,
               tenantId: p.tenant_id || p.tenantId,
-              amount: p.amount ?? 0,
+              amount: (p.payment_type === 'electricity' || p.paymentType === 'electricity')
+                ? (p.electricity_amount || p.electricityAmount || p.amount || 0)
+                : (p.amount ?? 0),
               lateFee: p.late_fee ?? p.lateFee ?? 0,
               totalAmount: p.total_amount ?? p.totalAmount ?? p.amount ?? 0,
               paymentDate: p.payment_date || p.paymentDate,
@@ -1902,32 +1835,8 @@ export const PaymentsPage = () => {
               });
             }
           }}
-          onEdit={async (p) => {
-            const normalized: Payment = {
-              id: p.id,
-              tenantId: (p as any).tenant_id || p.tenantId || '',
-              amount: p.amount ?? 0,
-              lateFee: (p as any).late_fee ?? p.lateFee ?? 0,
-              totalAmount: (p as any).total_amount ?? p.totalAmount ?? p.amount ?? 0,
-              paymentType: (p as any).payment_type || p.paymentType || 'rent',
-              paymentDate: (p as any).payment_date || p.paymentDate || '',
-              month: p.month || '',
-              status: p.status || 'paid',
-              method: p.method || 'Cash',
-              transactionId: (p as any).transaction_id || p.transactionId,
-              receiptUrl: (p as any).receipt_url || p.receiptUrl,
-              electricityAmount: (p as any).electricity_amount || p.electricityAmount || 0,
-              electricityBillId: (p as any).electricity_bill_id || p.electricityBillId,
-              branchId: (p as any).branch_id || p.branchId || ''
-            };
-            const calculated = await handleAutoPopulate(normalized.paymentType, normalized.tenantId, normalized.month);
-            setEditCalculatedAmount(calculated);
-            if ((!normalized.amount || normalized.amount === 0) && calculated > 0) {
-              normalized.amount = calculated;
-              normalized.lateFee = calculateLateFee(normalized.tenantId, normalized.month, normalized.paymentDate, normalized.paymentType);
-              normalized.totalAmount = normalized.amount + normalized.lateFee;
-            }
-            setPaymentToEdit(normalized);
+          onEdit={(p) => {
+            setPaymentToEdit(p);
             setIsEditModalOpen(true);
           }}
           onDownloadReceipt={(p) => handleDownloadReceipt(p)}
@@ -1942,7 +1851,7 @@ export const PaymentsPage = () => {
             setDeleteConfirmation({ isOpen: true, bulkIds: ids });
           }}
           onBulkShare={(ids) => {
-            const selected = paginatedPayments.filter(p => ids.includes(p.id));
+            const selected = enrichedPayments.filter(p => ids.includes(p.id));
             const shareText = selected.map(p => {
                 const name = p.tenants?.name || 'Unknown';
                 const total = p.total_amount || p.totalAmount || p.amount;
@@ -1950,9 +1859,8 @@ export const PaymentsPage = () => {
             }).join('\n');
             navigator.clipboard.writeText(shareText).then(() => toast.success('Payment summaries copied!'));
           }}
-          onBulkExport={(ids) => handleExportSelectedToExcel(ids)}
         />
-        {paginatedPayments.length > 0 && (
+        {enrichedPayments.length > 0 && (
           <div className="mt-4 flex justify-center pb-8">
             <button
               disabled={page === 1}
@@ -2673,12 +2581,11 @@ export const PaymentsPage = () => {
                           onChange={async (e) => {
                             const month = e.target.value;
                             const amount = await handleAutoPopulate(paymentToEdit.paymentType, paymentToEdit.tenantId, month);
-                            setEditCalculatedAmount(amount);
                             const lateFee = calculateLateFee(paymentToEdit.tenantId, month, paymentToEdit.paymentDate, paymentToEdit.paymentType);
                             setPaymentToEdit({ 
                               ...paymentToEdit, 
                               month,
-                              amount: amount > 0 ? amount : paymentToEdit.amount,
+                              amount,
                               lateFee
                             });
                           }}
@@ -2708,24 +2615,7 @@ export const PaymentsPage = () => {
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <div className="flex items-center justify-between gap-1 flex-wrap">
-                        <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Amount</label>
-                        {editCalculatedAmount !== null && editCalculatedAmount !== undefined && editCalculatedAmount > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const lateFee = calculateLateFee(paymentToEdit.tenantId, paymentToEdit.month, paymentToEdit.paymentDate, paymentToEdit.paymentType);
-                              setPaymentToEdit({ ...paymentToEdit, amount: editCalculatedAmount, lateFee });
-                              toast.success(`Autofilled Calculated Bill: ₹${editCalculatedAmount.toLocaleString()}`);
-                            }}
-                            className="text-[11px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 hover:bg-amber-100 dark:hover:bg-amber-500/20 px-2 py-0.5 rounded-lg transition-colors flex items-center gap-1 cursor-pointer border border-amber-200/60 dark:border-amber-500/20 shadow-xs"
-                            title="Click to autofill calculated bill amount"
-                          >
-                            <Sparkles className="w-3 h-3 text-amber-500" />
-                            <span>Calculated Bill: ₹{editCalculatedAmount.toLocaleString()}</span>
-                          </button>
-                        )}
-                      </div>
+                      <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Amount</label>
                       <input
                         required
                         type="number"

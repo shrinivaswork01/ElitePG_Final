@@ -13,6 +13,7 @@ import {
   Wind,
   Sun,
   Search,
+  Filter,
   Layers,
   MapPin,
   LayoutDashboard,
@@ -813,25 +814,25 @@ export const RoomsPage = () => {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
                 type="text"
-                placeholder="Search room..."
+                placeholder="Search by room number, occupant, flat, or type..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
               />
             </div>
-            
-            <div className="flex gap-2 items-center">
-              <div className="relative w-48">
-                <ModernSelect
-                  value={filterFloor === 'all' ? 'all' : String(filterFloor)}
-                  onChange={(val) => setFilterFloor(val === 'all' ? 'all' : Number(val))}
-                  options={[
-                    { value: "all", label: "All Floors" },
-                    ...availableFloors.map(f => ({ value: String(f), label: f === 0 ? "Ground Floor" : `Floor ${f}` }))
-                  ]}
-                />
-              </div>
-
+            <div className="flex flex-wrap sm:flex-nowrap gap-2 items-center w-full sm:w-auto">
+              <ModernSelect
+                value={filterFloor === 'all' ? 'all' : String(filterFloor)}
+                onChange={(val) => setFilterFloor(val === 'all' ? 'all' : Number(val))}
+                options={[
+                  { value: "all", label: "All Floors" },
+                  ...availableFloors.map(f => ({ value: String(f), label: f === 0 ? "Ground Floor" : `Floor ${f}` }))
+                ]}
+                className="flex-1 sm:w-44 sm:flex-initial"
+              />
+              <button className="p-2.5 bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors shrink-0">
+                <Filter className="w-5 h-5" />
+              </button>
               <button
                 onClick={() => {
                   try {
@@ -847,12 +848,12 @@ export const RoomsPage = () => {
                     toast.error('Failed to generate export');
                   }
                 }}
-                className="flex items-center gap-2 px-6 py-2.5 text-white rounded-2xl text-sm font-black transition-all shadow-lg shadow-indigo-600/20 active:scale-95 hover:opacity-90 shrink-0 flex items-center justify-center"
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 text-white rounded-2xl text-sm font-black transition-all shadow-lg shadow-indigo-600/20 active:scale-95 hover:opacity-90 shrink-0"
                 style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
                 title="Export to Excel"
               >
                 <FileSpreadsheet className="w-4 h-4" />
-                Export Excel
+                <span className="whitespace-nowrap">Export Excel</span>
               </button>
             </div>
           </div>

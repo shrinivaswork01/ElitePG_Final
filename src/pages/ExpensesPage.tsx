@@ -32,6 +32,7 @@ import { DataGrid, ColumnDef } from '../components/DataGrid';
 import { DropdownMenu, DropdownItem } from '../components/DropdownMenu';
 import toast from 'react-hot-toast';
 import { ModernSelect } from '../components/ModernSelect';
+import { ExpenseMobileList } from '../components/ExpenseMobileList';
 
 const CATEGORIES: ExpenseCategory[] = ['apex', 'capital', 'operational', 'maintenance', 'salary', 'utility', 'other'];
 
@@ -517,20 +518,63 @@ export const ExpensesPage = () => {
             </motion.div>
           )}
         </AnimatePresence>
-        <DataGrid
-          data={paginatedExpenses}
-          columns={columns}
-          isLoading={isLoading}
-          onPageChange={setPage}
-          onLimitChange={(newLimit) => {
-            setLimit(newLimit);
-            setPage(1);
-          }}
-          totalCount={totalCount}
-          keyExtractor={(item) => item.id}
-          page={page}
-          limit={limit}
-        />
+        {/* Desktop DataGrid View */}
+        <div className="hidden lg:block">
+          <DataGrid
+            data={paginatedExpenses}
+            columns={columns}
+            isLoading={isLoading}
+            onPageChange={setPage}
+            onLimitChange={(newLimit) => {
+              setLimit(newLimit);
+              setPage(1);
+            }}
+            totalCount={totalCount}
+            keyExtractor={(item) => item.id}
+            page={page}
+            limit={limit}
+          />
+        </div>
+
+        {/* Mobile List Card View */}
+        <div className="lg:hidden">
+          <ExpenseMobileList
+            expenses={paginatedExpenses}
+            isLoading={isLoading}
+            users={users}
+            currentUser={user}
+            selectedIds={selectedExpenseIds}
+            onToggleSelect={handleToggleSelectExpense}
+            onSelectAll={handleSelectAllExpenses}
+            onEdit={handleEdit}
+            onDelete={deleteExpense}
+            onApprove={handleApprove}
+            onReject={handleReject}
+            onSubmitForApproval={(expense) => updateExpense(expense.id, { status: 'pending' }).then(refetch)}
+            onBulkDelete={(ids) => setBulkExpenseDeleteIds(ids)}
+          />
+          {paginatedExpenses.length > 0 && (
+            <div className="mt-4 flex justify-center pb-8">
+              <button
+                disabled={page === 1}
+                onClick={() => setPage(page - 1)}
+                className="px-4 py-2 text-sm font-semibold text-gray-500 disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <span className="px-4 py-2 text-sm font-bold text-gray-700 dark:text-gray-300">
+                Page {page} of {Math.ceil(totalCount / limit) || 1}
+              </span>
+              <button
+                disabled={page * limit >= totalCount}
+                onClick={() => setPage(page + 1)}
+                className="px-4 py-2 text-sm font-semibold text-gray-500 disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Bulk Delete Expenses Confirmation Modal */}

@@ -11,6 +11,8 @@ import { format, subMonths, parseISO, isAfter } from 'date-fns';
 import { cn } from '../utils';
 import toast from 'react-hot-toast';
 import { UserRole } from '../types';
+import { ModernSelect } from '../components/ModernSelect';
+import { PayoutMobileList } from '../components/PayoutMobileList';
 
 export const PartnerPayoutsPage = () => {
   const { user, users, register, deleteUser, updateUser } = useAuth();
@@ -642,18 +644,14 @@ export const PartnerPayoutsPage = () => {
 
       {activeTab === 'payouts' && (
          <div className="space-y-8">
-            <div className="flex justify-end relative">
-               <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-indigo-500 pointer-events-none" />
-               <select
+            <div className="flex justify-end relative w-fit ml-auto">
+               <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-indigo-500 pointer-events-none z-10" />
+               <ModernSelect
                  value={payoutMonth}
-                 onChange={(e) => setPayoutMonth(e.target.value)}
-                 className="pl-12 pr-10 py-3 bg-white dark:bg-[#111111] border border-gray-200 dark:border-white/10 rounded-2xl text-sm font-black text-gray-900 dark:text-white shadow-sm appearance-none cursor-pointer focus:ring-2 focus:ring-indigo-500/50 min-w-[220px]"
-               >
-                 {monthOptions.map(m => (
-                   <option key={m.value} value={m.value}>{m.label}</option>
-                 ))}
-               </select>
-               <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+                 onChange={(val) => setPayoutMonth(val)}
+                 options={monthOptions}
+                 className="pl-12 w-56 font-bold"
+               />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -805,7 +803,8 @@ export const PartnerPayoutsPage = () => {
                   )}
                 </div>
             </div>
-            <div className="overflow-x-auto">
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto">
                <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-gray-50 dark:bg-white/[0.02] border-b border-gray-100 dark:border-white/5">
@@ -864,6 +863,17 @@ export const PartnerPayoutsPage = () => {
                      ))}
                   </tbody>
                </table>
+            </div>
+
+            {/* Mobile Payouts Card View */}
+            <div className="md:hidden">
+               <PayoutMobileList
+                 payouts={sortedPayouts}
+                 branches={branches}
+                 resolvePartnerName={resolvePartnerName}
+                 isAdmin={isAdmin}
+                 onDelete={(id) => setTransactionToDelete(id)}
+               />
             </div>
          </div>
       )}
