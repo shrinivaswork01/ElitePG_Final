@@ -493,7 +493,13 @@ export const KYCPage = () => {
               <div className="flex flex-col lg:flex-row min-h-[50vh] lg:h-[80vh]">
                 <div className="flex-1 bg-gray-100 dark:bg-white/5 p-4 flex flex-col items-center justify-center overflow-hidden min-h-[400px] lg:min-h-0">
                   <div className="w-full h-full flex items-center justify-center relative group/doc">
-                    {selectedKYC.documentUrl.startsWith('data:application/pdf') || selectedKYC.documentUrl.toLowerCase().endsWith('.pdf') ? (
+                    {!selectedKYC.documentUrl ? (
+                      <div className="flex flex-col items-center justify-center p-8 text-center">
+                        <ShieldAlert className="w-16 h-16 text-rose-500 mb-4" />
+                        <h4 className="text-lg font-bold text-gray-900 dark:text-white mb-1">No Document Uploaded</h4>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">This resident has not submitted identity documents yet.</p>
+                      </div>
+                    ) : selectedKYC.documentUrl.startsWith('data:application/pdf') || selectedKYC.documentUrl.toLowerCase().endsWith('.pdf') ? (
                       <div className="w-full h-full flex flex-col items-center justify-center">
                         <object
                           data={selectedKYC.documentUrl}
@@ -522,15 +528,17 @@ export const KYCPage = () => {
                         referrerPolicy="no-referrer"
                       />
                     )}
-                    <a
-                      href={selectedKYC.documentUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="absolute top-4 right-4 p-3 bg-white/90 dark:bg-[#111111]/90 backdrop-blur-md rounded-xl text-gray-900 dark:text-white shadow-xl opacity-0 group-hover/doc:opacity-100 transition-opacity flex items-center gap-2 text-xs font-bold"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                      Open Original
-                    </a>
+                    {selectedKYC.documentUrl && (
+                      <a
+                        href={selectedKYC.documentUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="absolute top-4 right-4 p-3 bg-white/90 dark:bg-[#111111]/90 backdrop-blur-md rounded-xl text-gray-900 dark:text-white shadow-xl opacity-0 group-hover/doc:opacity-100 transition-opacity flex items-center gap-2 text-xs font-bold"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                        Open Original
+                      </a>
+                    )}
                   </div>
                 </div>
                 <div className="w-full lg:w-80 p-6 sm:p-8 flex flex-col bg-white dark:bg-[#111111]">
