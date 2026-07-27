@@ -233,22 +233,6 @@ export const KYCPage = () => {
               <ExternalLink className="w-4 h-4" /> Download Selected ({selectedDocs.length})
             </button>
           )}
-          <button
-            onClick={() => {
-              try {
-                // Fetch the original users for Verified By mapping from the auth context (user context)
-                exportKYCToExcel(kycs, tenants, employees, rooms, branches, [user as any], currentBranch);
-                toast.success('KYC Export Generated Successfully');
-              } catch (err) {
-                console.error(err);
-                toast.error('Failed to generate export');
-              }
-            }}
-             className="flex items-center gap-2 px-6 py-2.5 text-white rounded-2xl text-sm font-black transition-all shadow-lg shadow-indigo-600/20 active:scale-95 hover:opacity-90 shrink-0"
-             style={{ background: themeGradient }}
-           >
-             <FileSpreadsheet className="w-4 h-4" /> Export Excel
-           </button>
         </div>
       </div>
 
@@ -257,6 +241,15 @@ export const KYCPage = () => {
         onSearchChange={setSearchTerm}
         searchPlaceholder="Search by tenant or employee name..."
         primaryColor={themeGradient}
+        onExportExcel={() => {
+          try {
+            exportKYCToExcel(kycs, tenants, employees, rooms, branches, [user as any], currentBranch);
+            toast.success('KYC Export Generated Successfully');
+          } catch (err) {
+            console.error(err);
+            toast.error('Failed to generate export');
+          }
+        }}
         rightElements={
           <FilterChips
             items={[

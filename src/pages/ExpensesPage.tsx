@@ -32,6 +32,7 @@ import { DataGrid, ColumnDef } from '../components/DataGrid';
 import { DropdownMenu, DropdownItem } from '../components/DropdownMenu';
 import toast from 'react-hot-toast';
 import { ModernSelect } from '../components/ModernSelect';
+import { SearchFilterCard } from '../components/SearchFilterCard';
 import { ExpenseMobileList } from '../components/ExpenseMobileList';
 
 const CATEGORIES: ExpenseCategory[] = ['apex', 'capital', 'operational', 'maintenance', 'salary', 'utility', 'other'];
@@ -434,47 +435,32 @@ export const ExpensesPage = () => {
         </motion.div>
       </div>
 
-      {/* Filter Bar */}
-      <div className="flex flex-col sm:flex-row items-center gap-4 bg-white/50 dark:bg-white/5 p-4 rounded-[2rem] border border-gray-100 dark:border-white/5 backdrop-blur-md sticky top-0 z-20">
-        <div className="w-full sm:flex-1 relative group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-indigo-500 transition-colors" />
-          <input
-            type="text"
-            placeholder="Search by title..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-12 pr-4 py-3 bg-white dark:bg-[#111111] border border-gray-200 dark:border-white/10 rounded-2xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none transition-all shadow-sm group-hover:border-indigo-500/30"
-          />
-        </div>
-        
-        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto">
-          <ModernSelect
-            value={filterCategory}
-            onChange={(val) => setFilterCategory(val as any)}
-            options={[
-              { value: "all", label: "Categories" },
-              ...CATEGORIES.map(c => ({ value: c, label: c.toUpperCase() }))
-            ]}
-            className="w-full sm:w-40 py-3 bg-white dark:bg-[#111111] border border-gray-200 dark:border-white/10 rounded-2xl text-xs font-bold uppercase tracking-wider"
-          />
-          
-          <input
-            type="month"
-            value={filterMonth}
-            onChange={(e) => setFilterMonth(e.target.value)}
-            className="w-full sm:w-auto px-4 py-3 bg-white dark:bg-[#111111] border border-gray-200 dark:border-white/10 rounded-2xl text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none [color-scheme:light] dark:[color-scheme:dark]"
-          />
-
-          <button
-            onClick={handleExport}
-            className="flex items-center justify-center gap-2 px-6 py-3 text-white rounded-2xl text-sm font-black transition-all shadow-lg shadow-indigo-600/20 active:scale-95 hover:opacity-90 whitespace-nowrap shrink-0 w-full sm:w-auto"
-            style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
-          >
-            <FileSpreadsheet className="w-4 h-4" />
-            Export Excel
-          </button>
-        </div>
-      </div>
+      <SearchFilterCard
+        searchValue={searchTerm}
+        onSearchChange={setSearchTerm}
+        searchPlaceholder="Search by title..."
+        onExportExcel={handleExport}
+        primaryColor={pgConfig?.primaryColor}
+        rightElements={
+          <>
+            <ModernSelect
+              value={filterCategory}
+              onChange={(val) => setFilterCategory(val as any)}
+              options={[
+                { value: "all", label: "Categories" },
+                ...CATEGORIES.map(c => ({ value: c, label: c.toUpperCase() }))
+              ]}
+              className="w-full sm:w-40 font-bold uppercase tracking-wider"
+            />
+            <input
+              type="month"
+              value={filterMonth}
+              onChange={(e) => setFilterMonth(e.target.value)}
+              className="w-full sm:w-auto px-4 py-2.5 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none [color-scheme:light] dark:[color-scheme:dark] text-gray-900 dark:text-white"
+            />
+          </>
+        }
+      />
 
       {/* Main Data View */}
       <div className="bg-white dark:bg-[#111111] rounded-[2.5rem] border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden">

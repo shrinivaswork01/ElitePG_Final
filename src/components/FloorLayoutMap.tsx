@@ -180,67 +180,64 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
         </div>
       </div>
 
-      {/* Unified Filter Card Component */}
+      {/* Unified SearchFilterCard Component */}
       <SearchFilterCard
         searchValue={searchQuery}
         onSearchChange={setSearchQuery}
         searchPlaceholder="Search room, flat, or occupant..."
         primaryColor={primaryColor}
+        chips={[
+          { id: 'all', label: `All Floors (${availableFloors.length})` },
+          ...availableFloors.map(f => ({
+            id: String(f),
+            label: f === 0 ? 'Ground Floor' : `Floor ${f}`,
+            icon: <Building2 className="w-3.5 h-3.5" />
+          }))
+        ]}
+        activeChipId={String(selectedFloor)}
+        onChipChange={(id) => setSelectedFloor(id === 'all' ? 'all' : Number(id))}
+        chipSize="sm"
         rightElements={
-          <div className="w-full sm:w-44 shrink-0">
-            <ModernSelect
-              value={typeFilter}
-              onChange={(val) => setTypeFilter(val as any)}
-              options={[
-                { value: 'all', label: 'All Types' },
-                { value: 'AC', label: 'AC Rooms' },
-                { value: 'Non-AC', label: 'Non-AC Rooms' }
-              ]}
-            />
-          </div>
-        }
-      >
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            <FilterChips
-              items={[
-                { id: 'all', label: `All Floors (${availableFloors.length})` },
-                ...availableFloors.map(f => ({
-                  id: String(f),
-                  label: f === 0 ? 'Ground Floor' : `Floor ${f}`,
-                  icon: <Building2 className="w-3.5 h-3.5" />
-                }))
-              ]}
-              activeId={String(selectedFloor)}
-              onChange={(id) => setSelectedFloor(id === 'all' ? 'all' : Number(id))}
-              primaryColor={primaryColor}
-              size="sm"
-            />
-          </div>
+          <>
+            <div className="flex bg-gray-100 dark:bg-white/5 p-1 rounded-xl shrink-0">
+              <button
+                type="button"
+                onClick={() => setStatusFilter('all')}
+                className={cn("px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer", statusFilter === 'all' ? "bg-white dark:bg-[#1f1f1f] text-gray-900 dark:text-white shadow-xs" : "text-gray-500")}
+              >
+                All
+              </button>
+              <button
+                type="button"
+                onClick={() => setStatusFilter('available')}
+                className={cn("px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1", statusFilter === 'available' ? "bg-emerald-500 text-white shadow-xs" : "text-emerald-600 dark:text-emerald-400")}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
+                Vacant
+              </button>
+              <button
+                type="button"
+                onClick={() => setStatusFilter('occupied')}
+                className={cn("px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1", statusFilter === 'occupied' ? "bg-amber-500 text-white shadow-xs" : "text-amber-600 dark:text-amber-400")}
+              >
+                Full
+              </button>
+            </div>
 
-          <div className="flex bg-gray-100 dark:bg-white/5 p-1 rounded-xl shrink-0">
-            <button
-              onClick={() => setStatusFilter('all')}
-              className={cn("px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer", statusFilter === 'all' ? "bg-white dark:bg-[#1f1f1f] text-gray-900 dark:text-white shadow-xs" : "text-gray-500")}
-            >
-              All
-            </button>
-            <button
-              onClick={() => setStatusFilter('available')}
-              className={cn("px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1", statusFilter === 'available' ? "bg-emerald-500 text-white shadow-xs" : "text-emerald-600 dark:text-emerald-400")}
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
-              Vacant
-            </button>
-            <button
-              onClick={() => setStatusFilter('occupied')}
-              className={cn("px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1", statusFilter === 'occupied' ? "bg-amber-500 text-white shadow-xs" : "text-amber-600 dark:text-amber-400")}
-            >
-              Full
-            </button>
-          </div>
-        </div>
-      </SearchFilterCard>
+            <div className="w-36 shrink-0">
+              <ModernSelect
+                value={typeFilter}
+                onChange={(val) => setTypeFilter(val as any)}
+                options={[
+                  { value: 'all', label: 'All Types' },
+                  { value: 'AC', label: 'AC Rooms' },
+                  { value: 'Non-AC', label: 'Non-AC Rooms' }
+                ]}
+              />
+            </div>
+          </>
+        }
+      />
 
       {/* Floors & Rooms Visual Map View */}
       {Object.keys(roomsByFloor).length === 0 ? (

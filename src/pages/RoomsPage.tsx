@@ -35,6 +35,7 @@ import { QuickAllocateModal } from '../components/QuickAllocateModal';
 import { SwitchRoomModal } from '../components/SwitchRoomModal';
 import { ElectricityBillModal } from '../components/ElectricityBillModal';
 import { cn } from '../utils';
+import { SearchFilterCard } from '../components/SearchFilterCard';
 import toast from 'react-hot-toast';
 import { exportRoomsToExcel, exportFlatsToExcel } from '../utils/exportUtils';
 
@@ -809,18 +810,27 @@ export const RoomsPage = () => {
         />
       ) : (
         <>
-          <div className="bg-white dark:bg-[#111111] p-4 rounded-2xl border border-gray-100 dark:border-white/5 shadow-sm flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search by room number, occupant, flat, or type..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
-              />
-            </div>
-            <div className="flex flex-wrap sm:flex-nowrap gap-2 items-center w-full sm:w-auto">
+          <SearchFilterCard
+            searchValue={searchTerm}
+            onSearchChange={setSearchTerm}
+            searchPlaceholder="Search by room number, occupant, flat, or type..."
+            primaryColor={pgConfig?.primaryColor}
+            showMobileFilterButton={true}
+            onExportExcel={() => {
+              try {
+                if (activeTab === 'rooms') {
+                  exportRoomsToExcel(roomsToExport, tenants, branches, meterGroups, currentBranch);
+                  toast.success('Rooms Export Generated Successfully');
+                } else {
+                  exportFlatsToExcel(filteredMeterGroups, rooms, tenants, branches, currentBranch);
+                  toast.success('Flats Export Generated Successfully');
+                }
+              } catch (err) {
+                console.error(err);
+                toast.error('Failed to generate export');
+              }
+            }}
+            rightElements={
               <ModernSelect
                 value={filterFloor === 'all' ? 'all' : String(filterFloor)}
                 onChange={(val) => setFilterFloor(val === 'all' ? 'all' : Number(val))}
@@ -830,33 +840,8 @@ export const RoomsPage = () => {
                 ]}
                 className="flex-1 sm:w-44 sm:flex-initial"
               />
-              <button className="p-2.5 bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors shrink-0">
-                <Filter className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => {
-                  try {
-                    if (activeTab === 'rooms') {
-                      exportRoomsToExcel(roomsToExport, tenants, branches, meterGroups, currentBranch);
-                      toast.success('Rooms Export Generated Successfully');
-                    } else {
-                      exportFlatsToExcel(filteredMeterGroups, rooms, tenants, branches, currentBranch);
-                      toast.success('Flats Export Generated Successfully');
-                    }
-                  } catch (err) {
-                    console.error(err);
-                    toast.error('Failed to generate export');
-                  }
-                }}
-                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 text-white rounded-2xl text-sm font-black transition-all shadow-lg shadow-indigo-600/20 active:scale-95 hover:opacity-90 shrink-0"
-                style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
-                title="Export to Excel"
-              >
-                <FileSpreadsheet className="w-4 h-4" />
-                <span className="whitespace-nowrap">Export Excel</span>
-              </button>
-            </div>
-          </div>
+            }
+          />
 
           {isNearLimit && !isAtLimit && (
             <div className="flex justify-end">
