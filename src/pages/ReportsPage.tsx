@@ -470,7 +470,7 @@ export const ReportsPage = () => {
               className="min-w-[180px] font-bold"
             />
           </div>
-          <button onClick={handleExportExcel} className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-2xl text-sm font-black hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20 active:scale-95" style={{ background: themeColor }}>
+          <button onClick={handleExportExcel} className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-2xl text-sm font-black btn-hover shadow-lg shadow-indigo-600/20" style={{ background: themeColor }}>
             <FileSpreadsheet className="w-4 h-4" /> Export Excel
           </button>
         </div>
@@ -478,7 +478,7 @@ export const ReportsPage = () => {
 
       {/* 1. FINANCIAL SUMMARY SECTION (Top level) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-        <motion.div className="bg-white dark:bg-[#0d0d0d] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden group">
+        <motion.div className="bg-white dark:bg-[#0d0d0d] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden group card-hover">
           <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-all duration-500" />
           <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-600 mb-4">
             <CreditCard className="w-6 h-6" />
@@ -492,7 +492,7 @@ export const ReportsPage = () => {
           </div>
         </motion.div>
 
-        <motion.div className="bg-white dark:bg-[#0d0d0d] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden group">
+        <motion.div className="bg-white dark:bg-[#0d0d0d] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden group card-hover">
           <div className="absolute top-0 right-0 w-24 h-24 bg-rose-500/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-all duration-500" />
           <div className="w-12 h-12 bg-rose-50 dark:bg-rose-500/10 rounded-2xl flex items-center justify-center text-rose-600 mb-4">
             <Receipt className="w-6 h-6" />
@@ -506,7 +506,7 @@ export const ReportsPage = () => {
           </div>
         </motion.div>
 
-        <motion.div className="bg-white dark:bg-[#0d0d0d] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden group">
+        <motion.div className="bg-white dark:bg-[#0d0d0d] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden group card-hover">
           <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-all duration-500" />
           <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-500/10 rounded-2xl flex items-center justify-center text-emerald-600 mb-4">
             <TrendingUp className="w-6 h-6" />
@@ -520,7 +520,7 @@ export const ReportsPage = () => {
           </div>
         </motion.div>
 
-        <motion.div className="bg-white dark:bg-[#0d0d0d] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden group">
+        <motion.div className="bg-white dark:bg-[#0d0d0d] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden group card-hover">
           <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-all duration-500" />
           <div className="w-12 h-12 bg-amber-50 dark:bg-amber-500/10 rounded-2xl flex items-center justify-center text-amber-600 mb-4">
             <TrendingUp className="w-6 h-6" />
@@ -532,7 +532,7 @@ export const ReportsPage = () => {
         </motion.div>
 
         <motion.div
-          className={cn("p-6 rounded-[2rem] border shadow-sm relative overflow-hidden transition-all group", remainingBalance > 0 ? "text-white" : "bg-white dark:bg-[#0d0d0d] border-gray-100 dark:border-white/5")}
+          className={cn("p-6 rounded-[2rem] border shadow-sm relative overflow-hidden group card-hover", remainingBalance > 0 ? "text-white" : "bg-white dark:bg-[#0d0d0d] border-gray-100 dark:border-white/5")}
           style={remainingBalance > 0 ? { background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' } : undefined}
         >
           <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-all" />
@@ -548,7 +548,7 @@ export const ReportsPage = () => {
 
       {/* 2. CHARTS SECTION */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="lg:col-span-2 bg-white dark:bg-[#0d0d0d] p-8 rounded-[3rem] border border-gray-100 dark:border-white/5 shadow-sm min-h-[450px] flex flex-col">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="lg:col-span-2 bg-white dark:bg-[#0d0d0d] p-8 rounded-[3rem] border border-gray-100 dark:border-white/5 shadow-sm min-h-[450px] flex flex-col card-hover">
           <div className="flex items-center justify-between mb-8">
              <div>
                <h3 className="text-xl font-black text-gray-900 dark:text-white flex items-center gap-2 font-display uppercase tracking-tight">Financial Overview</h3>
@@ -584,7 +584,7 @@ export const ReportsPage = () => {
           </div>
         </motion.div>
 
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="bg-white dark:bg-[#0d0d0d] p-8 rounded-[3rem] border border-gray-100 dark:border-white/5 shadow-sm min-h-[450px] flex flex-col">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="bg-white dark:bg-[#0d0d0d] p-8 rounded-[3rem] border border-gray-100 dark:border-white/5 shadow-sm min-h-[450px] flex flex-col card-hover">
           <div className="mb-6">
             <h3 className="text-xl font-black text-gray-900 dark:text-white flex items-center gap-2 font-display uppercase tracking-tight">Expenses Breakdown</h3>
             <p className="text-[10px] font-bold text-gray-400 tracking-widest mt-1 uppercase italic">{monthOptions.find(m => m.value === selectedMonth)?.label || 'Selected Month'} Categories</p>
@@ -614,7 +614,7 @@ export const ReportsPage = () => {
         </motion.div>
       </div>
 
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="bg-white dark:bg-[#0d0d0d] rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden">
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="bg-white dark:bg-[#0d0d0d] rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden card-hover">
         <div className="p-6 border-b border-gray-100 dark:border-white/5"><h3 className="text-lg font-black text-gray-900 dark:text-white flex items-center gap-2 font-display uppercase tracking-tight">History Records</h3></div>
         <div className="overflow-x-auto">
            <table className="w-full text-left border-collapse min-w-[600px]">
@@ -626,7 +626,7 @@ export const ReportsPage = () => {
                  <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase tracking-widest text-right whitespace-nowrap">Margin (%)</th>
               </tr></thead>
               <tbody>{[...historyData].reverse().map((row) => (
-                 <tr key={row.monthStr} className="border-b border-gray-50 dark:border-white/5 hover:bg-gray-50/50 dark:hover:bg-white/[0.02] transition-colors">
+                 <tr key={row.monthStr} className="grid-row-hover border-b border-gray-50 dark:border-white/5">
                     <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">{row.name}</td>
                     <td className="px-6 py-4 font-medium text-emerald-600 text-right font-display">₹{row.revenue.toLocaleString()}</td>
                     <td className="px-6 py-4 font-medium text-rose-600 text-right font-display">₹{row.expenses.toLocaleString()}</td>
@@ -643,7 +643,7 @@ export const ReportsPage = () => {
       </motion.div>
 
       {/* 3. VACANCY SECTION */}
-      <div className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm p-6 overflow-hidden">
+      <div className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm p-6 overflow-hidden card-hover">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
           <div>
             <h3 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight font-display">Vacant Beds Overview</h3>
@@ -672,27 +672,27 @@ export const ReportsPage = () => {
 
       {/* 4. VACANCY STATS CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-        <motion.div whileHover={{ y: -5 }} className="bg-white dark:bg-[#0d0d0d] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden group">
+        <motion.div className="bg-white dark:bg-[#0d0d0d] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden group card-hover">
           <div className="absolute top-0 right-0 w-24 h-24 bg-gray-500/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-all duration-500" />
           <p className="text-[10px] font-black text-gray-400 tracking-[0.05em] mb-1 uppercase relative z-10">Total Rooms</p>
           <h3 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight relative z-10">{totalRooms}</h3>
         </motion.div>
-        <motion.div whileHover={{ y: -5 }} className="bg-white dark:bg-[#0d0d0d] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden group">
+        <motion.div className="bg-white dark:bg-[#0d0d0d] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden group card-hover">
           <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-all duration-500" />
           <p className="text-[10px] font-black text-gray-400 tracking-[0.05em] mb-1 uppercase relative z-10">Total Beds</p>
           <h3 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight relative z-10">{totalBeds}</h3>
         </motion.div>
-        <motion.div whileHover={{ y: -5 }} className="bg-white dark:bg-[#0d0d0d] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden group">
+        <motion.div className="bg-white dark:bg-[#0d0d0d] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden group card-hover">
           <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-all duration-500" />
           <p className="text-[10px] font-black text-emerald-500 tracking-[0.05em] mb-1 uppercase relative z-10">Occupied Beds</p>
           <div className="flex items-baseline gap-2 relative z-10"><h3 className="text-2xl font-black text-emerald-600 tracking-tight">{occupiedBeds}</h3><span className="text-[10px] font-black text-emerald-500">({occupancyRate.toFixed(1)}%)</span></div>
         </motion.div>
-        <motion.div whileHover={{ y: -5 }} className="bg-white dark:bg-[#0d0d0d] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden group">
+        <motion.div className="bg-white dark:bg-[#0d0d0d] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden group card-hover">
           <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-all duration-500" />
           <p className="text-[10px] font-black text-amber-500 tracking-[0.05em] mb-1 uppercase relative z-10">Vacant Beds</p>
           <div className="flex items-baseline gap-2 relative z-10"><h3 className="text-2xl font-black text-amber-600 tracking-tight">{vacantBeds}</h3><span className="text-[10px] font-black text-amber-500">({vacancyRate.toFixed(1)}%)</span></div>
         </motion.div>
-        <motion.div whileHover={{ y: -5 }} className="bg-white dark:bg-[#0d0d0d] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden group">
+        <motion.div className="bg-white dark:bg-[#0d0d0d] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden group card-hover">
           <div className="absolute top-0 right-0 w-24 h-24 bg-rose-500/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-all duration-500" />
           <p className="text-[10px] font-black text-rose-500 tracking-[0.05em] mb-1 uppercase relative z-10">Vacant Rooms</p>
           <h3 className="text-2xl font-black text-rose-600 tracking-tight relative z-10">{vacantRoomsList.length}</h3>
@@ -708,7 +708,7 @@ export const ReportsPage = () => {
       )}
 
       {/* Transaction Logs */}
-      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3 }} className="bg-white dark:bg-[#0d0d0d] rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden mt-8">
+      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3 }} className="bg-white dark:bg-[#0d0d0d] rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden mt-8 card-hover">
           <div className="p-8 border-b border-gray-100 dark:border-white/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
             <div>
                 <h3 className="text-xl font-black text-gray-900 dark:text-white flex items-center gap-2 font-display uppercase tracking-tight"><Receipt className="w-6 h-6 text-indigo-500" /> Detailed Transaction Logs</h3>
@@ -720,10 +720,10 @@ export const ReportsPage = () => {
                   key={filter}
                   onClick={() => setTransactionFilter(filter)}
                   className={cn(
-                    "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                    "chip-hover px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer",
                     transactionFilter === filter
-                      ? "text-white shadow-lg shadow-indigo-600/20"
-                      : "bg-gray-50 text-gray-500 dark:bg-white/5 dark:text-gray-400 hover:bg-gray-100 shadow-sm"
+                      ? "text-white shadow-lg shadow-indigo-600/20 chip-active"
+                      : "bg-gray-50 text-gray-500 dark:bg-white/5 dark:text-gray-400"
                   )}
                   style={transactionFilter === filter ? { background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' } : undefined}
                 >
@@ -732,7 +732,7 @@ export const ReportsPage = () => {
               ))}
               <button
                 onClick={handleExportDetailedLogs}
-                className="flex items-center gap-2 px-6 py-2.5 text-white rounded-2xl text-sm font-black transition-all shadow-lg shadow-indigo-600/20 active:scale-95 hover:opacity-90 shrink-0"
+                className="flex items-center gap-2 px-6 py-2.5 text-white rounded-2xl text-sm font-black shadow-lg shadow-indigo-600/20 btn-hover shrink-0"
                 style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
                 title="Export Detailed Transaction Logs to Excel"
               >
@@ -750,7 +750,7 @@ export const ReportsPage = () => {
                 <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase tracking-widest text-right">Amount</th>
               </tr></thead>
               <tbody>{paginatedLogs.length === 0 ? (<tr><td colSpan={5} className="px-6 py-20 text-center"><div className="flex flex-col items-center gap-3 text-gray-300 dark:text-gray-600"><Receipt className="w-12 h-12 opacity-20" /><p className="text-sm font-black uppercase tracking-widest">No matching logs found</p></div></td></tr>) : paginatedLogs.map((log, i) => (
-                    <tr key={`${currentPage}-${i}`} className="border-b border-gray-50 dark:border-white/5 hover:bg-gray-50/50 dark:hover:bg-white/[0.02] transition-colors group">
+                    <tr key={`${currentPage}-${i}`} className="grid-row-hover border-b border-gray-50 dark:border-white/5 group">
                         <td className="px-6 py-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-gray-100 dark:bg-white/5 flex items-center justify-center text-sm font-black text-gray-500 group-hover:bg-indigo-600 group-hover:text-white transition-all">{log.branch_name.charAt(0)}</div><span className="font-bold text-gray-900 dark:text-white">{log.branch_name}</span></div></td>
                         <td className="px-6 py-4 text-xs font-bold text-gray-400 uppercase">{log.date ? format(new Date(log.date), 'dd MMM yyyy') : 'N/A'}</td>
                         <td className="px-6 py-4">

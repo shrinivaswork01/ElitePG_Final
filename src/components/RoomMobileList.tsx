@@ -64,7 +64,7 @@ const RoomMobileCard = memo(({
       animate={{ opacity: 1, y: 0 }}
       whileTap={{ scale: 0.98 }}
       className={cn(
-        "relative p-4 rounded-3xl border transition-all duration-300 mb-3 overflow-hidden",
+        "relative p-4 rounded-3xl border transition-all duration-300 mb-3 overflow-hidden card-hover",
         isSelected 
           ? "bg-indigo-50 border-indigo-200 dark:bg-indigo-500/10 dark:border-indigo-500/30 ring-2 ring-indigo-500/20" 
           : "bg-white border-gray-100 dark:bg-[#111111] dark:border-white/5 shadow-sm"

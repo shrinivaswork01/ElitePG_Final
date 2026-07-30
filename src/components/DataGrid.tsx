@@ -161,7 +161,7 @@ const DataGridComponent = <T,>({
                   key={keyExtractor(row)} 
                   onClick={() => onRowClick && onRowClick(row)}
                   className={cn(
-                    "hover:bg-gray-50 dark:hover:bg-white/5 transition-colors group",
+                    "grid-row-hover group",
                     onRowClick && "cursor-pointer"
                   )}
                 >
@@ -198,7 +198,7 @@ const DataGridComponent = <T,>({
               <select
                 value={limit}
                 onChange={(e) => onLimitChange(Number(e.target.value))}
-                className="px-2.5 py-1 bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold text-gray-700 dark:text-gray-250 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
+                className="px-2.5 py-1 bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold text-gray-700 dark:text-gray-250 focus:outline-none cursor-pointer select-trigger-hover input-focus-glow"
               >
                 <option value={10}>10 rows</option>
                 <option value={20}>20 rows</option>
@@ -212,7 +212,7 @@ const DataGridComponent = <T,>({
           <button
             onClick={() => onPageChange(page - 1)}
             disabled={page === 1 || isLoading}
-            className="p-2 rounded-xl border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+            className="p-2 rounded-xl border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed pagination-btn"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
@@ -224,7 +224,7 @@ const DataGridComponent = <T,>({
           <button
             onClick={() => onPageChange(page + 1)}
             disabled={page === totalPages || isLoading || totalCount === 0}
-            className="p-2 rounded-xl border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+            className="p-2 rounded-xl border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed pagination-btn"
           >
             <ChevronRight className="w-4 h-4" />
           </button>

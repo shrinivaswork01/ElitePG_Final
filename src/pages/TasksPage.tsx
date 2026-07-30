@@ -157,7 +157,7 @@ export const TasksPage = () => {
           {isAdminOrManager && (
             <button
               onClick={() => setIsModalOpen(true)}
-              className="flex items-center justify-center gap-2 px-4 sm:px-5 h-11 text-white rounded-xl text-xs sm:text-sm font-bold shadow-lg shadow-indigo-600/20 transition-all active:scale-95 hover:opacity-90 w-full sm:w-auto whitespace-nowrap"
+              className="flex items-center justify-center gap-2 px-4 sm:px-5 h-11 text-white rounded-xl text-xs sm:text-sm font-bold shadow-lg shadow-indigo-600/20 btn-hover w-full sm:w-auto whitespace-nowrap"
               style={{ background: pgConfig?.primaryColor }}
             >
               <Plus className="w-4 h-4 shrink-0" />

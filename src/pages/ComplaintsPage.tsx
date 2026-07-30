@@ -164,7 +164,7 @@ export const ComplaintsPage = () => {
           {['admin', 'manager', 'tenant'].includes(user?.role || '') && (
             <button
               onClick={() => setIsAddModalOpen(true)}
-              className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-5 h-11 text-white rounded-xl text-xs sm:text-sm font-semibold shadow-lg transition-all active:scale-95 hover:opacity-90 whitespace-nowrap"
+              className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-5 h-11 text-white rounded-xl text-xs sm:text-sm font-semibold shadow-lg btn-hover whitespace-nowrap"
               style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
             >
               <Plus className="w-4 h-4 shrink-0" />

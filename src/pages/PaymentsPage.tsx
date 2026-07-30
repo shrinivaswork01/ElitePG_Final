@@ -1389,7 +1389,7 @@ export const PaymentsPage = () => {
             )}
             <button
               onClick={() => setIsAddModalOpen(true)}
-              className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-5 h-11 text-white rounded-xl text-xs sm:text-sm font-semibold shadow-lg shadow-indigo-600/20 transition-all active:scale-95 hover:opacity-90 whitespace-nowrap"
+              className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-5 h-11 text-white rounded-xl text-xs sm:text-sm font-semibold shadow-lg shadow-indigo-600/20 btn-hover whitespace-nowrap"
               style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
             >
               <Plus className="w-4 h-4 shrink-0" />

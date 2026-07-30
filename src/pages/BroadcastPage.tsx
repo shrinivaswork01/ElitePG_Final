@@ -301,14 +301,9 @@ export const BroadcastPage = () => {
     category: 'custom' as WhatsAppTemplateCategory
   });
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-
   const templateTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const quickBroadcastTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const announcementContentTextareaRef = useRef<HTMLTextAreaElement | null>(null);
-
-  if (user?.role !== 'admin' && user?.role !== 'super' && user?.role !== 'partner') {
-    return <Navigate to="/" replace />;
-  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -496,6 +491,10 @@ export const BroadcastPage = () => {
     { label: 'Due Date', insertText: '{{due_date}}' },
   ];
 
+  if (user?.role !== 'admin' && user?.role !== 'super' && user?.role !== 'partner') {
+    return <Navigate to="/" replace />;
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -506,14 +505,14 @@ export const BroadcastPage = () => {
         <div className="flex items-center gap-3">
           <button
             onClick={() => setIsManageModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-white/10 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all shadow-sm"
+            className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-white/10 rounded-xl font-semibold btn-hover shadow-sm"
           >
             <BookTemplate className="w-4 h-4 text-gray-500 dark:text-gray-400" />
             Manage Templates
           </button>
           <button
             onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 transition-all"
+            className="flex items-center gap-2 px-4 py-2.5 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 btn-hover"
             style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
           >
             <Plus className="w-5 h-5" />
@@ -535,7 +534,7 @@ export const BroadcastPage = () => {
                 layout
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-white dark:bg-[#111111] p-6 rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm group"
+                className="bg-white dark:bg-[#111111] p-6 rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm group card-hover"
               >
                 <div className="flex items-start justify-between mb-4">
                   <div>
@@ -588,7 +587,7 @@ export const BroadcastPage = () => {
 
         <div className="space-y-6">
           {/* Combined Quick Broadcast & Templates Card */}
-          <div className="bg-white dark:bg-[#111111] p-6 rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm space-y-6">
+          <div className="bg-white dark:bg-[#111111] p-6 rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm space-y-6 card-hover">
             <div>
               <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                 <Users className="w-5 h-5 text-indigo-600" />
@@ -688,7 +687,7 @@ export const BroadcastPage = () => {
                   ref={quickBroadcastTextareaRef}
                   value={quickBroadcast.message}
                   onChange={(e) => setQuickBroadcast({ ...quickBroadcast, message: e.target.value })}
-                  className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border-none rounded-xl text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500/20 min-h-[120px]"
+                  className="w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border border-transparent rounded-xl text-sm text-gray-900 dark:text-white outline-none input-focus-glow min-h-[120px]"
                   placeholder="Type your message here..."
                 />
               </div>
@@ -701,7 +700,7 @@ export const BroadcastPage = () => {
               {/* Action Button */}
               <button
                 onClick={handleQuickBroadcast}
-                className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all flex items-center justify-center gap-2"
+                className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold shadow-lg shadow-emerald-600/20 btn-hover flex items-center justify-center gap-2 cursor-pointer"
               >
                 <MessageSquare className="w-5 h-5" />
                 Send via WhatsApp
@@ -711,7 +710,7 @@ export const BroadcastPage = () => {
 
           {/* Pro Tip Card */}
           <div
-            className="rounded-3xl p-6 text-white shadow-xl shadow-indigo-600/20"
+            className="rounded-3xl p-6 text-white shadow-xl shadow-indigo-600/20 card-hover"
             style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
           >
             <h4 className="font-bold mb-2 flex items-center gap-2">

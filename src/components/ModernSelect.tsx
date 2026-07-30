@@ -51,7 +51,7 @@ export const ModernSelect: React.FC<ModernSelectProps> = ({
         disabled={disabled}
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          "w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl text-sm text-left text-gray-900 dark:text-white flex items-center justify-between shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed",
+          "w-full px-4 py-2.5 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl text-sm text-left text-gray-900 dark:text-white flex items-center justify-between shadow-sm focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed select-trigger-hover input-focus-glow",
           className
         )}
       >
@@ -76,7 +76,7 @@ export const ModernSelect: React.FC<ModernSelectProps> = ({
                 placeholder={searchPlaceholder}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-7 pr-3 py-1.5 bg-white dark:bg-[#202020] border border-gray-200 dark:border-white/10 rounded-lg text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="w-full pl-7 pr-3 py-1.5 bg-white dark:bg-[#202020] border border-gray-200 dark:border-white/10 rounded-lg text-xs text-gray-900 dark:text-white focus:outline-none input-focus-glow"
               />
             </div>
           )}
@@ -94,10 +94,10 @@ export const ModernSelect: React.FC<ModernSelectProps> = ({
                     setSearch('');
                   }}
                   className={cn(
-                    "w-full px-4 py-2.5 text-left text-xs transition-colors flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5",
+                    "w-full px-4 py-2.5 text-left text-xs flex items-center justify-between dropdown-item-hover",
                     value === opt.value
                       ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold"
-                      : "text-gray-700 dark:text-gray-300"
+                      : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5"
                   )}
                 >
                   <span className="truncate">{opt.label}</span>

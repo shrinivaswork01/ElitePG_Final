@@ -782,7 +782,7 @@ export const PartnerPayoutsPage = () => {
                 <div className="flex items-center gap-3">
                   <button 
                     onClick={handleExportTransactions} 
-                    className="flex items-center gap-2 px-6 py-2.5 text-white rounded-2xl text-sm font-black transition-all shadow-lg shadow-indigo-600/20 active:scale-95 hover:opacity-90 font-display shrink-0"
+                    className="flex items-center gap-2 px-6 py-2.5 text-white rounded-2xl text-sm font-black shadow-lg shadow-indigo-600/20 btn-hover font-display shrink-0"
                     style={{ background: themeGradient }}
                   >
                     <FileSpreadsheet className="w-4 h-4" />

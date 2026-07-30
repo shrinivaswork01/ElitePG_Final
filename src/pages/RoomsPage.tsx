@@ -53,9 +53,6 @@ export const RoomsPage = () => {
   const isAtLimit = currentPlan && currentRoomsCount >= currentPlan.maxRooms;
   const isNearLimit = currentPlan && currentRoomsCount >= currentPlan.maxRooms * 0.8;
 
-  if (user?.role === 'tenant') {
-    return <Navigate to="/" replace />;
-  }
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [detailRoom, setDetailRoom] = useState<Room | null>(null);
@@ -712,6 +709,10 @@ export const RoomsPage = () => {
     });
   }, [rooms, searchTerm, filterFloor]);
 
+  if (user?.role === 'tenant') {
+    return <Navigate to="/" replace />;
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pl-12 sm:pl-0">
@@ -776,7 +777,7 @@ export const RoomsPage = () => {
                 setFlatFormData({ name: '', floor: 1 });
                 setIsAddFlatModalOpen(true);
               }}
-              className="flex items-center justify-center gap-2 px-4 h-11 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-200 border border-gray-100 dark:border-white/5 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-white/10 transition-all shadow-sm whitespace-nowrap"
+              className="flex items-center justify-center gap-2 px-4 h-11 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-200 border border-gray-100 dark:border-white/5 rounded-xl font-semibold btn-hover shadow-sm whitespace-nowrap"
             >
               <Layers className="w-4 h-4 text-violet-500 shrink-0" />
               <span>Add Flat</span>
@@ -785,7 +786,7 @@ export const RoomsPage = () => {
           {!isAtLimit && ['admin', 'manager', 'super'].includes(user?.role || '') && (
             <button
               onClick={() => setIsAddModalOpen(true)}
-              className="flex items-center justify-center gap-2 px-4 h-11 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 transition-all active:scale-95 hover:opacity-90 whitespace-nowrap"
+              className="flex items-center justify-center gap-2 px-4 h-11 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 btn-hover whitespace-nowrap"
               style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
             >
               <Plus className="w-4 h-4 shrink-0" />

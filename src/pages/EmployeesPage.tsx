@@ -71,9 +71,6 @@ export const EmployeesPage = () => {
     checkFeatureAccess
   } = useApp();
 
-  if (user?.role === 'tenant') {
-    return <Navigate to="/" replace />;
-  }
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isMobileActionsOpen, setIsMobileActionsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'list' | 'salaries' | 'admins'>('list');
@@ -440,6 +437,10 @@ export const EmployeesPage = () => {
     );
   };
 
+  if (user?.role === 'tenant') {
+    return <Navigate to="/" replace />;
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pl-12 sm:pl-0">
@@ -501,7 +502,7 @@ export const EmployeesPage = () => {
               
               <button
                 onClick={() => (activeTab === 'admins' && user?.role === 'super') ? setIsUserModalOpen(true) : setIsAddModalOpen(true)}
-                className="flex items-center gap-2 px-5 h-11 text-white rounded-xl font-semibold shadow-lg transition-all active:scale-95 hover:opacity-90"
+                className="flex items-center gap-2 px-5 h-11 text-white rounded-xl font-semibold shadow-lg btn-hover"
                 style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)', boxShadow: `0 10px 15px -3px ${pgConfig?.primaryColor}20` }}
               >
                 <Plus className="w-5 h-5" />

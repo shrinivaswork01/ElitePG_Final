@@ -9,6 +9,16 @@ import { cn } from '../utils';
 import { format, parseISO } from 'date-fns';
 import { DropdownMenu, DropdownItem } from './DropdownMenu';
 
+const formatDateSafe = (dateStr?: string | null, pattern = 'dd MMM yyyy') => {
+  if (!dateStr) return '—';
+  try {
+    const d = parseISO(dateStr);
+    return isNaN(d.getTime()) ? '—' : format(d, pattern);
+  } catch {
+    return '—';
+  }
+};
+
 interface ExpenseMobileListProps {
   expenses: any[];
   isLoading?: boolean;
@@ -168,7 +178,7 @@ const ExpenseMobileCard = memo(({
         <div className="bg-gray-50 dark:bg-white/5 rounded-xl p-2.5">
           <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Date</p>
           <p className="text-xs font-semibold text-gray-900 dark:text-white truncate">
-            {expense.date ? format(parseISO(expense.date), 'dd MMM yyyy') : '—'}
+            {formatDateSafe(expense.date)}
           </p>
         </div>
       </div>
@@ -182,7 +192,7 @@ const ExpenseMobileCard = memo(({
       <div className="flex items-center justify-between">
         {getStatusBadge(expense.status)}
         <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-          {expense.created_at ? format(parseISO(expense.created_at), 'dd MMM yy') : '—'}
+          {formatDateSafe(expense.created_at || expense.createdAt, 'dd MMM yy')}
         </span>
       </div>
     </div>

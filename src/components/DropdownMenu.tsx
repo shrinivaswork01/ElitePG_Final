@@ -138,7 +138,7 @@ export const DropdownItem = ({
       onClick();
     }}
     className={cn(
-      "w-full text-left px-4 py-3 text-sm flex items-center gap-3 transition-colors min-h-[44px]",
+      "w-full text-left px-4 py-3 text-sm flex items-center gap-3 min-h-[44px] dropdown-item-hover",
       danger
         ? "text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10"
         : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5",

@@ -337,7 +337,7 @@ export const KYCPage = () => {
             <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto justify-end">
               <button
                 onClick={handleDownloadSelected}
-                className="flex items-center justify-center gap-1.5 px-4 h-11 bg-gray-900 dark:bg-gray-800 text-white rounded-xl text-xs font-bold shadow-md hover:bg-gray-800 active:scale-95 transition-all w-full sm:w-auto cursor-pointer"
+                className="flex items-center justify-center gap-1.5 px-4 h-11 bg-gray-900 dark:bg-gray-800 text-white rounded-xl text-xs font-bold shadow-md btn-hover w-full sm:w-auto cursor-pointer"
               >
                 <Download className="w-4 h-4 shrink-0" />
                 <span>Download Selected ({selectedDocs.length})</span>
@@ -360,7 +360,7 @@ export const KYCPage = () => {
               layout
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden group hover:shadow-md transition-all"
+              className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden group card-hover"
             >
               <div className="p-6">
                 <div className="flex items-start justify-between mb-4">

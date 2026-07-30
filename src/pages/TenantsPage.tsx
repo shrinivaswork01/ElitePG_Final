@@ -67,9 +67,6 @@ export const TenantsPage = () => {
     }
   }, [location.state]);
 
-  if (user?.role === 'tenant') {
-    return <Navigate to="/" replace />;
-  }
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
@@ -750,6 +747,10 @@ export const TenantsPage = () => {
     }
   };
 
+  if (user?.role === 'tenant') {
+    return <Navigate to="/" replace />;
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pl-12 sm:pl-0">
@@ -769,7 +770,7 @@ export const TenantsPage = () => {
               setIsAddModalOpen(true);
             }}
             className={cn(
-              "flex items-center justify-center gap-2 px-4 sm:px-5 h-11 text-white rounded-xl text-xs sm:text-sm font-bold shadow-lg shadow-indigo-600/20 transition-all active:scale-95 hover:opacity-90 w-full sm:w-auto whitespace-nowrap",
+              "flex items-center justify-center gap-2 px-4 sm:px-5 h-11 text-white rounded-xl text-xs sm:text-sm font-bold shadow-lg shadow-indigo-600/20 btn-hover w-full sm:w-auto whitespace-nowrap",
               isAtLimit && "opacity-50 cursor-not-allowed"
             )}
             style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
@@ -1017,7 +1018,7 @@ export const TenantsPage = () => {
                     const branch = branches.find(b => b.id === tenantToDelete.branchId);
                     await exportSingleTenantToExcel(tenantToDelete, payments, rooms, branch?.name);
                   }}
-                  className="w-full py-3.5 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 active:scale-95 hover:opacity-90"
+                  className="w-full py-3.5 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 btn-hover"
                   style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
                 >
                   <FileSpreadsheet className="w-4 h-4" />

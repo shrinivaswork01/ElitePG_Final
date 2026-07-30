@@ -168,7 +168,7 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
       {/* Top Interactive Metric Summary Bar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {/* Total Beds */}
-        <div className="p-3 sm:p-4 rounded-2xl bg-white dark:bg-[#111111] border border-gray-100 dark:border-white/5 shadow-sm flex items-center gap-2.5 sm:gap-3 min-w-0">
+        <div className="p-3 sm:p-4 rounded-2xl bg-white dark:bg-[#111111] border border-gray-100 dark:border-white/5 shadow-sm flex items-center gap-2.5 sm:gap-3 min-w-0 card-hover">
           <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold shrink-0">
             <Users className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
@@ -179,7 +179,7 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
         </div>
 
         {/* Vacant / Available Beds */}
-        <div className="p-3 sm:p-4 rounded-2xl bg-white dark:bg-[#111111] border border-gray-100 dark:border-white/5 shadow-sm flex items-center gap-2.5 sm:gap-3 min-w-0">
+        <div className="p-3 sm:p-4 rounded-2xl bg-white dark:bg-[#111111] border border-gray-100 dark:border-white/5 shadow-sm flex items-center gap-2.5 sm:gap-3 min-w-0 card-hover">
           <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold shrink-0">
             <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
@@ -190,7 +190,7 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
         </div>
 
         {/* Occupied Beds */}
-        <div className="p-3 sm:p-4 rounded-2xl bg-white dark:bg-[#111111] border border-gray-100 dark:border-white/5 shadow-sm flex items-center gap-2.5 sm:gap-3 min-w-0">
+        <div className="p-3 sm:p-4 rounded-2xl bg-white dark:bg-[#111111] border border-gray-100 dark:border-white/5 shadow-sm flex items-center gap-2.5 sm:gap-3 min-w-0 card-hover">
           <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold shrink-0">
             <User className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
@@ -201,7 +201,7 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
         </div>
 
         {/* AC vs Non-AC */}
-        <div className="p-3 sm:p-4 rounded-2xl bg-white dark:bg-[#111111] border border-gray-100 dark:border-white/5 shadow-sm flex items-center gap-2.5 sm:gap-3 min-w-0">
+        <div className="p-3 sm:p-4 rounded-2xl bg-white dark:bg-[#111111] border border-gray-100 dark:border-white/5 shadow-sm flex items-center gap-2.5 sm:gap-3 min-w-0 card-hover">
           <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center font-bold shrink-0">
             <Wind className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
@@ -382,7 +382,7 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
                       initial={{ opacity: 0, y: 15 }}
                       animate={{ opacity: 1, y: 0 }}
                       className={cn(
-                        "bg-white dark:bg-[#111111] rounded-2xl border transition-all duration-200 p-4 shadow-sm hover:shadow-md relative overflow-hidden flex flex-col justify-between",
+                        "bg-white dark:bg-[#111111] rounded-2xl border transition-all duration-200 p-4 shadow-sm relative overflow-hidden flex flex-col justify-between card-hover",
                         isSelected
                           ? "border-indigo-500 ring-2 ring-indigo-500/20 bg-indigo-50/10 dark:bg-indigo-500/5"
                           : isFull 

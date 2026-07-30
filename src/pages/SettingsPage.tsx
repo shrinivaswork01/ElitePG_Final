@@ -51,9 +51,9 @@ export const SettingsPage = () => {
         primaryColor: pgConfig.primaryColor || GRADIENT_THEME,
         customRoles: pgConfig.customRoles || [],
         rolePermissions: pgConfig.rolePermissions || [],
-        defaultPaymentDueDate: pgConfig.defaultPaymentDueDate || 1,
-        defaultLateFeeDay: pgConfig.defaultLateFeeDay || 5,
-        lateFeeAmount: pgConfig.lateFeeAmount || 50,
+        defaultPaymentDueDate: pgConfig.defaultPaymentDueDate ?? 1,
+        defaultLateFeeDay: pgConfig.defaultLateFeeDay ?? 5,
+        lateFeeAmount: pgConfig.lateFeeAmount ?? 50,
         razorpayKeyId: pgConfig.razorpayKeyId || ''
       });
     }

@@ -37,13 +37,21 @@ import { ExpenseMobileList } from '../components/ExpenseMobileList';
 
 const CATEGORIES: ExpenseCategory[] = ['apex', 'capital', 'operational', 'maintenance', 'salary', 'utility', 'other'];
 
+const formatDateSafe = (dateStr?: string | null, pattern = 'dd MMM yyyy') => {
+  if (!dateStr) return '—';
+  try {
+    const d = parseISO(dateStr);
+    return isNaN(d.getTime()) ? '—' : format(d, pattern);
+  } catch {
+    return '—';
+  }
+};
+
 export const ExpensesPage = () => {
   const { user, users } = useAuth();
   const { expenses, salaryPayments, addExpense, updateExpense, deleteExpense, currentBranch, pgConfig } = useApp();
   
-  if (user?.role === 'tenant') {
-    return <Navigate to="/" replace />;
-  }
+
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
@@ -207,8 +215,8 @@ export const ExpensesPage = () => {
       ? expenses.filter(e => selectedExpenseIds.includes(e.id))
       : expenses.filter(e => {
           const matchesSearch = searchTerm ? e.title.toLowerCase().includes(searchTerm.toLowerCase()) : true;
-          const matchesCategory = filterCategory !== 'all' ? e.category === filterCategory : true;
-          const matchesMonth = e.month === filterMonth;
+          const matchesCategory = filterCategory !== 'all' ? e.category?.toLowerCase() === filterCategory.toLowerCase() : true;
+          const matchesMonth = e.month ? e.month === filterMonth : (e.date ? e.date.startsWith(filterMonth) : true);
           return matchesSearch && matchesCategory && matchesMonth;
         });
     
@@ -279,8 +287,8 @@ export const ExpensesPage = () => {
       sortable: true,
       cell: (e) => (
         <div className="flex flex-col">
-          <span className="text-sm font-black text-gray-900 dark:text-white">₹{e.amount.toLocaleString()}</span>
-          <span className="text-[10px] text-gray-500 font-medium uppercase">{format(parseISO(e.date), 'dd MMM yyyy')}</span>
+          <span className="text-sm font-black text-gray-900 dark:text-white">₹{Number(e?.amount || 0).toLocaleString()}</span>
+          <span className="text-[10px] text-gray-500 font-medium uppercase">{formatDateSafe(e?.date)}</span>
         </div>
       )
     },
@@ -373,6 +381,10 @@ export const ExpensesPage = () => {
 
   const isAdmin = ['super', 'admin', 'partner'].includes(user?.role || '');
 
+  if (user?.role === 'tenant') {
+    return <Navigate to="/" replace />;
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pl-12 sm:pl-0">
@@ -385,7 +397,7 @@ export const ExpensesPage = () => {
           <button
             onClick={handleOpenAdd}
             style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
-            className="flex items-center justify-center gap-2 px-4 sm:px-5 h-11 text-white rounded-xl text-xs sm:text-sm font-bold shadow-lg shadow-indigo-600/20 transition-all active:scale-95 hover:opacity-90 w-full sm:w-auto whitespace-nowrap"
+            className="flex items-center justify-center gap-2 px-4 sm:px-5 h-11 text-white rounded-xl text-xs sm:text-sm font-bold shadow-lg shadow-indigo-600/20 btn-hover w-full sm:w-auto whitespace-nowrap"
           >
             <Plus className="w-4 h-4 shrink-0" />
             <span>Add Expense</span>
@@ -397,7 +409,7 @@ export const ExpensesPage = () => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Total Expenditure */}
         <motion.div
-          className="p-6 rounded-[2rem] shadow-lg relative overflow-hidden group text-white"
+          className="p-6 rounded-[2rem] shadow-lg relative overflow-hidden group text-white card-hover"
           style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}
         >
           <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-all duration-700" />
@@ -411,24 +423,24 @@ export const ExpensesPage = () => {
         </motion.div>
 
         {/* Operational Expense */}
-        <motion.div className="bg-white dark:bg-[#0d0d0d] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden group">
+        <motion.div className="bg-white dark:bg-[#0d0d0d] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden group card-hover">
           <div className="absolute top-0 right-0 w-24 h-24 bg-rose-500/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-all duration-500" />
           <div className="w-12 h-12 bg-rose-50 dark:bg-rose-500/10 rounded-2xl flex items-center justify-center text-rose-600 mb-4">
             <Receipt className="w-6 h-6" />
           </div>
-          <p className="text-[10px] font-black text-gray-400 tracking-[0.05em] mb-1 uppercase">Operational Costs</p>
+          <p className="text-[10px] font-black text-gray-400 dark:text-gray-400 tracking-[0.05em] mb-1 uppercase">Operational Costs</p>
           <div className="flex items-baseline gap-2">
             <h3 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight font-display">₹{opsTotal.toLocaleString()}</h3>
           </div>
         </motion.div>
 
         {/* Salary Expense */}
-        <motion.div className="bg-white dark:bg-[#0d0d0d] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden group">
+        <motion.div className="bg-white dark:bg-[#0d0d0d] p-6 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm relative overflow-hidden group card-hover">
           <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-all duration-500" />
           <div className="w-12 h-12 bg-amber-50 dark:bg-amber-500/10 rounded-2xl flex items-center justify-center text-amber-600 mb-4">
             <PieChart className="w-6 h-6" />
           </div>
-          <p className="text-[10px] font-black text-gray-400 tracking-[0.05em] mb-1 uppercase">Salary Expenditure</p>
+          <p className="text-[10px] font-black text-gray-400 dark:text-gray-400 tracking-[0.05em] mb-1 uppercase">Salary Expenditure</p>
           <div className="flex items-baseline gap-2">
             <h3 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight font-display">₹{salaryTotal.toLocaleString()}</h3>
           </div>
@@ -456,7 +468,7 @@ export const ExpensesPage = () => {
               type="month"
               value={filterMonth}
               onChange={(e) => setFilterMonth(e.target.value)}
-              className="w-full sm:w-auto px-4 py-2.5 h-11 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl text-xs sm:text-sm font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none [color-scheme:light] dark:[color-scheme:dark] text-gray-900 dark:text-white"
+              className="w-full sm:w-auto px-4 py-2.5 h-11 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl text-xs sm:text-sm font-bold select-trigger-hover input-focus-glow outline-none [color-scheme:light] dark:[color-scheme:dark] text-gray-900 dark:text-white"
             />
           </>
         }
@@ -486,7 +498,7 @@ export const ExpensesPage = () => {
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleExport}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-indigo-700 active:scale-95 transition-all"
+                  className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-md btn-hover"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5" />
                   Export Selected Excel
@@ -495,7 +507,7 @@ export const ExpensesPage = () => {
                   onClick={() => {
                     setBulkExpenseDeleteIds(selectedExpenseIds);
                   }}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-rose-700 active:scale-95 transition-all"
+                  className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold shadow-md btn-hover"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   Delete Selected
@@ -507,7 +519,7 @@ export const ExpensesPage = () => {
         {/* Desktop DataGrid View */}
         <div className="hidden lg:block">
           <DataGrid
-            data={paginatedExpenses}
+            data={paginatedExpenses || []}
             columns={columns}
             isLoading={isLoading}
             onPageChange={setPage}
@@ -515,7 +527,7 @@ export const ExpensesPage = () => {
               setLimit(newLimit);
               setPage(1);
             }}
-            totalCount={totalCount}
+            totalCount={totalCount || 0}
             keyExtractor={(item) => item.id}
             page={page}
             limit={limit}
@@ -525,7 +537,7 @@ export const ExpensesPage = () => {
         {/* Mobile List Card View */}
         <div className="lg:hidden">
           <ExpenseMobileList
-            expenses={paginatedExpenses}
+            expenses={paginatedExpenses || []}
             isLoading={isLoading}
             users={users}
             currentUser={user}
@@ -674,6 +686,7 @@ export const ExpensesPage = () => {
                       type="number"
                       required
                       min="0"
+                      step="any"
                       value={formData.amount === 0 ? '' : formData.amount}
                       onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
                       onChange={e => {

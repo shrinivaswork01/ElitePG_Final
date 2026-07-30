@@ -53,13 +53,13 @@ export const FilterChips: React.FC<FilterChipsProps> = ({
               type="button"
               onClick={() => onChange(item.id)}
               className={cn(
-                "flex items-center justify-center gap-2 transition-all border whitespace-nowrap shrink-0 cursor-pointer active:scale-95",
+                "chip-hover flex items-center justify-center gap-2 border whitespace-nowrap shrink-0 cursor-pointer",
                 size === 'sm'
                   ? "px-3 py-1.5 rounded-lg text-xs font-bold"
                   : "px-4 py-2 rounded-xl text-xs font-bold",
                 isActive
-                  ? "text-white border-transparent shadow-md shadow-indigo-600/20"
-                  : "bg-white dark:bg-white/5 text-gray-500 dark:text-gray-400 border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/10"
+                  ? "text-white border-transparent shadow-md shadow-indigo-600/20 chip-active"
+                  : "bg-white dark:bg-white/5 text-gray-500 dark:text-gray-400 border-gray-100 dark:border-white/5"
               )}
               style={isActive ? { background: primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' } : undefined}
             >

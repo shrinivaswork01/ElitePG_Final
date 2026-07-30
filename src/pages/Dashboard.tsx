@@ -352,7 +352,7 @@ export const Dashboard = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.1 }}
-              className="bg-white dark:bg-[#111111] p-6 rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm transition-all group h-full relative overflow-hidden"
+              className="bg-white dark:bg-[#111111] p-6 rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm group h-full relative overflow-hidden card-hover"
             >
               <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-indigo-500/5 to-transparent rounded-bl-[100px] -mr-8 -mt-8 transition-transform group-hover:scale-110" />
                 <div className="flex items-start justify-between relative z-10">
@@ -439,7 +439,7 @@ export const Dashboard = () => {
       {!isSuper && (
         <div className="flex flex-col gap-8">
           {isManagerial && tenants.filter(t => t.vacatingStatus === 'notice_given').length > 0 ? (
-            <div className="bg-white dark:bg-[#111111] rounded-3xl border border-rose-100 dark:border-rose-500/10 shadow-sm overflow-hidden transition-all hover:shadow-xl hover:shadow-rose-500/5">
+            <div className="bg-white dark:bg-[#111111] rounded-3xl border border-rose-100 dark:border-rose-500/10 shadow-sm overflow-hidden card-hover">
               <div className="p-6 sm:p-8 border-b border-gray-100 dark:border-white/5 bg-rose-50/30 dark:bg-rose-500/5 flex items-center justify-between">
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                   <Clock className="w-5 h-5 text-rose-600" />
@@ -487,7 +487,7 @@ export const Dashboard = () => {
           ) : null}
 
           <div className={cn("grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8")}>
-            <div className={cn("bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden transition-all hover:shadow-xl hover:shadow-indigo-500/5", (isManagerial || isTenant) && "lg:col-span-2")}>
+            <div className={cn("bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden card-hover", (isManagerial || isTenant) && "lg:col-span-2")}>
             <div className="p-6 sm:p-8 border-b border-gray-100 dark:border-white/5 flex items-center justify-between bg-gray-50/50 dark:bg-white/[0.02]">
               <h3 className="text-lg font-black text-gray-900 dark:text-white uppercase tracking-tight">
                 {isEmployee ? 'My Recent Tasks' : isTenant ? 'My Recent Complaints' : 'Recent Complaints'}
@@ -598,7 +598,7 @@ export const Dashboard = () => {
           ) : null}
           {isTenant && tenantData ? (
             <div className="lg:col-span-2">
-              <div className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden flex flex-col h-full bg-gradient-to-br from-white to-gray-50/50 dark:from-[#111111] dark:to-white/[0.02]">
+              <div className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden flex flex-col h-full bg-gradient-to-br from-white to-gray-50/50 dark:from-[#111111] dark:to-white/[0.02] card-hover">
                   <div className="p-6 sm:p-8 border-b border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/[0.02]">
                     <h3 className="text-lg font-black text-gray-900 dark:text-white flex items-center gap-2 uppercase tracking-tight">
                       <Building2 className="w-5 h-5" style={{ color: themeColor }} />
@@ -698,7 +698,7 @@ export const Dashboard = () => {
 
           {(isTenant || isEmployee) ? (
             <div className="lg:col-span-2">
-              <div className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden h-full">
+              <div className="bg-white dark:bg-[#111111] rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden h-full card-hover">
                 <div className="p-6 sm:p-8 border-b border-gray-100 dark:border-white/5 flex items-center justify-between">
                   <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                     <Megaphone className="w-5 h-5 text-indigo-600" />
