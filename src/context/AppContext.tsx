@@ -35,6 +35,14 @@ interface AppContextType {
   addTenant: (tenant: Omit<Tenant, 'id' | 'branchId'> & { branchId?: string }, kycDoc?: { type: string, file?: File, url?: string }, rentAgreementDoc?: { file?: File, url?: string }) => Promise<void>;
   updateTenant: (id: string, updates: Partial<Tenant>, kycDoc?: { type: string, file?: File, url?: string }, rentAgreementDoc?: { file?: File, url?: string }) => Promise<void>;
   deleteTenant: (id: string) => Promise<void>;
+  switchTenantBranch: (
+    tenantId: string,
+    targetBranchId: string,
+    newRoomId?: string,
+    newBedNumber?: number,
+    newRentAmount?: number,
+    switchDate?: string
+  ) => Promise<void>;
   requestVacating: (tenantId: string) => Promise<void>;
   cancelVacating: (tenantId: string) => Promise<void>;
   completeCheckout: (tenantId: string, force?: boolean, deductions?: { amount: number, reason: string }[]) => Promise<void>;
@@ -377,6 +385,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           depositBalance: t.deposit_balance ?? 0,
           moveInDate: t.move_in_date || null,
           roomSwitchDate: t.room_switch_date || null,
+          previousBranchId: t.previous_branch_id || null,
           isAuthorized: t.users?.is_authorized ?? true,
           vacatingDate: t.vacating_date,
           exitDate: t.exit_date,
@@ -2291,6 +2300,57 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const switchTenantBranch = async (
+    tenantId: string,
+    targetBranchId: string,
+    newRoomId?: string,
+    newBedNumber?: number,
+    newRentAmount?: number,
+    switchDate?: string
+  ) => {
+    if (user?.role !== 'admin') {
+      toast.error('Only admins can switch tenant branches.');
+      return;
+    }
+    try {
+      // Find tenant's current branch_id to save as previous_branch_id
+      const currentTenant = data.tenants.find((t: any) => t.id === tenantId);
+      const oldBranchId = currentTenant?.branchId || currentTenant?.branch_id;
+
+      const dbUpdates: any = {
+        branch_id: targetBranchId,
+        room_id: newRoomId || null,
+        bed_number: newBedNumber || null,
+        room_switch_date: switchDate || new Date().toISOString().split('T')[0],
+      };
+      if (oldBranchId && oldBranchId !== targetBranchId) {
+        dbUpdates.previous_branch_id = oldBranchId;
+      }
+      if (newRentAmount !== undefined) dbUpdates.rent_amount = newRentAmount;
+      if (newRoomId) {
+        // Determine AC status from the new room
+        const { data: newRoom } = await supabase.from('rooms').select('type').eq('id', newRoomId).maybeSingle();
+        dbUpdates.is_ac_user = newRoom?.type === 'AC';
+      } else {
+        dbUpdates.is_ac_user = false;
+      }
+
+      let { error } = await supabase.from('tenants').update(dbUpdates).eq('id', tenantId);
+      if (error && (error.message?.includes('previous_branch_id') || error.code === 'PGRST204')) {
+        delete dbUpdates.previous_branch_id;
+        const res = await supabase.from('tenants').update(dbUpdates).eq('id', tenantId);
+        error = res.error;
+      }
+      if (error) throw error;
+
+      await fetchData();
+      toast.success('Tenant transferred to new branch successfully.');
+    } catch (err: any) {
+      console.error('switchTenantBranch error:', err);
+      toast.error(err.message || 'Failed to switch tenant branch.');
+    }
+  };
+
   const deletePartnerAndReferences = async (partnerId: string) => {
     try {
       // Delete all dependent app records before ripping the auth user
@@ -2310,7 +2370,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   return (
     <AppContext.Provider value={{
       ...filteredData,
-      addTenant, updateTenant, deleteTenant,
+      addTenant, updateTenant, deleteTenant, switchTenantBranch,
       requestVacating, cancelVacating, completeCheckout,
       addRoom, updateRoom, deleteRoom,
       addMeterGroup, updateMeterGroup, deleteMeterGroup,

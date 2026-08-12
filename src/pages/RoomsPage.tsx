@@ -33,6 +33,7 @@ import { FlatMobileList } from '../components/FlatMobileList';
 import { FloorLayoutMap } from '../components/FloorLayoutMap';
 import { QuickAllocateModal } from '../components/QuickAllocateModal';
 import { SwitchRoomModal } from '../components/SwitchRoomModal';
+import { SwitchBranchModal } from '../components/SwitchBranchModal';
 import { ElectricityBillModal } from '../components/ElectricityBillModal';
 import { cn } from '../utils';
 import { SearchFilterCard } from '../components/SearchFilterCard';
@@ -48,6 +49,7 @@ export const RoomsPage = () => {
   const [electricityFlat, setElectricityFlat] = useState<MeterGroup | null>(null);
   const [allocateRoomModal, setAllocateRoomModal] = useState<{ room: Room; bedNumber?: number } | null>(null);
   const [switchRoomTenant, setSwitchRoomTenant] = useState<any | null>(null);
+  const [switchBranchTenant, setSwitchBranchTenant] = useState<any | null>(null);
 
   const currentRoomsCount = rooms.length;
   const isAtLimit = currentPlan && currentRoomsCount >= currentPlan.maxRooms;
@@ -839,6 +841,7 @@ export const RoomsPage = () => {
           }}
           onAssignTenant={(room, bedNumber) => setAllocateRoomModal({ room, bedNumber })}
           onSwitchRoom={(tenant) => setSwitchRoomTenant(tenant)}
+          onSwitchBranch={(tenant) => setSwitchBranchTenant(tenant)}
         />
       ) : (
         <>
@@ -1098,6 +1101,8 @@ export const RoomsPage = () => {
         onEdit={handleEditClick}
         onDelete={(r) => { setRoomToDelete(r); }}
         canEdit={['admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '')}
+        onSwitchRoom={(tenant) => setSwitchRoomTenant(tenant)}
+        onSwitchBranch={(tenant) => setSwitchBranchTenant(tenant)}
       />
 
       {/* Quick Allocate Tenant Modal */}
@@ -1114,6 +1119,14 @@ export const RoomsPage = () => {
         isOpen={!!switchRoomTenant}
         onClose={() => setSwitchRoomTenant(null)}
         tenant={switchRoomTenant}
+        onUpdate={refetch}
+      />
+
+      {/* Switch Branch Modal */}
+      <SwitchBranchModal
+        isOpen={!!switchBranchTenant}
+        onClose={() => setSwitchBranchTenant(null)}
+        tenant={switchBranchTenant}
         onUpdate={refetch}
       />
 

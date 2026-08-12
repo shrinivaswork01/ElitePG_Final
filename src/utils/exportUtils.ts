@@ -686,7 +686,8 @@ export const exportSingleTenantToExcel = async (
   tenant: any,
   payments: Payment[],
   rooms: Room[],
-  branchName?: string
+  branchName?: string,
+  branches?: PGBranch[]
 ) => {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'ElitePG';
@@ -704,6 +705,10 @@ export const exportSingleTenantToExcel = async (
   const room = rooms.find(r => r.id === (tenant.roomId || tenant.room_id));
   const roomNum = room?.roomNumber || tenant.rooms?.room_number || 'N/A';
   const roomType = room?.type || tenant.rooms?.type || 'N/A';
+
+  const prevBranchId = tenant.previousBranchId || tenant.previous_branch_id;
+  const prevBranchObj = branches?.find((b: any) => b.id === prevBranchId);
+  const prevBranchName = prevBranchObj?.name || prevBranchObj?.branchName || 'N/A';
 
   profileSheet.addRows([
     { property: 'Tenant Name', detail: tenant.name },
@@ -723,7 +728,9 @@ export const exportSingleTenantToExcel = async (
     { property: 'Token Status', detail: tenant.tokenStatus || tenant.token_status || 'Pending' },
     { property: 'Joining Date', detail: tenant.joiningDate || tenant.joining_date || 'N/A' },
     { property: 'Move-in Date', detail: tenant.moveInDate || tenant.move_in_date || 'N/A' },
-    { property: 'Room Shift/Switch Date', detail: tenant.roomSwitchDate || tenant.room_switch_date || 'N/A' },
+    { property: 'Previous Branch Name', detail: prevBranchName },
+    { property: 'Previous Branch ID', detail: prevBranchId || 'N/A' },
+    { property: 'Transfer/Switch Date', detail: tenant.roomSwitchDate || tenant.room_switch_date || 'N/A' },
     { property: 'Notice/Vacating Date', detail: tenant.vacatingDate || tenant.vacating_date || 'N/A' },
     { property: 'Expected Exit/Checkout Date', detail: tenant.exitDate || tenant.exit_date || 'N/A' },
   ]);

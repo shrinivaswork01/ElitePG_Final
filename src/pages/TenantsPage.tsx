@@ -28,7 +28,8 @@ import {
   CheckCircle,
   XCircle,
   AlertTriangle,
-  Share2
+  Share2,
+  Building2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePaginatedData } from '../hooks/usePaginatedData';
@@ -38,6 +39,7 @@ import { TenantDetailPanel } from '../components/TenantDetailPanel';
 import { TenantMobileList } from '../components/TenantMobileList';
 import { RentAgreementGeneratorModal } from '../components/RentAgreementGeneratorModal';
 import { SwitchRoomModal } from '../components/SwitchRoomModal';
+import { SwitchBranchModal } from '../components/SwitchBranchModal';
 import { cn } from '../utils';
 import { getTenantElectricityShare } from '../utils/electricityUtils';
 import { exportSingleTenantToExcel } from '../utils/exportUtils';
@@ -97,6 +99,7 @@ export const TenantsPage = () => {
   const [adminKycType, setAdminKycType] = useState('Aadhar Card');
   const [detailTenant, setDetailTenant] = useState<any | null>(null);
   const [switchRoomTenant, setSwitchRoomTenant] = useState<any | null>(null);
+  const [switchBranchTenant, setSwitchBranchTenant] = useState<any | null>(null);
   const [tenantElectricityShare, setTenantElectricityShare] = useState<{ 
     baseShare: number; 
     acShare: number; 
@@ -282,6 +285,9 @@ export const TenantsPage = () => {
             )}
             {['admin', 'manager', 'receptionist', 'caretaker'].includes(user?.role || '') && t.status === 'active' && (
               <DropdownItem icon={<Home className="w-4 h-4" />} label="Switch Room" onClick={() => setSwitchRoomTenant(t)} />
+            )}
+            {user?.role === 'admin' && (user?.branchIds || []).length > 1 && t.status === 'active' && (
+              <DropdownItem icon={<Building2 className="w-4 h-4" />} label="Switch Branch" onClick={() => setSwitchBranchTenant(t)} />
             )}
             <DropdownItem icon={<History className="w-4 h-4" />} label="Payment History" onClick={() => setViewingPayments(t)} />
             {(t.rent_agreement_url || t.rentAgreementUrl) && (
@@ -987,6 +993,13 @@ export const TenantsPage = () => {
          onUpdate={refetch}
       />
 
+      <SwitchBranchModal
+         isOpen={!!switchBranchTenant}
+         onClose={() => setSwitchBranchTenant(null)}
+         tenant={switchBranchTenant}
+         onUpdate={refetch}
+      />
+
       {/* Delete Confirmation Modal */}
       <AnimatePresence>
         {tenantToDelete && (
@@ -1016,7 +1029,7 @@ export const TenantsPage = () => {
                   type="button"
                   onClick={async () => {
                     const branch = branches.find(b => b.id === tenantToDelete.branchId);
-                    await exportSingleTenantToExcel(tenantToDelete, payments, rooms, branch?.name);
+                    await exportSingleTenantToExcel(tenantToDelete, payments, rooms, branch?.name, branches);
                   }}
                   className="w-full py-3.5 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 btn-hover"
                   style={{ background: pgConfig?.primaryColor || 'linear-gradient(to right, #4f46e5, #7c3aed)' }}

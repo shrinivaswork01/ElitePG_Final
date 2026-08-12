@@ -1,9 +1,10 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, DoorOpen, Users, LayoutGrid, Wind, Sun, Edit2, Trash2, Zap } from 'lucide-react';
+import { X, DoorOpen, Users, LayoutGrid, Wind, Sun, Edit2, Trash2, Zap, ArrowRightLeft, Building2 } from 'lucide-react';
 import { Room, Tenant } from '../types';
 import { cn } from '../utils';
 import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 
 interface RoomDetailPanelProps {
   room: Room | null;
@@ -11,6 +12,8 @@ interface RoomDetailPanelProps {
   onEdit?: (r: Room) => void;
   onDelete?: (r: Room) => void;
   canEdit?: boolean;
+  onSwitchRoom?: (tenant: Tenant) => void;
+  onSwitchBranch?: (tenant: Tenant) => void;
 }
 
 const Field = ({ label, value, className }: { label: string; value: React.ReactNode; className?: string }) => (
@@ -21,9 +24,11 @@ const Field = ({ label, value, className }: { label: string; value: React.ReactN
 );
 
 export const RoomDetailPanel: React.FC<RoomDetailPanelProps> = ({
-  room, onClose, onEdit, onDelete, canEdit
+  room, onClose, onEdit, onDelete, canEdit, onSwitchRoom, onSwitchBranch
 }) => {
   const { tenants, rooms, pgConfig } = useApp();
+  const { user } = useAuth();
+
   
   // Override with live context object for instant updates
   room = rooms.find(r => r.id === room?.id) || room;
@@ -132,6 +137,28 @@ export const RoomDetailPanel: React.FC<RoomDetailPanelProps> = ({
                             <p className="text-sm font-bold text-gray-900 dark:text-white">{t.name}</p>
                             <p className="text-xs text-gray-500">Bed {t.bedNumber ?? (t as any).bed_number}</p>
                           </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {onSwitchRoom && canEdit && (
+                            <button
+                              onClick={() => { onClose(); onSwitchRoom(t); }}
+                              className="p-1.5 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1"
+                              title={`Switch room for ${t.name}`}
+                            >
+                              <ArrowRightLeft className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Switch Room</span>
+                            </button>
+                          )}
+                          {onSwitchBranch && user?.role === 'admin' && (user?.branchIds || []).length > 1 && (
+                            <button
+                              onClick={() => { onClose(); onSwitchBranch(t); }}
+                              className="p-1.5 hover:bg-purple-50 dark:hover:bg-purple-500/10 text-purple-600 dark:text-purple-400 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1"
+                              title={`Switch branch for ${t.name}`}
+                            >
+                              <Building2 className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Switch Branch</span>
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))}

@@ -1,12 +1,13 @@
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Home, Phone, Mail, Calendar, CreditCard, Shield, FileCheck, MessageCircle, Edit2, Trash2, Zap, FileText, ExternalLink, Upload, Download, Clock, CheckCircle2, History as HistoryIcon, Search } from 'lucide-react';
+import { X, Home, Phone, Mail, Calendar, CreditCard, Shield, FileCheck, MessageCircle, Edit2, Trash2, Zap, FileText, ExternalLink, Upload, Download, Clock, CheckCircle2, History as HistoryIcon, Search, Building2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { cn } from '../utils';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import { RentAgreementGeneratorModal } from './RentAgreementGeneratorModal';
 import { SwitchRoomModal } from './SwitchRoomModal';
+import { SwitchBranchModal } from './SwitchBranchModal';
 import { uploadToSupabase } from '../utils/storage';
 import { exportSingleTenantToExcel } from '../utils/exportUtils';
 import toast from 'react-hot-toast';
@@ -63,6 +64,7 @@ export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const uploadAgreementRef = useRef<HTMLInputElement>(null);
   const [isSwitchModalOpen, setIsSwitchModalOpen] = useState(false);
+  const [isSwitchBranchModalOpen, setIsSwitchBranchModalOpen] = useState(false);
   const [tempExitDate, setTempExitDate] = useState('');
 
   React.useEffect(() => {
@@ -159,7 +161,7 @@ export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
                 <button
                   onClick={async () => {
                     const branch = branches.find((b: any) => b.id === tenant.branchId);
-                    await exportSingleTenantToExcel(tenant, payments, rooms, branch?.name || branch?.branchName);
+                    await exportSingleTenantToExcel(tenant, payments, rooms, branch?.name || branch?.branchName, branches);
                   }}
                   className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-white/5 transition-colors text-emerald-600 dark:text-emerald-400"
                   title="Export Details to Excel"
@@ -193,15 +195,29 @@ export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
                 <div className="col-span-2 flex justify-between items-center">
                   <p className="text-xs font-black uppercase tracking-widest text-gray-400">Room & Rent</p>
                   {canEdit && tenant.status === 'active' && (
-                    <button
-                      onClick={() => {
-                        setIsSwitchModalOpen(true);
-                      }}
-                      className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-850 dark:hover:text-indigo-300 transition-colors flex items-center gap-1"
-                    >
-                      <Home className="w-3.5 h-3.5" />
-                      Switch Room
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          setIsSwitchModalOpen(true);
+                        }}
+                        className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-850 dark:hover:text-indigo-300 transition-colors flex items-center gap-1"
+                      >
+                        <Home className="w-3.5 h-3.5" />
+                        Switch Room
+                      </button>
+                      {user?.role === 'admin' && (user?.branchIds || []).length > 1 && (
+                        <>
+                          <span className="text-gray-200 dark:text-white/10">|</span>
+                          <button
+                            onClick={() => setIsSwitchBranchModalOpen(true)}
+                            className="text-xs font-bold text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 transition-colors flex items-center gap-1"
+                          >
+                            <Building2 className="w-3.5 h-3.5" />
+                            Switch Branch
+                          </button>
+                        </>
+                      )}
+                    </div>
                   )}
                 </div>
                 <Field 
@@ -274,8 +290,23 @@ export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
                 {(tenant.moveInDate || tenant.move_in_date) && (
                   <Field label="Move-in" value={format(parseISO(tenant.moveInDate || tenant.move_in_date), 'dd MMM yyyy')} />
                 )}
+                {(tenant.previousBranchId || tenant.previous_branch_id) && (
+                  <Field
+                    label="Prev. Branch"
+                    value={
+                      (() => {
+                        const prevId = tenant.previousBranchId || tenant.previous_branch_id;
+                        const prevB = branches.find((b: any) => b.id === prevId);
+                        return prevB?.name || prevB?.branchName || 'Previous Branch';
+                      })()
+                    }
+                  />
+                )}
                 {(tenant.roomSwitchDate || tenant.room_switch_date) && (
-                  <Field label="Switch Date" value={format(parseISO(tenant.roomSwitchDate || tenant.room_switch_date), 'dd MMM yyyy')} />
+                  <Field
+                    label={(tenant.previousBranchId || tenant.previous_branch_id) ? "Transfer Date" : "Switch Date"}
+                    value={format(parseISO(tenant.roomSwitchDate || tenant.room_switch_date), 'dd MMM yyyy')}
+                  />
                 )}
                 {(tenant.vacatingDate || tenant.vacating_date) && (
                   <Field label="Notice Date" value={format(parseISO(tenant.vacatingDate || tenant.vacating_date), 'dd MMM yyyy')} />
@@ -673,6 +704,14 @@ export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
           <SwitchRoomModal
             isOpen={isSwitchModalOpen}
             onClose={() => setIsSwitchModalOpen(false)}
+            tenant={tenant}
+            onUpdate={onUpdate}
+          />
+
+          {/* Switch Branch Modal */}
+          <SwitchBranchModal
+            isOpen={isSwitchBranchModalOpen}
+            onClose={() => setIsSwitchBranchModalOpen(false)}
             tenant={tenant}
             onUpdate={onUpdate}
           />

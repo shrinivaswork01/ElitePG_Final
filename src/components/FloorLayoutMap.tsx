@@ -27,6 +27,8 @@ import { ModernSelect } from './ModernSelect';
 import { FilterChips } from './FilterChips';
 import { SearchFilterCard } from './SearchFilterCard';
 
+import { useAuth } from '../context/AuthContext';
+
 interface FloorLayoutMapProps {
   rooms: Room[];
   tenants: Tenant[];
@@ -36,6 +38,7 @@ interface FloorLayoutMapProps {
   onSelectTenant?: (tenant: Tenant) => void;
   onAssignTenant?: (room: Room, bedNumber?: number) => void;
   onSwitchRoom?: (tenant: Tenant) => void;
+  onSwitchBranch?: (tenant: Tenant) => void;
   onExportExcel?: () => void;
   selectedRoomIds?: string[];
   onToggleSelectRoom?: (roomId: string) => void;
@@ -54,6 +57,7 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
   onSelectTenant,
   onAssignTenant,
   onSwitchRoom,
+  onSwitchBranch,
   onExportExcel,
   selectedRoomIds = [],
   onToggleSelectRoom,
@@ -62,6 +66,8 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
   onBulkDeleteRooms,
   onExportSelectedRooms
 }) => {
+  const { user } = useAuth();
+
   const [selectedFloor, setSelectedFloor] = useState<number | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'available' | 'occupied'>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | 'AC' | 'Non-AC'>('all');
@@ -518,6 +524,18 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
                                        >
                                          <ArrowRightLeft className="w-3.5 h-3.5" />
                                        </button>
+                                       {onSwitchBranch && user?.role === 'admin' && (user?.branchIds || []).length > 1 && (
+                                         <button
+                                           onClick={(e) => {
+                                             e.stopPropagation();
+                                             onSwitchBranch(tenant);
+                                           }}
+                                           className="p-1 hover:bg-purple-100 dark:hover:bg-purple-500/20 rounded-lg text-purple-600 dark:text-purple-400 transition-colors"
+                                           title={`Switch branch for ${tenant.name}`}
+                                         >
+                                           <Building2 className="w-3.5 h-3.5" />
+                                         </button>
+                                       )}
                                      </div>
                                   </motion.div>
                                 );

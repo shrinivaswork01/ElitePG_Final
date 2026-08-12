@@ -125,6 +125,8 @@ export interface Tenant {
   moveInDate?: string; // Physical move-in date (vs joiningDate = booking date)
   roomSwitchDate?: string; // Date of room switch
   room_switch_date?: string; // Snake-case representation
+  previousBranchId?: string; // ID of previous branch if tenant transferred
+  previous_branch_id?: string; // Snake-case representation
   depositLogs?: {
     id: string;
     type: 'deposit' | 'token';
