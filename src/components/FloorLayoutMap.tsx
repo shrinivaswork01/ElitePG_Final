@@ -22,7 +22,7 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 import { Room, Tenant, MeterGroup } from '../types';
-import { cn } from '../utils';
+import { cn, getRoomCategoryMeta, ROOM_CATEGORIES } from '../utils';
 import { ModernSelect } from './ModernSelect';
 import { FilterChips } from './FilterChips';
 import { SearchFilterCard } from './SearchFilterCard';
@@ -71,6 +71,7 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
   const [selectedFloor, setSelectedFloor] = useState<number | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'available' | 'occupied'>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | 'AC' | 'Non-AC'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Extract unique floors
@@ -116,13 +117,15 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
     const filtered = rooms.filter(r => {
       const q = searchQuery.trim().toLowerCase();
       const roomNum = (r.roomNumber || (r as any).room_number || '').toString().toLowerCase();
-      const flatName = (r.flatName || (r as any).flat_name || '').toString().toLowerCase();
+      const linkedFlat = meterGroups.find(m => m.id === (r.meterGroupId || (r as any).meter_group_id));
+      const flatName = (linkedFlat?.name || '').toLowerCase();
       const activeTenants = tenants.filter(t => (t.roomId || (t as any).room_id) === r.id && t.status === 'active');
       const tenantMatch = activeTenants.some(t => (t.name || '').toLowerCase().includes(q) || (t.phone || '').includes(q));
 
       const matchesSearch = q ? (roomNum.includes(q) || flatName.includes(q) || tenantMatch) : true;
       const matchesFloor = selectedFloor === 'all' ? true : r.floor === selectedFloor;
       const matchesType = typeFilter === 'all' ? true : r.type === typeFilter;
+      const matchesCategory = categoryFilter === 'all' ? true : r.roomCategory === categoryFilter;
       
       const beds = r.totalBeds || (r as any).total_beds || 0;
       const vacant = Math.max(0, beds - activeTenants.length);
@@ -132,7 +135,7 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
         statusFilter === 'available' ? vacant > 0 :
         statusFilter === 'occupied' ? vacant === 0 : true;
 
-      return matchesSearch && matchesFloor && matchesType && matchesStatus;
+      return matchesSearch && matchesFloor && matchesType && matchesCategory && matchesStatus;
     });
 
     const grouped: Record<number, Room[]> = {};
@@ -151,7 +154,7 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
     });
 
     return grouped;
-  }, [rooms, tenants, selectedFloor, statusFilter, typeFilter, searchQuery]);
+  }, [rooms, tenants, selectedFloor, statusFilter, typeFilter, categoryFilter, searchQuery]);
 
   const allVisibleRoomIds = useMemo(() => {
     return Object.values(roomsByFloor).flat().map(r => r.id);
@@ -237,16 +240,28 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
         onChipChange={(id) => setSelectedFloor(id === 'all' ? 'all' : Number(id))}
         chipSize="sm"
         rightElements={
-          <div className="w-36 shrink-0">
-            <ModernSelect
-              value={typeFilter}
-              onChange={(val) => setTypeFilter(val as any)}
-              options={[
-                { value: 'all', label: 'All Types' },
-                { value: 'AC', label: 'AC Rooms' },
-                { value: 'Non-AC', label: 'Non-AC Rooms' }
-              ]}
-            />
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="w-36 shrink-0">
+              <ModernSelect
+                value={typeFilter}
+                onChange={(val) => setTypeFilter(val as any)}
+                options={[
+                  { value: 'all', label: 'All Types' },
+                  { value: 'AC', label: 'AC Rooms' },
+                  { value: 'Non-AC', label: 'Non-AC Rooms' }
+                ]}
+              />
+            </div>
+            <div className="w-40 shrink-0">
+              <ModernSelect
+                value={categoryFilter}
+                onChange={(val) => setCategoryFilter(val)}
+                options={[
+                  { value: 'all', label: 'All Categories' },
+                  ...ROOM_CATEGORIES.map(cat => ({ value: cat.id, label: cat.label }))
+                ]}
+              />
+            </div>
           </div>
         }
       >
@@ -381,6 +396,7 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
 
                   const flat = meterGroups.find(m => m.id === (room.meterGroupId || (room as any).meter_group_id));
                   const isSelected = selectedRoomIds.includes(room.id);
+                  const catMeta = getRoomCategoryMeta(room.roomCategory);
 
                   return (
                     <motion.div
@@ -401,7 +417,7 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
                       {/* Room Header Info */}
                       <div>
                         <div className="flex items-start justify-between gap-2 mb-3">
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
                             {onToggleSelectRoom && (
                               <input
                                 type="checkbox"
@@ -417,7 +433,7 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
                               onClick={() => onSelectRoom?.(room)}
                               className="font-black text-base text-gray-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center gap-1 cursor-pointer"
                             >
-                              <span>Room {roomNumber}</span>
+                              <span>{roomNumber.toLowerCase().includes('room') ? roomNumber : `Room ${roomNumber}`}</span>
                               <ChevronRight className="w-4 h-4 text-gray-400" />
                             </button>
                             {flat && (
@@ -427,7 +443,13 @@ export const FloorLayoutMap: React.FC<FloorLayoutMapProps> = ({
                             )}
                           </div>
 
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {catMeta && (
+                              <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border", catMeta.color)}>
+                                <span>{catMeta.icon}</span>
+                                <span className="hidden sm:inline">{catMeta.label}</span>
+                              </span>
+                            )}
                             <span className={cn(
                               "text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border",
                               room.type === 'AC' 

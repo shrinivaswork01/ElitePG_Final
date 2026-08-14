@@ -1,8 +1,9 @@
 import React from 'react';
-import { X, DoorOpen, Users, MapPin, Hash, Trash2, Edit2, Zap } from 'lucide-react';
+import { X, DoorOpen, Users, MapPin, Hash, Trash2, Edit2, Zap, LayoutGrid, Plus } from 'lucide-react';
 import { MeterGroup, Room, Tenant } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '../utils';
+import { cn, getRoomCategoryMeta } from '../utils';
+import { useApp } from '../context/AppContext';
 
 interface FlatDetailPanelProps {
   flat: MeterGroup;
@@ -14,8 +15,6 @@ interface FlatDetailPanelProps {
   onViewRoom: (room: Room) => void;
   onManageElectricity?: (flat: MeterGroup) => void;
 }
-
-import { useApp } from '../context/AppContext';
 
 export const FlatDetailPanel = ({
   flat: initialFlat,
@@ -158,6 +157,7 @@ export const FlatDetailPanel = ({
               ) : (
                 linkedRooms.map((room) => {
                   const roomOccupied = tenants.filter(t => (t.roomId || (t as any).room_id) === room.id && t.status === 'active').length;
+                  const catMeta = getRoomCategoryMeta(room.roomCategory);
                   return (
                     <button
                       key={room.id}
@@ -166,10 +166,19 @@ export const FlatDetailPanel = ({
                     >
                       <div className="flex items-center gap-4">
                         <div className="w-10 h-10 rounded-2xl bg-gray-50 dark:bg-gray-900 group-hover:bg-indigo-50 dark:group-hover:bg-indigo-500/10 text-gray-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 flex items-center justify-center transition-colors">
-                          <DoorOpen className="w-5 h-5" />
+                          {catMeta ? <span className="text-lg">{catMeta.icon}</span> : <DoorOpen className="w-5 h-5" />}
                         </div>
                         <div>
-                          <p className="font-bold text-gray-900 dark:text-white">Room {room.roomNumber}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-bold text-gray-900 dark:text-white">
+                              {room.roomNumber.toLowerCase().includes('room') ? room.roomNumber : `Room ${room.roomNumber}`}
+                            </p>
+                            {catMeta && (
+                              <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1", catMeta.color)}>
+                                {catMeta.label}
+                              </span>
+                            )}
+                          </div>
                           <p className="text-xs text-gray-500 dark:text-gray-400">{room.type} • {room.totalBeds} Beds</p>
                         </div>
                       </div>
@@ -198,12 +207,4 @@ export const FlatDetailPanel = ({
     </div>
   );
 };
-
-const LayoutGrid = ({ className }: { className?: string }) => (
-  <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
-);
-
-const Plus = ({ className }: { className?: string }) => (
-  <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-);
 

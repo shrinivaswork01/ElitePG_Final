@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Home, Phone, Mail, Calendar, CreditCard, Shield, FileCheck, MessageCircle, Edit2, Trash2, Zap, FileText, ExternalLink, Upload, Download, Clock, CheckCircle2, History as HistoryIcon, Search, Building2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-import { cn } from '../utils';
+import { cn, getRoomCategoryMeta } from '../utils';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import { RentAgreementGeneratorModal } from './RentAgreementGeneratorModal';
@@ -235,7 +235,18 @@ export const TenantDetailPanel: React.FC<TenantDetailPanelProps> = ({
                       
                       const tRoom = rooms.find(r => r.id === (tenant.roomId || tenant.room_id)) || tenant.rooms;
                       const typeSuffix = tRoom?.type ? ` (${tRoom.type})` : '';
-                      return `Room ${rNum}${typeSuffix}`;
+                      const catMeta = getRoomCategoryMeta(tRoom?.roomCategory || tRoom?.room_category);
+                      return (
+                        <span className="flex items-center gap-1.5 flex-wrap">
+                          <span>{`Room ${rNum}${typeSuffix}`}</span>
+                          {catMeta && (
+                            <span className={cn("px-1.5 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1", catMeta.color)}>
+                              <span>{catMeta.icon}</span>
+                              <span>{catMeta.label}</span>
+                            </span>
+                          )}
+                        </span>
+                      );
                     })()
                   } 
                 />

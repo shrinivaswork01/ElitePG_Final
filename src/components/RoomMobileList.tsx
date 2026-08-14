@@ -13,7 +13,7 @@ import {
   X,
   Plus
 } from 'lucide-react';
-import { cn } from '../utils';
+import { cn, getRoomCategoryMeta } from '../utils';
 import { useApp } from '../context/AppContext';
 
 interface RoomMobileCardProps {
@@ -56,6 +56,7 @@ const RoomMobileCard = memo(({
   const roomTenants = tenants.filter(t => t.roomId === room.id && ['active', 'vacating'].includes(t.status));
   const isFull = roomTenants.length >= room.totalBeds;
   const occupancyPct = room.totalBeds > 0 ? (roomTenants.length / room.totalBeds) * 100 : 0;
+  const catMeta = getRoomCategoryMeta(room.roomCategory);
 
   return (
     <motion.div
@@ -90,20 +91,28 @@ const RoomMobileCard = memo(({
           "w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm",
           isSelected ? "bg-indigo-600 text-white" : "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500"
         )}>
-          <DoorOpen className="w-6 h-6" />
+          {catMeta ? <span className="text-xl">{catMeta.icon}</span> : <DoorOpen className="w-6 h-6" />}
         </div>
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-1">
             <h4 className="font-black text-gray-900 dark:text-white truncate pr-2">
-              Room {room.roomNumber}
+              {room.roomNumber.toLowerCase().includes('room') ? room.roomNumber : `Room ${room.roomNumber}`}
             </h4>
-            <span className={cn(
-              "px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest",
-              room.type === 'AC' ? "bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400" : "bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400"
-            )}>
-              {room.type}
-            </span>
+            <div className="flex items-center gap-1 shrink-0">
+              {catMeta && (
+                <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1", catMeta.color)}>
+                  <span>{catMeta.icon}</span>
+                  <span className="hidden xs:inline">{catMeta.label}</span>
+                </span>
+              )}
+              <span className={cn(
+                "px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest",
+                room.type === 'AC' ? "bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400" : "bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400"
+              )}>
+                {room.type}
+              </span>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-3">

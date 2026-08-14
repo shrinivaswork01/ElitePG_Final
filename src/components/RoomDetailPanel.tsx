@@ -2,7 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, DoorOpen, Users, LayoutGrid, Wind, Sun, Edit2, Trash2, Zap, ArrowRightLeft, Building2 } from 'lucide-react';
 import { Room, Tenant } from '../types';
-import { cn } from '../utils';
+import { cn, getRoomCategoryMeta } from '../utils';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 
@@ -36,6 +36,7 @@ export const RoomDetailPanel: React.FC<RoomDetailPanelProps> = ({
   const roomTenants = tenants.filter((t: Tenant) => (t.roomId || (t as any).room_id) === room?.id && t.status === 'active');
   const totalBeds = room?.totalBeds ?? (room as any)?.total_beds ?? 0;
   const occupiedBeds = roomTenants.length; // Use live count for accuracy
+  const catMeta = getRoomCategoryMeta(room?.roomCategory);
 
   return (
     <AnimatePresence>
@@ -62,10 +63,19 @@ export const RoomDetailPanel: React.FC<RoomDetailPanelProps> = ({
             <div className="px-6 pt-6 pb-4 border-b border-gray-100 dark:border-white/5 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-black text-xl shadow-lg shadow-indigo-500/20 uppercase">
-                  <DoorOpen className="w-6 h-6" />
+                  {catMeta ? <span className="text-xl">{catMeta.icon}</span> : <DoorOpen className="w-6 h-6" />}
                 </div>
                 <div>
-                  <h3 className="text-lg font-black text-gray-900 dark:text-white">Room {(room as any).room_number || room.roomNumber}</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-black text-gray-900 dark:text-white">
+                      {((room as any).room_number || room.roomNumber).toLowerCase().includes('room') ? ((room as any).room_number || room.roomNumber) : `Room ${(room as any).room_number || room.roomNumber}`}
+                    </h3>
+                    {catMeta && (
+                      <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1", catMeta.color)}>
+                        {catMeta.label}
+                      </span>
+                    )}
+                  </div>
                   <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
                     {(room.meterGroup || (room as any).meter_groups) ? `${(room.meterGroup || (room as any).meter_groups).name} (${room.floor === 0 ? 'Ground Floor' : `Floor ${room.floor}`})` : (room.floor === 0 ? 'Ground Floor' : `Floor ${room.floor}`)}
                   </span>

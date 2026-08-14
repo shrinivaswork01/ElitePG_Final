@@ -35,8 +35,9 @@ import { QuickAllocateModal } from '../components/QuickAllocateModal';
 import { SwitchRoomModal } from '../components/SwitchRoomModal';
 import { SwitchBranchModal } from '../components/SwitchBranchModal';
 import { ElectricityBillModal } from '../components/ElectricityBillModal';
-import { cn } from '../utils';
+import { cn, ROOM_CATEGORIES, getRoomCategoryMeta } from '../utils';
 import { SearchFilterCard } from '../components/SearchFilterCard';
+import { FilterChips } from '../components/FilterChips';
 import toast from 'react-hot-toast';
 import { exportRoomsToExcel, exportFlatsToExcel } from '../utils/exportUtils';
 
@@ -60,6 +61,7 @@ export const RoomsPage = () => {
   const [detailRoom, setDetailRoom] = useState<Room | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterFloor, setFilterFloor] = useState<number | string>('all');
+  const [filterCategory, setFilterCategory] = useState<string>('all');
   const location = useLocation();
 
   useEffect(() => {
@@ -76,7 +78,8 @@ export const RoomsPage = () => {
     price: 6000,
     description: '',
     amenities: [],
-    meterGroupId: ''
+    meterGroupId: '',
+    roomCategory: ''
   });
   const [customAmenity, setCustomAmenity] = useState('');
   
@@ -119,12 +122,12 @@ export const RoomsPage = () => {
 
   useEffect(() => {
     setSelectedRoomIds([]);
-  }, [searchTerm, filterFloor, page, activeTab]);
+  }, [searchTerm, filterFloor, filterCategory, page, activeTab]);
 
   useEffect(() => {
     setPage(1);
     setFlatPage(1);
-  }, [searchTerm, filterFloor]);
+  }, [searchTerm, filterFloor, filterCategory]);
 
   const allFilteredRooms = React.useMemo(() => {
     return (rooms || []).filter(r => {
@@ -133,7 +136,12 @@ export const RoomsPage = () => {
         return false;
       }
 
-      // 2. Search Term Matching
+      // 2. Filter by Category
+      if (filterCategory !== 'all' && r.roomCategory !== filterCategory) {
+        return false;
+      }
+
+      // 3. Search Term Matching
       if (searchTerm.trim() !== '') {
         const query = searchTerm.toLowerCase();
         
@@ -158,7 +166,7 @@ export const RoomsPage = () => {
 
       return true;
     });
-  }, [rooms, tenants, searchTerm, filterFloor]);
+  }, [rooms, tenants, searchTerm, filterFloor, filterCategory]);
 
   const totalCount = allFilteredRooms.length;
   const paginatedRooms = React.useMemo(() => {
@@ -183,7 +191,8 @@ export const RoomsPage = () => {
       amenities: r.amenities || [],
       branchId: r.branchId ?? r.branch_id,
       meterGroupId: r.meterGroupId ?? r.meter_group_id,
-      meterGroup: r.meterGroup ?? r.meter_groups
+      meterGroup: r.meterGroup ?? r.meter_groups,
+      roomCategory: r.roomCategory ?? r.room_category ?? ''
     };
   });
 
@@ -570,7 +579,7 @@ export const RoomsPage = () => {
   const handleEditClick = (room: any) => {
     setDetailRoom(null);
     // Normalize from DB snake_case or already-mapped camelCase
-    const normalized: Omit<Room, 'id' | 'branchId'> = {
+    const normalized: Omit<Room, 'id' | 'branchId'> & { roomCategory?: string } = {
       roomNumber: room.roomNumber || room.room_number || '',
       floor: room.floor ?? 1,
       totalBeds: room.totalBeds ?? room.total_beds ?? 2,
@@ -579,6 +588,7 @@ export const RoomsPage = () => {
       price: room.price ?? 6000,
       description: room.description || '',
       meterGroupId: room.meterGroupId || room.meter_group_id || '',
+      roomCategory: room.roomCategory || room.room_category || ''
     };
     const amenities = Array.isArray(room.amenities) ? room.amenities : 
                      (typeof room.amenities === 'string' ? JSON.parse(room.amenities) : []);
@@ -608,7 +618,8 @@ export const RoomsPage = () => {
       price: 6000,
       description: '',
       amenities: [],
-      meterGroupId: ''
+      meterGroupId: '',
+      roomCategory: ''
     });
     setIsAddingFlat(false);
     setNewFlatName('');
@@ -651,6 +662,19 @@ export const RoomsPage = () => {
     if (isDuplicate) {
       toast.error(`Room number ${formData.roomNumber} already exists in the selected Flat/Group.`);
       return;
+    }
+
+    if (formData.roomCategory) {
+      const isCategoryDuplicate = rooms.some(
+        r => r.roomCategory === formData.roomCategory &&
+             r.meterGroupId === finalMeterGroupId &&
+             r.id !== editingRoom?.id
+      );
+      if (isCategoryDuplicate) {
+        const catMeta = ROOM_CATEGORIES.find(c => c.id === formData.roomCategory);
+        toast.error(`A "${catMeta?.label || formData.roomCategory}" already exists in the selected Flat/Group.`);
+        return;
+      }
     }
 
     const payload = { ...formData, meterGroupId: finalMeterGroupId };
@@ -866,15 +890,28 @@ export const RoomsPage = () => {
               }
             }}
             rightElements={
-              <ModernSelect
-                value={filterFloor === 'all' ? 'all' : String(filterFloor)}
-                onChange={(val) => setFilterFloor(val === 'all' ? 'all' : Number(val))}
-                options={[
-                  { value: "all", label: "All Floors" },
-                  ...availableFloors.map(f => ({ value: String(f), label: f === 0 ? "Ground Floor" : `Floor ${f}` }))
-                ]}
-                className="flex-1 sm:w-44 sm:flex-initial"
-              />
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <ModernSelect
+                  value={filterFloor === 'all' ? 'all' : String(filterFloor)}
+                  onChange={(val) => setFilterFloor(val === 'all' ? 'all' : Number(val))}
+                  options={[
+                    { value: "all", label: "All Floors" },
+                    ...availableFloors.map(f => ({ value: String(f), label: f === 0 ? "Ground Floor" : `Floor ${f}` }))
+                  ]}
+                  className="flex-1 sm:w-40"
+                />
+                {activeTab === 'rooms' && (
+                  <ModernSelect
+                    value={filterCategory}
+                    onChange={(val) => setFilterCategory(val)}
+                    options={[
+                      { value: "all", label: "All Categories" },
+                      ...ROOM_CATEGORIES.map(cat => ({ value: cat.id, label: cat.label }))
+                    ]}
+                    className="flex-1 sm:w-44"
+                  />
+                )}
+              </div>
             }
           />
 
@@ -973,6 +1010,35 @@ export const RoomsPage = () => {
                     </motion.div>
                   )}
                 </AnimatePresence>
+                {/* Category Filter Chips */}
+                <div className="flex flex-wrap gap-2 mb-3">
+                  <button
+                    onClick={() => setFilterCategory('all')}
+                    className={cn(
+                      "px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer",
+                      filterCategory === 'all'
+                        ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                        : "bg-white dark:bg-white/5 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-white/10 hover:border-indigo-400 hover:text-indigo-600"
+                    )}
+                  >
+                    All Categories
+                  </button>
+                  {ROOM_CATEGORIES.map(cat => (
+                    <button
+                      key={cat.id}
+                      onClick={() => setFilterCategory(filterCategory === cat.id ? 'all' : cat.id)}
+                      className={cn(
+                        "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer",
+                        filterCategory === cat.id
+                          ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                          : "bg-white dark:bg-white/5 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-white/10 hover:border-indigo-400 hover:text-indigo-600"
+                      )}
+                    >
+                      <span>{cat.icon}</span>
+                      <span>{cat.label}</span>
+                    </button>
+                  ))}
+                </div>
                 <DataGrid
                   columns={roomColumns}
                   data={roomsData}
@@ -1015,7 +1081,7 @@ export const RoomsPage = () => {
                           onClick={() => {
                             try {
                               const selectedFlatsList = meterGroups.filter(m => selectedFlatIds.includes(m.id));
-                              exportFlatsToExcel(selectedFlatsList, rooms, tenants, currentBranch);
+                               exportFlatsToExcel(selectedFlatsList, rooms, tenants, branches, currentBranch);
                               toast.success(`${selectedFlatsList.length} Selected Flats Exported Successfully`);
                             } catch (err) {
                               console.error(err);
@@ -1253,15 +1319,55 @@ export const RoomsPage = () => {
                       Rooms in the same flat share electricity bills.
                     </p>
                   </div>
-                  <div className="space-y-4">
-                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Room Number</label>
+                  <div className="space-y-3">
+                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center justify-between">
+                      <span>Room Role / Category</span>
+                      <span className="text-xs font-normal text-gray-400">Identifies Master Bed, Hall, etc.</span>
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {ROOM_CATEGORIES.map(cat => {
+                        const isSel = formData.roomCategory === cat.id;
+                        return (
+                          <button
+                            key={cat.id}
+                            type="button"
+                            onClick={() => {
+                              const newCat = isSel ? '' : cat.id;
+                              const selectedFlat = meterGroups.find(m => m.id === formData.meterGroupId);
+                              let suggestedName = formData.roomNumber;
+                              // Auto-format room title if empty or generic number
+                              if (selectedFlat && (!formData.roomNumber || /^\d+$/.test(formData.roomNumber))) {
+                                suggestedName = `${selectedFlat.name} - ${cat.label}`;
+                              }
+                              setFormData({ ...formData, roomCategory: newCat, roomNumber: suggestedName || formData.roomNumber });
+                            }}
+                            className={cn(
+                              "flex items-center gap-2 p-2.5 rounded-xl border text-xs font-bold transition-all text-left",
+                              isSel 
+                                ? "bg-indigo-50 border-indigo-300 text-indigo-700 dark:bg-indigo-500/20 dark:border-indigo-500/40 dark:text-indigo-300 ring-2 ring-indigo-500/20 shadow-sm"
+                                : "bg-gray-50 border-gray-100 dark:bg-white/5 dark:border-white/5 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10"
+                            )}
+                          >
+                            <span className="text-base">{cat.icon}</span>
+                            <span className="truncate">{cat.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Room Name / Number <span className="text-rose-500">*</span></label>
+                      <span className="text-xs text-indigo-600 dark:text-indigo-400 font-medium">Clear identification title</span>
+                    </div>
                     <input
                       required
                       type="text"
                       value={formData.roomNumber}
                       onChange={(e) => setFormData({ ...formData, roomNumber: e.target.value })}
-                      className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white transition-all"
-                      placeholder="e.g. 101"
+                      className="w-full px-4 py-3 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white transition-all font-medium"
+                      placeholder="e.g. Flat 101 - Master Bedroom or 101 (Hall)"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-6">

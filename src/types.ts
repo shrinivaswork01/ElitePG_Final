@@ -158,6 +158,7 @@ export interface Room {
   amenities?: string[];
   meterGroupId?: string; // Links room to a MeterGroup (Flat)
   meterGroup?: MeterGroup; // Embedded optional joined object
+  roomCategory?: 'master_bedroom' | 'hall' | 'bedroom' | 'balcony_room' | 'guest_room' | string;
 }
 
 export interface Payment {

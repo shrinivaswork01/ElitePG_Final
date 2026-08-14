@@ -18,7 +18,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Room, Tenant } from '../types';
 import { useApp } from '../context/AppContext';
-import { cn } from '../utils';
+import { cn, getRoomCategoryMeta } from '../utils';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 
@@ -39,7 +39,7 @@ export const QuickAllocateModal: React.FC<QuickAllocateModalProps> = ({
 }) => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { tenants, rooms, updateTenant, addTenant, pgConfig, fetchData, currentBranch } = useApp();
+  const { tenants, rooms, meterGroups, updateTenant, addTenant, pgConfig, fetchData, currentBranch } = useApp();
 
   const handleRedirectToRegister = () => {
     if (!room) return;
@@ -73,6 +73,8 @@ export const QuickAllocateModal: React.FC<QuickAllocateModalProps> = ({
   const roomTenants = tenants.filter(t => (t.roomId || (t as any).room_id) === room.id && t.status === 'active');
   const totalBeds = room.totalBeds || (room as any).total_beds || 0;
   const vacantBeds = Math.max(0, totalBeds - roomTenants.length);
+  const catMeta = getRoomCategoryMeta(room.roomCategory);
+  const flat = meterGroups.find(m => m.id === room.meterGroupId);
 
   // Unassigned or all active tenants available for room assignment
   const unassignedTenants = tenants.filter(t => {
@@ -202,11 +204,12 @@ export const QuickAllocateModal: React.FC<QuickAllocateModalProps> = ({
                 <UserPlus className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-xl font-black text-gray-900 dark:text-white tracking-tight">
-                  Allocate Bed in Room {roomNumber}
+                <h3 className="text-xl font-black text-gray-900 dark:text-white tracking-tight flex items-center gap-2">
+                  <span>Allocate Bed in {flat ? `${flat.name} • ` : ''}{roomNumber.toLowerCase().includes('room') ? roomNumber : `Room ${roomNumber}`}</span>
+                  {catMeta && <span className="text-base">{catMeta.icon}</span>}
                 </h3>
                 <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">
-                  {room.type} • {vacantBeds} of {totalBeds} beds vacant
+                  {catMeta ? `${catMeta.label} • ` : ''}{room.type} • {vacantBeds} of {totalBeds} beds vacant
                 </p>
               </div>
             </div>

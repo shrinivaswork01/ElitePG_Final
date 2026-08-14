@@ -40,7 +40,7 @@ import {
   Legend
 } from 'recharts';
 import { format, subMonths, parseISO } from 'date-fns';
-import { cn } from '../utils';
+import { cn, ROOM_CATEGORIES } from '../utils';
 
 export const ReportsPage = () => {
   const { user, users } = useAuth();
@@ -699,7 +699,61 @@ export const ReportsPage = () => {
         </motion.div>
       </div>
 
-      {/* Branch Comparison Table */}
+      {/* 5. ROOM CATEGORY BREAKDOWN */}
+      {(() => {
+        const categoryBreakdown = ROOM_CATEGORIES.map(cat => {
+          const catRooms = currentRooms.filter(r =>
+            (r.roomCategory || r.room_category) === cat.id
+          );
+          const totalBedsCat = catRooms.reduce((sum: number, r: any) => sum + (r.totalBeds || r.total_beds || 0), 0);
+          const occupiedBedsCat = currentTenants.filter((t: any) =>
+            catRooms.some((r: any) => r.id === (t.roomId || t.room_id)) && t.status === 'active'
+          ).length;
+          return {
+            ...cat,
+            roomCount: catRooms.length,
+            totalBeds: totalBedsCat,
+            occupiedBeds: occupiedBedsCat,
+            vacantBeds: Math.max(0, totalBedsCat - occupiedBedsCat),
+            occupancy: totalBedsCat > 0 ? Math.round((occupiedBedsCat / totalBedsCat) * 100) : 0
+          };
+        }).filter(c => c.roomCount > 0);
+
+        if (categoryBreakdown.length === 0) return null;
+
+        return (
+          <div className="bg-white dark:bg-[#0d0d0d] rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm p-6">
+            <h3 className="text-lg font-black text-gray-900 dark:text-white uppercase tracking-tight font-display mb-1">Room Category Breakdown</h3>
+            <p className="text-[10px] font-bold text-gray-400 tracking-widest uppercase italic mb-6">Occupancy by room role across all linked flats</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+              {categoryBreakdown.map(cat => (
+                <div key={cat.id} className="p-4 rounded-2xl border border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-white/3">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-2xl">{cat.icon}</span>
+                    <div>
+                      <p className="text-xs font-black text-gray-900 dark:text-white leading-tight">{cat.label}</p>
+                      <p className="text-[10px] text-gray-400 font-semibold">{cat.roomCount} Room{cat.roomCount !== 1 ? 's' : ''}</p>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-[10px] font-bold">
+                      <span className="text-gray-400">Occupied</span>
+                      <span className="text-gray-900 dark:text-white">{cat.occupiedBeds} / {cat.totalBeds} beds</span>
+                    </div>
+                    <div className="w-full h-1.5 bg-gray-200 dark:bg-white/10 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{ width: `${cat.occupancy}%`, backgroundColor: cat.occupancy >= 80 ? '#ef4444' : cat.occupancy >= 50 ? '#f59e0b' : '#22c55e' }}
+                      />
+                    </div>
+                    <p className="text-[10px] font-black text-right" style={{ color: cat.occupancy >= 80 ? '#ef4444' : cat.occupancy >= 50 ? '#f59e0b' : '#22c55e' }}>{cat.occupancy}% occupied</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
       {shouldRenderCombined && branchComparisonData.length > 0 && (
         <div className="bg-white dark:bg-[#111111] rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm p-8 overflow-hidden mt-8">
           <h3 className="text-xl font-black text-gray-900 dark:text-white mb-6 uppercase tracking-tight font-display">Branch Comparison ({monthOptions.find(m => m.value === selectedMonth)?.label || 'Selected Month'})</h3>

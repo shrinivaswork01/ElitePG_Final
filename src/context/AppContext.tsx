@@ -394,6 +394,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         rooms: (rooms || []).map(r => ({
           id: r.id, roomNumber: r.room_number, floor: r.floor, totalBeds: r.total_beds, occupiedBeds: r.occupied_beds, type: r.type, price: r.price, branchId: r.branch_id,
           amenities: r.amenities || [],
+          description: r.description || undefined,
+          roomCategory: r.room_category || r.roomCategory || undefined,
           meterGroupId: r.meter_group_id,
           meterGroup: r.meter_groups ? {
             id: r.meter_groups.id, name: r.meter_groups.name, floor: r.meter_groups.floor, branchId: r.meter_groups.branch_id, createdAt: r.meter_groups.created_at
@@ -1221,7 +1223,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await refetch(supabase.from('rooms').insert({
       room_number: room.roomNumber, floor: room.floor, total_beds: room.totalBeds, occupied_beds: room.occupiedBeds,
       type: room.type, price: room.price, branch_id: targetBranch, meter_group_id: room.meterGroupId || null,
-      amenities: room.amenities || []
+      amenities: room.amenities || [],
+      room_category: room.roomCategory || null,
+      description: room.description || null
     }), 'Room added successfully');
   };
 
@@ -1257,6 +1261,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (updates.price !== undefined) dbUpdates.price = updates.price;
     if (updates.meterGroupId !== undefined) dbUpdates.meter_group_id = updates.meterGroupId;
     if (updates.amenities !== undefined) dbUpdates.amenities = updates.amenities;
+    if (updates.roomCategory !== undefined) dbUpdates.room_category = updates.roomCategory;
+    if (updates.description !== undefined) dbUpdates.description = updates.description;
     await refetch(supabase.from('rooms').update(dbUpdates).eq('id', id), 'Room updated successfully');
   };
 

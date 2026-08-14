@@ -687,7 +687,7 @@ export const ExpensesPage = () => {
                       required
                       min="0"
                       step="any"
-                      value={formData.amount === 0 ? '' : formData.amount}
+                      value={Number(formData.amount) === 0 ? '' : formData.amount}
                       onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
                       onChange={e => {
                         const val = e.target.value;

@@ -156,6 +156,7 @@ export const exportToExcel = async (
     { header: 'Room Number', key: 'roomNumber', width: 15 },
     { header: 'Branch', key: 'branchName', width: 25 },
     { header: 'Floor', key: 'floor', width: 10 },
+    { header: 'Room Category', key: 'roomCategory', width: 20 },
     { header: 'Total Beds', key: 'totalBeds', width: 12 },
     { header: 'Occupied Beds', key: 'occupiedBeds', width: 15 },
     { header: 'Vacant Beds', key: 'vacantBeds', width: 12 },
@@ -170,10 +171,12 @@ export const exportToExcel = async (
     const vacant = tBeds - occupied;
     const occupancy = tBeds > 0 ? (occupied / tBeds) * 100 : 0;
     const rBranch = branches.find(b => b.id === (r.branchId || (r as any).branch_id)) || branch;
+    const categoryLabel = (r as any).roomCategory || (r as any).room_category || '—';
     roomsSheet.addRow({
       roomNumber: (r as any).room_number || r.roomNumber,
       branchName: rBranch?.name || 'Unknown',
       floor: r.floor,
+      roomCategory: categoryLabel,
       totalBeds: tBeds,
       occupiedBeds: occupied,
       vacantBeds: vacant,
@@ -183,7 +186,7 @@ export const exportToExcel = async (
     });
   });
 
-  applyHeaderStyle(roomsSheet, 9);
+  applyHeaderStyle(roomsSheet, 10);
   roomsSheet.getColumn('price').numFmt = '"₹"#,##0.00';
 
   // --- 4. PAYMENTS SHEET ---
@@ -545,6 +548,7 @@ export const exportRoomsToExcel = async (
     { header: 'Branch', key: 'branchName', width: 25 },
     { header: 'Flat / Group', key: 'flatName', width: 20 },
     { header: 'Floor', key: 'floor', width: 10 },
+    { header: 'Room Category', key: 'roomCategory', width: 20 },
     { header: 'Total Beds', key: 'totalBeds', width: 12 },
     { header: 'Occupied Beds', key: 'occupiedBeds', width: 15 },
     { header: 'Vacant Beds', key: 'vacantBeds', width: 12 },
@@ -560,12 +564,14 @@ export const exportRoomsToExcel = async (
     const occupancy = tBeds > 0 ? (occupied / tBeds) * 100 : 0;
     const rBranch = branches.find(b => b.id === (r.branchId || (r as any).branch_id)) || currentBranch;
     const flat = meterGroups.find(m => m.id === (r.meterGroupId || (r as any).meter_group_id));
+    const categoryLabel = (r as any).roomCategory || (r as any).room_category || '—';
 
     sheet.addRow({
       roomNumber: r.roomNumber || (r as any).room_number,
       branchName: rBranch?.name || 'Unknown',
       flatName: flat?.name || '—',
       floor: r.floor,
+      roomCategory: categoryLabel,
       totalBeds: tBeds,
       occupiedBeds: occupied,
       vacantBeds: vacant,
@@ -575,11 +581,11 @@ export const exportRoomsToExcel = async (
     });
   });
 
-  applyHeaderStyle(sheet, 10);
+  applyHeaderStyle(sheet, 11);
   sheet.getColumn('price').numFmt = '"₹"#,##0.00';
   sheet.autoFilter = {
     from: { row: 1, column: 1 },
-    to: { row: 1, column: 10 }
+    to: { row: 1, column: 11 }
   };
 
   const buffer = await workbook.xlsx.writeBuffer();
@@ -606,6 +612,7 @@ export const exportFlatsToExcel = async (
     { header: 'Branch', key: 'branchName', width: 25 },
     { header: 'Floor', key: 'floor', width: 10 },
     { header: 'Linked Rooms', key: 'linkedRooms', width: 15 },
+    { header: 'Room Roles', key: 'roomRoles', width: 40 },
     { header: 'Occupied Beds', key: 'occupiedBeds', width: 15 },
     { header: 'Total Beds', key: 'totalBeds', width: 15 },
     { header: 'Occupancy %', key: 'occupancy', width: 15 },
@@ -618,22 +625,29 @@ export const exportFlatsToExcel = async (
     const occupied = tenants.filter(t => linkedRooms.some(r => r.id === (t.roomId || (t as any).room_id)) && t.status === 'active').length;
     const occupancy = totalBeds > 0 ? (occupied / totalBeds) * 100 : 0;
     const fBranch = branches.find(b => b.id === (f.branchId || (f as any).branch_id)) || currentBranch;
+    const roomRoles = linkedRooms
+      .map(r => {
+        const cat = (r as any).roomCategory || (r as any).room_category;
+        return cat ? `${r.roomNumber || (r as any).room_number}: ${cat}` : (r.roomNumber || (r as any).room_number);
+      })
+      .join(', ');
 
     sheet.addRow({
       name: f.name,
       branchName: fBranch?.name || 'Unknown',
       floor: f.floor,
       linkedRooms: linkedCount,
+      roomRoles: roomRoles || '—',
       occupiedBeds: occupied,
       totalBeds: totalBeds,
       occupancy: `${occupancy.toFixed(2)}%`,
     });
   });
 
-  applyHeaderStyle(sheet, 7);
+  applyHeaderStyle(sheet, 8);
   sheet.autoFilter = {
     from: { row: 1, column: 1 },
-    to: { row: 1, column: 7 }
+    to: { row: 1, column: 8 }
   };
 
   const buffer = await workbook.xlsx.writeBuffer();

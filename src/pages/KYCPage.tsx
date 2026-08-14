@@ -15,7 +15,8 @@ import {
   Filter,
   FileText,
   FileSpreadsheet,
-  Trash2
+  Trash2,
+  Download
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../utils';
